@@ -1,7 +1,8 @@
 import { KNOWLEDGE_CATEGORIES, KNOWLEDGE_ENTRIES, knowledgeDetail } from '../game/knowledge.js';
-import { TECHS } from '../game/content.js';
+import { EQUIPMENT, TECHS } from '../game/content.js';
 import { esc } from './views.js';
-import { icon } from './icons.js';
+import { icon, equipmentIcon } from './icons.js';
+import { facilityIcon } from './facility-icons.js';
 
 const sessions = new WeakMap();
 
@@ -54,6 +55,12 @@ function entryKey(entry) {
   return entry.category + '/' + entry.id;
 }
 
+function entryIcon(entry) {
+  if (entry.category === 'bases') return facilityIcon(entry.id);
+  if (entry.category === 'items') return equipmentIcon(EQUIPMENT[entry.id].slot);
+  return icon(entry.category === 'techs' ? 'research' : 'knowledge');
+}
+
 function updateKnowledge(view) {
   const section = view.select.value;
   const query = view.input.value.trim().toLowerCase();
@@ -66,7 +73,8 @@ function updateKnowledge(view) {
       const button = document.createElement('button');
       button.type = 'button';
       button.dataset.entry = entryKey(entry);
-      button.textContent = entry.name;
+      button.innerHTML = entryIcon(entry);
+      button.append(document.createTextNode(entry.name));
       return button;
     }));
     if (!view.matches.some(entry => entryKey(entry) === view.id)) {

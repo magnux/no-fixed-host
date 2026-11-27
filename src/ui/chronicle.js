@@ -1,7 +1,9 @@
-import { GROUPS, REGIONS } from '../game/content.js';
+import { EQUIPMENT, GROUPS, REGIONS, SITE_TYPES } from '../game/content.js';
 import { WORLD_NEWS } from '../game/events.js';
 import { currentWarnings, CHAPTERS, eventCategory, JOURNAL_CATEGORIES, reportsAt, storyKey } from '../game/chronicle.js';
 import { stamp } from './views.js';
+import { equipmentIcon, icon } from './icons.js';
+import { facilityIcon } from './facility-icons.js';
 import './chronicle.css';
 
 export { storyKey, currentWarnings };
@@ -179,6 +181,15 @@ function refreshWorld(v) {
   d.append(list);
 }
 
+function eventIcon(event) {
+  const category = eventCategory(event);
+  if (category === 'discoveries' && Object.hasOwn(GROUPS, event.group)) return icon(event.group);
+  if (category === 'facilities' && Object.hasOwn(SITE_TYPES, event.siteType)) return facilityIcon(event.siteType);
+  if (category === 'equipment' && Object.hasOwn(EQUIPMENT, event.itemId)) return equipmentIcon(EQUIPMENT[event.itemId].slot);
+  const symbol = { discoveries: 'shield', news: 'news', facilities: 'facilities', equipment: 'cpu', research: 'research' };
+  return icon(symbol[category] || 'activity');
+}
+
 function refresh(v) {
   const {fields, state} = v;
   refreshWarnings(v);
@@ -207,6 +218,7 @@ function refresh(v) {
         openDispatches(v.state, group.length ? group : [e], v.options, group.findIndex(x => x.id === e.id));
       });
       open.className = 'chronicle-entry';
+      open.insertAdjacentHTML('afterbegin', eventIcon(e));
       li.append(node('time', stamp(e.hour, e.minute)), open);
       const chapter = storyKey(e);
       if (chapter) li.append(action('Read story', () => openStory(chapter, v.options)));

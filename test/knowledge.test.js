@@ -24,3 +24,12 @@ test('every design can be looked up and every completed project has an individua
   }
   assert.equal(results.size, Object.keys(TECHS).length);
 });
+
+test('facility reference entries disclose their baseline investigator risk at the researched precision', () => {
+  const relay = KNOWLEDGE_ENTRIES.find(entry => entry.category === 'bases' && entry.id === 'relay');
+  const baseline = completed => knowledgeDetail(relay, {completed}).facts
+    .find(([label]) => label === 'Standard daily discovery risk')[1];
+  assert.doesNotMatch(baseline([]), /\d|%/);
+  assert.match(baseline(['socioanalytics']), /Public ≈1.25%/);
+  assert.match(baseline(['socioanalytics', 'advancedSocioanalytics']), /Public 1.24%/);
+});

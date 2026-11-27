@@ -577,17 +577,19 @@ input[type='range']::-moz-range-thumb {
 }
 .sus-group { display: flex; gap: 0.4rem; align-items: center; }
 .danger-emoji { font-size: 0.9rem; line-height: 1.1; }
-.danger-label { color: var(--quiet); font-size: 0.69rem; padding-left: 1.45rem; }
-.sus-row progress { width: 3.3rem; justify-self: end; }
+.awareness-protected { margin: 0; padding: .65rem .85rem; color: var(--quiet); font-size: .8rem; line-height: 1.45; }
+.sus-row .sus-value { text-align: right; font: 500 .75rem var(--mono); color: #ccd9d9; }
+.sus-row[data-suspicion-level="1"] .sus-value { color: var(--amber); }
+.sus-row[data-suspicion-level="2"] .sus-value { color: #f0a276; }
+.sus-row[data-suspicion-level="3"] .sus-value { color: #ffaaa4; }
+.sus-row progress { grid-column: 2; grid-row: 2; width: 3rem; justify-self: end; align-self: center; }
+.danger-forecast { grid-column: 1 / -1; grid-row: 2; color: var(--quiet); font-size: .69rem; line-height: 1.4; }
+.sus-row:has(progress) .danger-forecast { grid-column: 1; }
+.danger-forecast .danger-label { white-space: nowrap; }
 .sus-row[data-level="1"] .danger-label { color: var(--amber); }
 .sus-row[data-level="2"] .danger-label { color: #f0a276; }
-.sus-row[data-level="3"] .danger-label { color: #ff918c; }
-.danger-forecast { grid-column: 1 / -1; padding-left: 1.45rem; font-size: 0.67rem; }
+.sus-row[data-level="3"] .danger-label { color: #ffaaa4; }
 
-.sus-row strong {
-  text-align: right;
-  color: #b1bec1;
-}
 progress {
   border: 0;
   height: 0.28rem;
@@ -952,7 +954,8 @@ select {
 .menu-list { max-height: min(75vh, 36rem); overflow-y: auto; }
 .dock-shortcuts { display: flex; align-items: center; justify-content: space-between; margin: 0 .8rem .35rem; }
 .knowledge-console input[type=search] { min-width: 0; width: 100%; }
-.knowledge-console .research-directory > button { display: block; text-align: left; width: 100%; }
+.knowledge-console .research-directory > button { display: flex; flex-direction: row; align-items: center; gap: .55rem; text-align: left; width: 100%; }
+.knowledge-console .research-directory .icon { width: 1.15rem; height: 1.15rem; flex: none; }
 .knowledge-console .research-directory > [aria-pressed=true] { border-color: var(--mint); color: var(--mint); }
 .knowledge-console .research-dossier h4 { margin-bottom: .35rem; }
 @media (max-width: 90rem) { #nav .icon { display: none; } }

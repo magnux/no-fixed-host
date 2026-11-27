@@ -44,13 +44,8 @@ test('map targets and both docks fit the desktop and ultrawide viewports', async
   const right = page.locator('.network-dock');
   assert.equal(await right.getByRole('heading', { name: /host inventory/i }).count(), 0);
   const danger = right.locator('#suspicion');
-  assert.equal(await danger.locator('.sus-row .danger-emoji').count(), 4);
-  for (const group of ['Press', 'Scientists', 'Intelligence', 'Public']) {
-    const row = danger.locator('.sus-row').filter({ has: page.getByRole('progressbar', { name: group + ' suspicion' }) });
-    assert.ok(await row.isVisible());
-    assert.ok((await row.locator('.danger-emoji').innerText()).trim());
-    assert.ok((await row.locator('.danger-label').innerText()).trim());
-  }
+  assert.match(await danger.innerText(), /protected/i);
+  assert.equal(await danger.locator('.sus-row').count(), 0, 'Investigators are hidden during opening protection.');
   const regions = page.locator('#world-atlas [data-action="region"]');
   const buttons = await regions.evaluateAll((nodes) => nodes.map((button) => ({
     id: button.dataset.id,
@@ -105,7 +100,7 @@ test('a focused native region picker survives running construction', async (t) =
   const picker = page.getByRole('combobox', { name: 'Region', exact: true });
   assert.equal(await picker.inputValue(), 'europe');
 
-  await page.locator('#facility-type').selectOption('relay');
+  await page.getByRole('radio', { name: 'Leased relay', exact: true }).check();
   await page.getByRole('button', { name: /^build leased relay$/i }).click();
   await page.locator('#run').click();
   await picker.click();
@@ -123,6 +118,65 @@ test('a focused native region picker survives running construction', async (t) =
   await page.keyboard.press('Enter');
   assert.equal(await picker.inputValue(), 'coast');
   assert.equal(await page.locator('#run').getAttribute('aria-pressed'), 'true');
+});
+
+test('facility icons expose research locks, funding, and keyboard selection while construction runs', async t => {
+  const page = await openFreshCampaign(t);
+  const campaign = createGame(19);
+  campaign.cash = 150;
+  await importCampaign(page, encodeCampaign(campaign));
+  await page.locator('#world-atlas [data-id="europe"]').click();
+  const picker = page.getByRole('group', {name:'Facility type'});
+  const design = id => picker.getByRole('radio', {name:SITE_TYPES[id].name, exact:true});
+  const tile = id => picker.locator('label').filter({has:page.getByRole('radio', {name:SITE_TYPES[id].name, exact:true})});
+  const compatible = Object.entries(SITE_TYPES).filter(([id,spec]) => id !== 'seed' && spec.regions.includes('europe'));
+  assert.deepEqual(await picker.getByRole('radio').evaluateAll(radios => radios.map(radio => radio.value).sort()),
+    compatible.map(([id]) => id).sort());
+
+  for (const [id,spec] of compatible) {
+    assert.ok(await tile(id).locator('.facility-icon').isVisible(), spec.name);
+    assert.equal(await tile(id).locator('.facility-design-lock').isVisible(), spec.requires.length > 0, spec.name);
+  }
+  for (const [width,height] of [[375,812], [1366,768], [2560,1080]]) {
+    await page.setViewportSize({width,height});
+    const layout = await picker.evaluate(picker => {
+      const styles = getComputedStyle(picker.querySelector('.facility-design[data-locked="true"] .facility-design-lock'));
+      const area = picker.getBoundingClientRect();
+      return {
+        overflow:document.documentElement.scrollWidth > innerWidth + 1,
+        tilesFit:[...picker.querySelectorAll('label')].every(label => {
+          const bounds = label.getBoundingClientRect();
+          return bounds.width > 0 && bounds.left >= area.left - 1 && bounds.right <= area.right + 1;
+        }),
+        opacity:Number(styles.opacity),
+      };
+    });
+    assert.ok(!layout.overflow && layout.tilesFit, 'Tile geometry at ' + width);
+    assert.ok(layout.opacity > 0 && layout.opacity < 1, 'The lock overlay is translucent.');
+  }
+
+  const relay = design('relay');
+  const storage = design('storageUnit');
+  await relay.check();
+  await page.getByRole('button', {name:'Build Leased relay',exact:true}).click();
+  assert.ok(await page.getByRole('button', {name:'Build Leased relay',exact:true}).isDisabled());
+  assert.equal(await tile('relay').locator('.facility-design-lock').isVisible(), false);
+  assert.match(await relay.getAttribute('aria-describedby').then(id => page.locator('#' + id).textContent()), /insufficient funds/i);
+  await page.getByRole('button', {name:'Run',exact:true}).click();
+  await relay.focus();
+  await page.keyboard.press('ArrowRight');
+  assert.ok(await storage.isChecked(), 'Keyboard navigation can inspect the next, research-locked design.');
+  assert.ok(await page.locator('[data-research-id="personalIdentification"]:visible').isVisible());
+  const identity = await storage.elementHandle();
+  const before = await gameMinutes(page);
+  await page.clock.runFor(2100);
+  assert.equal(await gameMinutes(page) - before, 2);
+  assert.ok(await identity.evaluate(radio => radio.isConnected && radio.checked && document.activeElement === radio));
+  await page.locator('#pause').click();
+  await page.getByRole('combobox', {name:'Region',exact:true}).selectOption('orbit');
+  assert.equal(await picker.isVisible(), false);
+  assert.equal(await page.getByRole('radio').count(), 0);
+  assert.match(await page.locator('[data-ref="noBuild"]').innerText(), /no facility designs/i);
 });
 
 async function gameMinutes(page) {
@@ -202,10 +256,12 @@ test('research opens a locked facility, and its accordion preserves equipment ch
   async function selectStorage() {
     await navigate('Overview');
     await page.locator('#world-atlas [data-id="europe"]').click();
-    await page.locator('#facility-type').selectOption('storageUnit');
+    await page.getByRole('radio', { name: 'Storage unit', exact: true }).check();
     return page.getByRole('button', { name: /^build storage unit$/i });
   }
   assert.ok(await (await selectStorage()).isDisabled());
+  const storageLock = page.locator('.facility-design').filter({has:page.getByRole('radio', {name:'Storage unit', exact:true})}).locator('.facility-design-lock');
+  assert.ok(await storageLock.isVisible());
   const designRisk = page.getByRole('region', { name: 'Design risk' });
   assert.match(await designRisk.innerText(), /Daily discovery risk when mature and online/);
   assert.match(await designRisk.innerText(), /Moderate/);
@@ -220,7 +276,16 @@ test('research opens a locked facility, and its accordion preserves equipment ch
     const topic = page.locator(`[data-tech-id="${project}"]`);
     await topic.click();
     await page.locator('#research-cpu').press('End');
-    await page.locator('#step').click();
+    if (project === 'personalIdentification') {
+      await selectStorage();
+      const lockedTile = await page.getByRole('radio', {name:'Storage unit', exact:true}).elementHandle();
+      await page.locator('#step').click();
+      assert.ok(await lockedTile.evaluate(radio => radio.isConnected && radio.checked));
+      assert.equal(await storageLock.isVisible(), false, 'Research removes the lock from the open picker.');
+      await navigate('Research');
+    } else {
+      await page.locator('#step').click();
+    }
     assert.equal(await topic.isVisible(), false, 'Completed topics leave the default list.');
     assert.equal(Number(await page.locator('#research').inputValue()), 0, 'Completion releases the assigned CPU.');
   }
@@ -318,7 +383,7 @@ test('atlas history, named construction, removal confirmation and CPU batches su
   assert.match(await page.locator('[data-ref="installQueue"]').innerText(), /PC × 5/);
 
   await nav('Build facility');
-  await page.locator('#facility-type').selectOption('relay');
+  await page.getByRole('radio', { name: 'Leased relay', exact: true }).check();
   assert.match(await page.locator('[data-ref="designRisk"] [data-group="public"]').innerText(), /^\d+\.\d{2}%$/);
   await page.getByLabel('Facility name (optional)').fill('Meridian II');
   await nav('Forecast order');
@@ -409,6 +474,71 @@ test('a weighted v4 campaign imports its two running research lines as actual CP
   }
 });
 
+test('finishing each analytics project reveals the next level of investigator information', async t => {
+  const page = await openFreshCampaign(t);
+  // This operating network predates the facility picker. Use a v4 import so the
+  // research gates are exercised through the same migration as a player's save.
+  const campaign = createGame(19);
+  function learn(id) {
+    if (campaign.completed.includes(id)) return;
+    TECHS[id].requires.forEach(learn);
+    campaign.completed.push(id);
+  }
+  ['advancedMemetics', 'personalIdentification', 'advancedMicrochipDesign'].forEach(learn);
+  campaign.cash = 1_000_000;
+  command(campaign, {type:'build', siteType:'storageUnit', region:'europe'});
+  advanceMinutes(campaign, 2 * 1440);
+  command(campaign, {type:'install', siteId:campaign.sites.at(-1).id, itemId:'supercomputer', count:8});
+  advanceMinutes(campaign, 8 * 1440);
+  campaign.hour = 577; // Day 25 at 01:00; protection has ended, and midnight decay is hours away.
+  campaign.suspicion = {news:2750, science:2751, covert:7540, public:4932};
+  campaign.version = 4;
+  campaign.allocations.research = 0;
+  await importCampaign(page, JSON.stringify({game:'no-fixed-host', format:4, campaign}));
+
+  const dock = page.locator('#suspicion');
+  const row = group => dock.locator('.sus-row[data-group="' + group + '"]');
+  const suspicionValue = group => row(group).locator('.sus-value').innerText();
+  assert.equal(await dock.locator('.sus-row').count(), 4);
+  for (const [group, label] of [['news','Moderate'], ['science','Moderate'], ['covert','Critical'], ['public','Moderate']]) {
+    assert.equal(await suspicionValue(group), label);
+    assert.ok((await row(group).locator('.danger-emoji').innerText()).trim());
+    assert.doesNotMatch(await row(group).ariaSnapshot(), /%/);
+    assert.equal(await row(group).getByRole('progressbar').count(), 0);
+  }
+  assert.doesNotMatch(await row('news').locator('.danger-forecast').innerText(), /%/);
+  await page.locator('#nav [data-id="research"]').click();
+  async function finish(id) {
+    const topic = page.locator('[data-tech-id="' + id + '"]');
+    await topic.click();
+    await page.locator('#research-cpu').press('End');
+    await page.locator('#fast').click();
+    await page.clock.runFor(1150);
+    await page.locator('#pause').click();
+    assert.equal(await topic.isVisible(), false, 'The funded project has completed.');
+  }
+  await finish('socioanalytics');
+  assert.match(await suspicionValue('news'), /≈\s*25(?:\.0+)?%/);
+  assert.match(await suspicionValue('science'), /≈\s*30(?:\.0+)?%/);
+  assert.match(await row('news').locator('.danger-forecast').innerText(), /≈\s*2(?:\.0+)?%/);
+  assert.doesNotMatch(await dock.ariaSnapshot(), /27\.5|1\.88/);
+  assert.equal(await row('news').locator('progress').evaluate(bar => bar.value / bar.max), 0.25);
+
+  await finish('advancedSocioanalytics');
+  await page.reload();
+  assert.equal(await suspicionValue('news'), '27.50%');
+  assert.equal(await suspicionValue('science'), '27.51%');
+  // A mature terminal and storage unit each have Press intensity .0095 per day.
+  assert.match(await row('news').locator('.danger-forecast').innerText(), /1\.88%/);
+  assert.equal(await row('news').locator('progress').evaluate(bar => bar.value / bar.max), 0.275);
+  for (const [width,height] of [[1366,768], [2560,1080]]) {
+    await page.setViewportSize({width,height});
+    const bounds = await dock.boundingBox();
+    assert.ok(bounds.y + bounds.height <= height + 1 && bounds.x + bounds.width <= width + 1,
+      'All four disclosed readouts fit the right dock at ' + width + 'px.');
+  }
+});
+
 test('news arrives during opening grace and can be read from the news desk', async (t) => {
   const page = await openFreshCampaign(t);
   const news = page.locator('#newswire');
@@ -470,7 +600,12 @@ test('discovery interrupts day speed, survives reload, and opens the affected re
   assert.ok(interrupted > start && interrupted < start + 1440);
   await page.clock.runFor(1800);
   assert.equal(await gameMinutes(page), interrupted);
-  assert.ok(Number(await row.locator('progress').getAttribute('value')) > 0);
+  assert.equal(await row.locator('.sus-value').innerText(), 'Low');
+  assert.doesNotMatch(await row.ariaSnapshot(), /%/);
+  assert.equal(await row.getByRole('progressbar').count(), 0);
+  const suspicion = await page.evaluate(group =>
+    JSON.parse(localStorage.getItem('no-fixed-host.campaign')).campaign.suspicion[group], event.group);
+  assert.ok(suspicion > 0, 'The discovery still raises suspicion while the player can only observe its band.');
   await page.reload();
   assert.ok(await incident.isVisible());
   await incident.getByRole('button', { name: 'Inspect region' }).click();

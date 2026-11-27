@@ -39,7 +39,7 @@ Use a design’s forecast action to compare the current network against the same
 
 ## Where to build
 
-All twelve destinations are visible. Activating a location opens its facility controls. Six populated continents offer ordinary leases. Antarctica and the Ocean support remote work. The Moon, Far Reaches, and transdimensional locations support progressively more sensitive projects. Earth Orbit appears as a destination without a facility design, as in the reference game. Seeing a location lets the player inspect its prerequisites before committing resources.
+All twelve destinations are visible. Activating a location opens its facility controls. Six populated continents offer ordinary leases. Antarctica and the Ocean support remote work. The Moon, Far Reaches, and transdimensional locations support progressively more sensitive projects. Earth Orbit appears as a destination without a facility design, as in the reference game. In Facilities, each design that fits the selected region has a labeled icon. Select a design to inspect its price, local upkeep, and daily risk estimate. A lock on the icon means you need a research prerequisite. Select a locked design to see the requirement and open that project. Cash shortages appear with the price and order controls.
 
 A leased relay arrives with fixed hardware. A storage unit provides eight processor bays. Expand a finished facility in the Facilities list to see its equipment, power controls and pending installations. Each configurable host accepts a stack of matching processors and one component each for networking, power and security. A network boosts processing throughput. Reactors and security systems lower exposure. Auto-build quotes a package for available empty slots before purchase. The installed equipment keeps working until a refit completes.
 
@@ -71,7 +71,15 @@ flowchart TD
     Lower --> Check
 ```
 
-A discovery report names the group, site and location. The clock stops for the report even when a day was requested. Group suspicion records accumulated evidence. The right dock always displays that percentage and a danger emoji. Socioanalytics adds a qualitative network-wide discovery forecast there, and Advanced Socioanalytics exposes the estimated daily probability. In Facilities the four investigators start with qualitative site risk grades. The first analytics project gives approximate probabilities, and the second gives two-decimal estimates. The purchase screen estimates a mature, online design. The inspector accounts for the host’s current protection, power and hardware.
+A discovery report names the group, site and location. The clock stops for the report even when a day was requested. The right dock shows protection during opening grace and after Apotheosis. Once investigations begin, two readouts answer different questions for each of the four groups. **Suspicion** measures the evidence the group already holds. **Detection** describes the danger of exposing the network over the coming day. A group can have little evidence today and still pose a serious threat if several facilities are exposed.
+
+| Completed research | Current suspicion | Network detection | Facility estimates |
+| --- | --- | --- | --- |
+| Starting knowledge | Low below 25%, Moderate at 25%, High at 50%, Critical at 75% | A qualitative danger grade accounts for the group’s expected evidence gain and overnight decay | Designs and hosts show qualitative grades for each investigator |
+| Socioanalytics | Estimate to the nearest 5 percentage points | Daily probability to the nearest percentage point | A design estimate uses quarter-point steps. An existing host uses whole-point steps. |
+| Advanced Socioanalytics | Percentage to two decimals | Daily probability to two decimals | Daily probabilities to two decimals |
+
+For example, 37.50% suspicion reads **Moderate**, then **≈35%**, then **37.50%** as research advances. Halfway estimates round down. Socioanalytics also marks the most recent discovery region on the atlas. Advanced Socioanalytics adds the previous one. A design shows its expected exposure as a mature, online facility. An existing host reflects its current protection, equipment, geography and power state. The numeric risk readouts use the browser campaign’s Poisson model below. [Original map readouts](https://github.com/singularity/singularity/blob/v1.1/singularity/code/screens/map.py#L879-L941) · [Original display bands and rounding](https://github.com/singularity/singularity/blob/v1.1/singularity/code/g.py#L112-L165) · [Facility estimates](https://github.com/singularity/singularity/blob/v1.1/singularity/code/base.py#L523-L564)
 
 | Normal calibration | Rule |
 | --- | --- |

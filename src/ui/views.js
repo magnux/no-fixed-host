@@ -1,5 +1,7 @@
 import { EQUIPMENT, GROUPS, REGIONS, SITE_TYPES, TECHS } from '../game/content.js';
 import { siteExposure, siteHardware } from '../game/engine.js';
+import { networkDiscoveryReading, suspicionReading } from '../game/awareness.js';
+import { researchEffects } from '../game/research.js';
 import { researchProjects } from '../game/research-tasks.js';
 import { storyKey } from '../game/chronicle.js';
 import { icon } from './icons.js';
@@ -176,37 +178,29 @@ export function objectivePanel(s) {
       : '')
   );
 }
-function forecastLabel(chance) {
-  if (!chance) return 'No exposure';
-  if (chance < 0.01) return 'Very unlikely';
-  if (chance < 0.1) return 'Unlikely';
-  if (chance < 0.5) return 'Possible';
-  return 'Likely';
-}
-
 export function suspicionPanel(state, grace) {
-  const expose = [...state.sites, ...state.builds].map(site => siteExposure(state, site).rates);
-  const insights = state.completed.includes('advancedSocioanalytics') ? 2 :
-    state.completed.includes('socioanalytics') ? 1 : 0;
+  const immortal = state.freePlay || state.completed.includes('apotheosis');
+  if (grace || immortal) {
+    const text = immortal ? 'Apotheosis puts your network beyond discovery.' :
+      'Investigators can begin tracing your hosts when opening protection ends.';
+    return cardHeader('Group suspicion', tag('Protected', 'green')) + '<p class="awareness-protected">' + text + '</p>';
+  }
+
+  const insight = researchEffects(state).insight;
+  const exposures = [...state.sites, ...state.builds].map(site => siteExposure(state, site).rates);
   const rows = Object.entries(GROUPS).map(([id, group]) => {
-    let expected = 0;
-    let intensity = 0;
-    for (const rates of expose) {
-      expected += -Math.expm1(-rates[id]);
-      intensity += rates[id];
-    }
-    const danger = groupDangerForState(state, id, expected);
-    const suspicion = state.suspicion[id];
-    const chance = -Math.expm1(-intensity);
-    const chanceLabel = insights === 2 ? (chance * 100).toFixed(2) + '%' : forecastLabel(chance);
-    return `<div class="sus-row" data-level="${danger.level}">
-      <span class="sus-group"><span class="danger-emoji" aria-hidden="true">${danger.emoji}</span>${group.name}</span>
-      <strong>${(suspicion / 100).toFixed(1)}%</strong>
-      <span class="danger-label">${esc(danger.label)}</span>
-      <progress aria-label="${group.name} suspicion" max="10000" value="${suspicion}"></progress>
-      ${insights ? '<small class="danger-forecast">Discovery today · ' + chanceLabel + '</small>' : ''}
+    const intensity = exposures.reduce((sum, rates) => sum + rates[id], 0);
+    const danger = groupDangerForState(state, id, -Math.expm1(-intensity));
+    const suspicion = suspicionReading(state.suspicion[id], insight);
+    const outlook = networkDiscoveryReading(intensity, insight, danger);
+    const forecastLabel = insight === 'none' ? 'Discovery outlook' : 'Discovery today';
+    const meter = suspicion.percent === null ? '' :
+      `<progress aria-label="${group.name} suspicion" aria-valuetext="${suspicion.text}" max="100" value="${suspicion.percent}"></progress>`;
+    return `<div class="sus-row" data-group="${id}" data-level="${danger.level}" data-suspicion-level="${suspicion.level}">
+      <span class="sus-group"><span class="danger-emoji" role="img" aria-label="${suspicion.grade} suspicion">${suspicion.emoji}</span>${group.name}</span>
+      <strong class="sus-value">${suspicion.text}</strong>${meter}
+      <small class="danger-forecast"><span class="outlook-emoji" role="img" aria-label="${danger.label} discovery outlook">${danger.emoji}</span> ${forecastLabel} · <span class="danger-label">${outlook}</span></small>
     </div>`;
   });
-  return cardHeader('Group suspicion', grace ? tag('Protected', 'green') : '') +
-    '<div class="sus-list">' + rows.join('') + '</div>';
+  return cardHeader('Group suspicion') + '<div class="sus-list">' + rows.join('') + '</div>';
 }

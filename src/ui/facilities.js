@@ -3,6 +3,8 @@ import { autoInstallQuote, buildReason, installQuote, installReason, laborHours,
 import { projectedCompute } from '../game/equipment.js';
 import { facilityName, regionFactors, regionalSpec, removalReason } from '../game/facility-operations.js';
 import { riskLabel } from './facility-risk.js';
+import { facilityIcon } from './facility-icons.js';
+import { equipmentIcon, icon } from './icons.js';
 import './facilities.css';
 
 const SLOT_NAMES = { cpu: 'Processors', network: 'Network', reactor: 'Reactor', security: 'Security' };
@@ -33,7 +35,7 @@ function setOptions(select, entries) {
   select.dataset.options = signature;
 }
 
-function renderRisk(node, state, exposure) {
+function renderRisk(node, state, exposure, context = 'design') {
   if (!node.childElementCount) {
     for (const [id, group] of Object.entries(GROUPS)) {
       const row = document.createElement('div');
@@ -47,7 +49,7 @@ function renderRisk(node, state, exposure) {
   }
   for (const row of node.children) {
     const value = row.lastElementChild;
-    setText(value, riskLabel(state, exposure.rates[value.dataset.group]));
+    setText(value, riskLabel(state, exposure.rates[value.dataset.group], context));
   }
 }
 
@@ -93,7 +95,8 @@ function renderQueue(root, records) {
       row = document.createElement('div');
       row.className = 'facility-progress';
       row.dataset.id = r.id;
-      row.innerHTML = '<span></span><small></small><progress max="100"></progress>';
+      const symbol = r.itemId ? equipmentIcon(EQUIPMENT[r.itemId].slot) : facilityIcon(r.type);
+      row.innerHTML = '<span class="facility-queue-entry">' + symbol + '<span></span></span><small></small><progress max="100"></progress>';
       root.append(row);
     }
     if (r.cancellable && !row.querySelector('button')) {
@@ -106,7 +109,7 @@ function renderQueue(root, records) {
     }
     old.delete(r.id);
     const [name, detail, bar] = row.children;
-    setText(name, r.name);
+    setText(name.lastElementChild, r.name);
     const pc = Math.floor(100 * Math.min(1, r.totalWork ? r.work / r.totalWork : 1, r.totalHours ? r.hours / r.totalHours : 1));
     const text = pc + '% · ' + number.format(r.work) + '/' + number.format(r.totalWork) + ' CPU-h · ' + duration(r.hours) + ' / ' + duration(r.totalHours);
     setText(detail, text);
@@ -136,8 +139,10 @@ function mountFacilities(root) {
             <small>¹ Price, CPU work and upkeep. ² Discovery rate before local history and equipment.</small>
           </details>
           <small data-ref="regionTerms"></small>
-          <label for="facility-type">Facility type</label>
-          <select id="facility-type" data-ref="model"></select>
+          <fieldset id="facility-type" class="facility-picker" data-ref="picker">
+            <legend>Facility type</legend>
+            <div class="facility-designs" data-ref="designs"></div>
+          </fieldset>
           <p data-ref="noBuild" hidden></p>
           <div class="facility-recipe" data-ref="recipe">
             <p data-ref="description"></p>
@@ -226,7 +231,8 @@ function mountFacilities(root) {
     const row = document.createElement('div');
     const term = document.createElement('dt');
     const value = document.createElement('dd');
-    term.textContent = name;
+    term.innerHTML = equipmentIcon(slot);
+    term.append(document.createTextNode(name));
     row.append(term, value);
     e.installed.append(row);
     value.dataset.slot = slot;
@@ -272,11 +278,15 @@ function mountFacilities(root) {
   });
   e.buildMode.addEventListener('click', () => switchMode('build'));
   e.manageMode.addEventListener('click', () => switchMode('manage'));
-  e.model.addEventListener('change', () => { setText(e.feedback, ''); refresh(session); });
+  e.designs.addEventListener('change', event => {
+    session.design = event.target.value;
+    setText(e.feedback, '');
+    refresh(session);
+  });
   e.slot.addEventListener('change', () => { e.count.value = '1'; setText(e.feedback, ''); refresh(session); });
   e.item.addEventListener('change', () => { e.count.value = '1'; setText(e.feedback, ''); refresh(session); });
   e.count.addEventListener('input', () => refresh(session));
-  const buildAction = () => ({ type: 'build', siteType: e.model.value, region: session.region, name: e.buildName.value });
+  const buildAction = () => ({ type: 'build', siteType: session.design, region: session.region, name: e.buildName.value });
   const installAction = () => ({ type: 'install', siteId: session.expandedId, itemId: e.item.value,
     count: e.slot.value === 'cpu' ? e.count.valueAsNumber : 1 });
   const packageAction = () => ({ type: 'auto-install', siteId: session.expandedId, expectedOrders: session.autoOrders });
@@ -362,35 +372,81 @@ function updateGeography(session) {
   }
 }
 
+function createDesignChoice(id) {
+  const spec = SITE_TYPES[id];
+  const label = document.createElement('label');
+  label.className = 'facility-design';
+  label.innerHTML = `<input type="radio" name="facility-design" value="${id}" data-facility-type="${id}"
+      aria-labelledby="facility-name-${id}" aria-describedby="facility-status-${id}">
+    <span class="facility-design-face">
+      <span class="facility-design-art" aria-hidden="true">${facilityIcon(id)}<span class="facility-design-lock" hidden>${icon('lock')}</span></span>
+      <span id="facility-name-${id}" class="facility-design-name"></span>
+      <small class="facility-design-price"></small>
+    </span>
+    <span id="facility-status-${id}" hidden></span>`;
+  label.querySelector('.facility-design-name').textContent = spec.name;
+  return {
+    id, spec, label, input: label.querySelector('input'), lock: label.querySelector('.facility-design-lock'),
+    price: label.querySelector('.facility-design-price'), status: label.lastElementChild,
+  };
+}
+
+function updateDesigns(session, recipes) {
+  const {elements: e, state, region} = session;
+  if (session.designRegion !== region) {
+    session.designRegion = region;
+    session.choices = recipes.map(([id]) => createDesignChoice(id));
+    e.designs.replaceChildren(...session.choices.map(choice => choice.label));
+    if (!recipes.some(([id]) => id === session.design)) {
+      session.design = (recipes.find(([id]) => !buildReason(state, id, region)) ?? recipes[0])?.[0];
+    }
+  }
+  e.picker.hidden = !session.choices.length;
+  for (const {id, spec, label, input, lock, price, status} of session.choices) {
+    const cost = regionalSpec(state, region, spec).cost;
+    const missing = [...new Set([...REGIONS[region].requires, ...spec.requires])].filter(tech => !state.completed.includes(tech));
+    const locked = missing.length > 0;
+    const affordable = state.cash >= cost;
+    const priceText = dollars.format(cost);
+    const description = [
+      'Cost ' + priceText + '.',
+      locked ? 'Requires ' + missing.map(tech => TECHS[tech].name).join(', ') + '.' : '',
+      affordable ? '' : 'Insufficient funds.',
+    ].filter(Boolean).join(' ');
+    if (label.dataset.locked !== String(locked)) label.dataset.locked = String(locked);
+    if (label.dataset.affordable !== String(affordable)) label.dataset.affordable = String(affordable);
+    if (label.title !== description) label.title = description;
+    lock.hidden = !locked;
+    setText(price, affordable ? priceText : dollars.format(Math.ceil(cost - state.cash)) + ' short');
+    setText(status, description);
+    input.checked = session.design === id;
+  }
+}
+
 function updateBuild(session, recipes) {
   const {elements: e, state, region} = session;
-  const regionLocked = REGIONS[region].requires.some(id => !state.completed.includes(id));
-  setOptions(e.model, recipes.map(([id, spec]) => {
-    const locked = regionLocked || spec.requires.some(tech => !state.completed.includes(tech));
-    return [id, spec.name + (locked ? ' · Requires research' : '')];
-  }));
+  updateDesigns(session, recipes);
   updateGeography(session);
-  const base = SITE_TYPES[e.model.value];
+  const base = SITE_TYPES[session.design];
   const model = base && regionalSpec(state, region, base);
-  e.model.disabled = !model;
   e.noBuild.hidden = Boolean(model);
   e.recipe.hidden = !model;
   if (!model) {
     setText(e.noBuild, 'No facility designs are available for ' + REGIONS[region].name + '.');
     return;
   }
-  e.buildName.placeholder = facilityName(state, e.model.value, region, state.nextSiteId);
+  e.buildName.placeholder = facilityName(state, session.design, region, state.nextSiteId);
   setText(e.description, model.description);
-  const estimate = previewSiteExposure(state, e.model.value, region);
+  const estimate = previewSiteExposure(state, session.design, region);
   renderRisk(e.designRisk, state, estimate);
   setText(e.designRiskNote, estimate.isProtected ? 'Discovery is disabled in this campaign.' :
     'Assumes an operating processor after protection ends, under current regional and world conditions.');
   setText(e.cost, dollars.format(model.cost));
-  setText(e.slots, model.fixedCpu ? 'Fixed · ' + siteHardware(state, {type: e.model.value, region}).cpu + ' CPU' : String(model.slots));
+  setText(e.slots, model.fixedCpu ? 'Fixed · ' + siteHardware(state, {type: session.design, region}).cpu + ' CPU' : String(model.slots));
   const upkeep = dollars.format(model.upkeep) + '/day' + (model.cpuUpkeep ? ' + ' + model.cpuUpkeep + ' CPU' : '');
   setText(e.upkeep, upkeep);
   setText(e.commissionTime, number.format(model.work) + ' CPU-h · ' + duration(laborHours(state, model)) + ' minimum');
-  const reason = buildReason(state, e.model.value, region);
+  const reason = buildReason(state, session.design, region);
   e.previewBuild.hidden = !session.handlers.onPreviewOrder;
   e.previewBuild.disabled = e.build.disabled = Boolean(reason);
   e.build.setAttribute('aria-label', 'Build ' + model.name);
@@ -407,7 +463,7 @@ function updateInspector(session, site, hw) {
   const terms = regionalSpec(state, site.region, SITE_TYPES[site.type]);
   setText(e.localUpkeep, 'Daily upkeep ' + dollars.format(state.freePlay ? 0 : terms.upkeep) +
     ' · Maintenance allocation ' + number.format(state.freePlay ? 0 : terms.cpuUpkeep) + ' CPU');
-  renderRisk(e.localRisk, state, exposure);
+  renderRisk(e.localRisk, state, exposure, 'host');
   const noDetection = state.freePlay || state.sandbox?.detection === false;
   setText(e.localRiskNote, noDetection ? 'Discovery is disabled in this campaign.' : exposure.isProtected ?
     'Protected now. Investigators cannot discover this host during its protection period.' :
@@ -426,7 +482,7 @@ function updateInspector(session, site, hw) {
   e.prev.disabled = e.next.disabled = session.hostCount < 2;
   const status = !hw.rawCpu ? 'Offline · Install processors to bring this host online' :
     sleeping ? 'Sleeping · ' + potential + ' offline' : 'Active · ' + potential;
-  setText(e.hostSummary, status + ' · Combined daily risk ' + riskLabel(state, totalRate));
+  setText(e.hostSummary, status + ' · Combined daily risk ' + riskLabel(state, totalRate, 'host'));
   e.power.disabled = state.status !== 'running' || !hw.rawCpu;
   setText(e.power, !hw.rawCpu ? 'Offline' : sleeping ? 'Wake' : 'Sleep');
   e.power.setAttribute('aria-label', (!hw.rawCpu ? 'Offline ' : sleeping ? 'Wake ' : 'Sleep ') + SITE_TYPES[site.type].name + ' ' + site.id);
@@ -491,7 +547,7 @@ function createHostRow(site) {
   row.className = 'facility-host-row';
   row.dataset.siteId = site.id;
   row.innerHTML = `<h3><button type="button" class="facility-host-toggle">
-    <span class="facility-host-light" aria-hidden="true"></span>
+    <span class="facility-host-mark" aria-hidden="true">${facilityIcon(site.type)}<span class="facility-host-light"></span></span>
     <span class="facility-host-title"><strong></strong><small></small></span>
     <span class="facility-host-state"></span><span class="facility-chevron" aria-hidden="true">›</span>
   </button></h3><div class="facility-host-detail" role="region" hidden></div>`;

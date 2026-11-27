@@ -60,7 +60,7 @@ test('compare, discard and place research and facility orders, then reconcile th
 
   await nav('Overview');
   await page.locator('#world-atlas [data-action="region"][data-id="europe"]').click();
-  await page.locator('#facility-type').selectOption('relay');
+  await page.getByRole('radio', { name: 'Leased relay', exact: true }).check();
   await page.locator('[data-ref="buildName"]').fill('Morning relay');
   await page.locator('[data-ref="previewBuild"]').click();
   assert.match(await page.locator('[data-report="name"]').innerText(), /Morning relay/);

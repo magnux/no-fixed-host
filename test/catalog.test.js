@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { EQUIPMENT, REGIONS, SITE_TYPES, TECHS } from '../src/game/content.js';
+import { facilityIcon } from '../src/ui/facility-icons.js';
 
 test('all original destinations and hardware families are represented', () => {
   assert.equal(Object.keys(REGIONS).length, 12);
@@ -13,6 +14,15 @@ test('all original destinations and hardware families are represented', () => {
     counts[item.slot]++;
   }
   assert.deepEqual(counts, { cpu: 9, network: 4, reactor: 6, security: 7 });
+});
+
+test('each facility in the catalog has a distinct decorative icon', () => {
+  const icons = Object.keys(SITE_TYPES).map(facilityIcon);
+  assert.equal(new Set(icons).size, icons.length);
+  for (const svg of icons) {
+    assert.match(svg, /aria-hidden="true"/);
+    assert.notEqual(svg, facilityIcon('unknown'));
+  }
 });
 
 test('hardware can be installed in a configurable site once its research is complete', () => {

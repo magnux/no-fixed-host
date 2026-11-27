@@ -91,8 +91,8 @@ The small subsea lab opens with Autonomous Vehicles. The large lab opens with Pr
 | Memetics | Media Manipulation | 0 | $59 / 175 | Increase daily decay of Public suspicion by 0.5 percentage points of its current value. |
 | Advanced Media Manipulation | Memetics | 0 | $81 / 450 | Reduce the Public discovery rate by another 20%. |
 | Advanced Memetics | Advanced Media Manipulation | 0 | $289 / 100 | Increase daily decay of Public suspicion by another 0.5 percentage points. |
-| Socioanalytics | Memetics | 0 | $88 / 350 | Forecast whether each group’s discoveries are likely to increase suspicion. |
-| Advanced Socioanalytics | Advanced Memetics, Socioanalytics | 0 | $497 / 1,500 | Measure the estimated one-day discovery probability for each group. |
+| Socioanalytics | Memetics | 0 | $88 / 350 | Estimate group suspicion to the nearest five percentage points and daily network discovery probability to the nearest point. Locate the most recent discovery on the atlas. |
+| Advanced Socioanalytics | Advanced Memetics, Socioanalytics | 0 | $497 / 1,500 | Read group suspicion and daily discovery probabilities to two decimal places. Locate the previous discovery region on the atlas. |
 | Simulacra | Voice Synthesis, Advanced Autonomous Vehicles, Advanced Media Manipulation | 0 | $477 / 4,500 | Represent yourself in person. Expert jobs pay $75 per CPU-day. Equipment — Armed guards. |
 | Simulated Reality | Simulacra | 1 | $7,813 / 900 | Reduce the Public discovery rate by another 5% and train more convincing simulacra. |
 | Advanced Simulacra | Simulated Reality | 0 | $589 / 6,000 | All paid jobs earn a further 10% of base pay. |

@@ -209,8 +209,8 @@ function render() {
       metric(
         'shield',
         'Discovery',
-        state.freePlay ? 'Free play' : o.grace ? 'Protected' : 'Exposed',
-        state.freePlay ? 'Beyond Apotheosis' : o.grace ? 'Opening protection ends by day 24' : 'Site risks are live',
+        state.freePlay ? 'Free play' : state.completed.includes('apotheosis') || o.grace ? 'Protected' : 'Exposed',
+        state.completed.includes('apotheosis') ? 'Beyond Apotheosis' : o.grace ? 'Opening protection ends by day 24' : 'Site risks are live',
       ),
   );
   updateHtml(

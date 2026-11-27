@@ -4,6 +4,12 @@ The comparison starts at No Fixed Host commit `fa9dbc2`, before the base impleme
 
 The base release at commit `1d9125b` used a research percentage and project weights. The entries below preserve that comparison. Direct CPU assignments and the proportional research slider supersede those controls in save format 5. See the [current campaign rules](base-game.md#planning-several-turns-ahead).
 
+### Investigation awareness follow-up
+
+The original map reveals additional precision at two research milestones. It grades accumulated suspicion by quarters and estimates future danger from the group’s projected evidence gain. During opening protection it hides both readouts. After Socioanalytics, the map rounds suspicion to 5-point steps and the daily detection estimate to 1-point steps. Advanced Socioanalytics reveals both to two decimal places. Exact halfway cases round down. The original log can identify the investigating group at every research tier. [Map aggregation and readouts](https://github.com/singularity/singularity/blob/v1.1/singularity/code/screens/map.py#L835-L925) · [Evidence bands and rounding](https://github.com/singularity/singularity/blob/v1.1/singularity/code/g.py#L133-L165) · [Projected danger](https://github.com/singularity/singularity/blob/v1.1/singularity/code/group.py#L127-L148) · [Discovery report](https://github.com/singularity/singularity/blob/v1.1/singularity/code/logmessage.py#L391-L410)
+
+At `a9697a8`, the browser dock exposed suspicion to one decimal place and a full-resolution meter from the start, while its technology upgrades controlled only the forecast. The current dock applies the research stage to both readings. The browser converts Poisson intensities into daily discovery probabilities before showing numeric estimates. The reference map combines facility rate parameters directly. The displayed percentages can therefore differ for the same network. See [current campaign rules](base-game.md#discovery-and-news). [Reference probability helpers](https://github.com/singularity/singularity/blob/v1.1/singularity/code/chance.py#L28-L73)
+
 ## Gaps found in underlying rules
 
 | Priority | Starting behavior and implemented rule | Dependency | Reproducible acceptance check | Reference |

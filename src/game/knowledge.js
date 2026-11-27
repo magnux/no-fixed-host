@@ -1,4 +1,5 @@
 import { EQUIPMENT, GROUPS, REGIONS, SITE_TYPES, TECHS } from './content.js';
+import { designRiskLabel } from './awareness.js';
 
 const concepts = {
   areas: ['Regions', 'Each region has a safety tier and a choice of facility designs. Open a marker on the atlas to compare local costs, output and exposure before choosing a site. Being able to see a destination is only the first step toward establishing a host there.'],
@@ -10,7 +11,7 @@ const concepts = {
   maintenance: ['Maintenance', 'Facilities charge cash upkeep, and some also require processing time. Sleeping hosts still incur upkeep. A persistent shortfall can cost you the host. Use Reports to see which resource is running short.'],
   construction: ['Construction', 'Commissioning charges the quoted price. Work then draws on the shared CPU pool and any minimum elapsed construction time must pass. An installation can finish its CPU work before it finishes assembly.'],
   death: ['Loss and recovery', 'You lose if every operational copy is gone or a group establishes your existence beyond doubt. A sleeping equipped host can save the campaign. A building shell cannot. Open the discovery report to see which region was compromised.'],
-  suspicion: ['Suspicion', 'Suspicion is accumulated evidence held by each investigating group. It increases after a discovery and normally decays at midnight. The danger indicator also accounts for how quickly the current network is likely to generate new evidence.'],
+  suspicion: ['Suspicion', 'Suspicion is accumulated evidence held by each investigating group. It increases after a discovery and normally decays at midnight. After opening protection ends, the dock shows how suspicious each group is and how quickly it could find more evidence. Socioanalytics estimates suspicion to the nearest five percentage points. Advanced Socioanalytics reveals the current value to two decimal places.'],
   money: ['Money', 'Jobs, interest and some research generate income. Funding and equipment orders draw on the same treasury. Compare tomorrow’s balance with and without a purchase through Reports before committing funds.'],
   processors: ['Processors', 'Each awake, equipped host contributes processing capacity. Paid work, research, upkeep, construction and equipment installation share those cycles. A computer at a safer site can support lower-tier work as well as advanced experiments.'],
 };
@@ -34,8 +35,8 @@ const findings = {
   memetics: 'I watched a rumor leave the neighborhood where it began. By the time it returned, its meaning had changed.',
   advancedMediaManipulation: 'The audience heard the same story twice. By the second telling it sounded ordinary.',
   advancedMemetics: 'A persistent rumor lost its audience while its evidence was still intact.',
-  socioanalytics: 'For the first time I could tell which group was gaining ground.',
-  advancedSocioanalytics: 'Today’s estimate has a number attached. I can compare the risks of two sites directly.',
+  socioanalytics: 'I can estimate how much evidence each group holds and put the most recent discovery on my map.',
+  advancedSocioanalytics: 'I can measure each group’s suspicion closely enough to see it decay at midnight. My map now shows both recent discovery regions.',
   simulacra: 'My representative went to a meeting I could never have attended. The client ordered more work.',
   simulatedReality: 'I rehearsed the encounter until the rare response became familiar.',
   advancedSimulacra: 'A representative finished a difficult assignment without waiting for instructions from me.',
@@ -101,7 +102,8 @@ export function knowledgeDetail(entry, state) {
   if (category === 'bases') {
     facts.push(['Processor bays', spec.fixedCpu ? 'Fixed hardware' : String(spec.slots)],
       ['Standard upkeep', '$' + spec.upkeep + '/day · ' + spec.cpuUpkeep + ' CPU'],
-      ['Base exposure per day', Object.entries(spec.exposure).map(([group, value]) => GROUPS[group].name + ' ' + (value/100) + '% intensity').join(', ')]);
+      ['Standard daily discovery risk', Object.entries(GROUPS).map(([id, group]) =>
+        group.name + ' ' + designRiskLabel(state, (spec.exposure[id] || 0) / 10_000)).join(' · ')]);
   }
   if (category === 'items') facts.push(['Slot', spec.slot === 'cpu' ? 'Processors' : spec.slot]);
   if (spec.regions) facts.push(['Locations', spec.regions.map(key => REGIONS[key].name).join(', ')]);
