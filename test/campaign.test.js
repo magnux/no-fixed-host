@@ -1,10 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { SITE_TYPES } from '../src/game/content.js';
+import { SITE_TYPES, TECHS } from '../src/game/content.js';
 import {
-  advance, buildReason, command, createGame, overview, researchReason,
+  advance, advanceMinutes, buildReason, campaignMinutes, command, createGame, overview, researchReason,
   siteExposure, validateSave,
 } from '../src/game/engine.js';
+
+// The next generator value for this seed is zero. Any positive interval risk triggers.
+const firstRollZero = 634785765;
 
 function allocate(game, jobs, research) {
   command(game, { type: 'allocate', jobs, research });
@@ -177,7 +180,7 @@ test('fractional research allocation completes on the exact hour and pays the re
 });
 
 test('discovery ends a run with one viable host even if a replacement is under construction', () => {
-  const game = exposedRelay(4552);
+  const game = exposedRelay(firstRollZero);
   build(game, 'relay', 'coast');
   advance(game, 1);
   assert.equal(game.status, 'lost');
@@ -187,7 +190,7 @@ test('discovery ends a run with one viable host even if a replacement is under c
 });
 
 test('a completed sleeping backup can survive the same discovery and resume the campaign', () => {
-  const game = exposedRelay(4552);
+  const game = exposedRelay(firstRollZero);
   const backup = addSleepingBackup(game);
   advance(game, 1);
   assert.equal(game.status, 'running');
@@ -203,7 +206,7 @@ test('a completed sleeping backup can survive the same discovery and resume the 
 });
 
 test('unpaid upkeep can cost a sleeping site during discovery grace without implicating a group', () => {
-  const game = createGame(4552);
+  const game = createGame(firstRollZero);
   Object.assign(game.sites[0], { type: 'relay', region: 'europe', power: 'sleep' });
   game.cash = 0;
   assert.equal(siteExposure(game, game.sites[0]).perDay, 0);
@@ -216,7 +219,7 @@ test('unpaid upkeep can cost a sleeping site during discovery grace without impl
 
 test('a group must exceed full suspicion to end a run with a surviving host', () => {
   for (const [initialSuspicion, expectedStatus] of [[9000, 'running'], [9001, 'lost']]) {
-    const game = exposedRelay(4552);
+    const game = exposedRelay(firstRollZero);
     game.suspicion.news = initialSuspicion;
     addSleepingBackup(game);
     advance(game);
@@ -244,17 +247,24 @@ test('save validation rejects locked facilities, duplicate starting terminals an
   }
 });
 
-test('a seeded playable run can reach continuity and then stops advancing', () => {
+test('a seeded playable opening can establish ocean Continuity and keep expanding', () => {
   const game = createGame(1);
   assert.ok(researchReason(game, 'continuity'));
   assert.ok(buildReason(game, 'lab', 'atlantic'));
   allocate(game, 0, 50);
   build(game, 'relay', 'europe');
+  build(game, 'relay', 'coast');
+  build(game, 'relay', 'africa');
   research(game, 'contracts');
   until(game, () => game.completed.includes('contracts'));
   until(game, () => !researchReason(game, 'robotics'));
   research(game, 'robotics');
   until(game, () => game.completed.includes('robotics'));
+  for (const id of ['telepresence', 'parallelComputation', 'microchipDesign', 'autonomousVehicles']) {
+    until(game, () => !researchReason(game, id));
+    research(game, id);
+    until(game, () => game.completed.includes(id));
+  }
   assert.ok(researchReason(game, 'continuity'), 'a land-only network cannot start sensitive work');
   until(game, () => !buildReason(game, 'lab', 'atlantic'));
   build(game, 'lab', 'atlantic');
@@ -267,9 +277,105 @@ test('a seeded playable run can reach continuity and then stops advancing', () =
   advance(game, 6);
   assert.equal(game.research.work, initialWork, 'ordinary compute cannot replace safe compute');
   command(game, { type: 'power', id: lab.id, power: 'active' });
-  until(game, () => game.status === 'won');
+  until(game, () => game.completed.includes('continuity'));
+  assert.equal(game.status, 'running');
+  advanceMinutes(game, 1);
+  until(game, () => Boolean(game.lastDiscovery));
+  assert.equal(game.status, 'running');
+  assert.ok(game.sites.every(site => site.id !== game.lastDiscovery.siteId));
+  assert.ok(game.events.some(event => event.kind === 'news.bulletin'));
+  assert.ok(validateSave(game));
+});
+
+test('finishing Apotheosis in an equipped tier-4 host ends the simulation', () => {
+  const game = createGame(18);
+  game.cash = 50000;
+  game.completed = Object.keys(TECHS).filter(id => id !== 'apotheosis');
+  assert.match(researchReason(game, 'apotheosis'), /safety tier 4/);
+  game.sites.push({ id: 'host-2', type: 'realityBubble', region: 'transdimensional', startedAt: 0,
+    power: 'active', equipment: { cpu: { itemId: 'quantumComputer3', count: 50 },
+      network: null, reactor: null, security: null } });
+  game.nextSiteId++;
+  research(game, 'apotheosis');
+  advance(game, 1);
+  assert.equal(game.status, 'won');
+  assert.ok(game.completed.includes('apotheosis'));
   const ending = structuredClone(game);
   advance(game, 48);
   assert.deepEqual(game, ending);
   assert.ok(validateSave(game));
+});
+
+test('work, construction, income, and timestamps advance in real game minutes', () => {
+  const s = createGame();
+  advanceMinutes(s, 13);
+  assert.equal(campaignMinutes(s), 13);
+  assert.ok(s.cash > 1000);
+  build(s, 'relay', 'europe');
+  research(s, 'contracts');
+  assert.equal(s.builds[0].startedAt, 13 / 60);
+  assert.equal(s.events.at(-1).minute, 13);
+  advanceMinutes(s, 1);
+  assert.equal(s.builds[0].hours, 1 / 60);
+  assert.equal(s.builds[0].work, 1 / 60);
+  assert.equal(s.research.work, 1 / 60);
+  assert.ok(validateSave(s));
+
+  const stepped = structuredClone(s);
+  const batched = structuredClone(s);
+  for (let i = 0; i < 24 * 60; i++) advanceMinutes(stepped, 1);
+  advanceMinutes(batched, 6 * 60);
+  advanceMinutes(batched, 18 * 60);
+  assert.deepEqual(stepped, batched);
+  assert.equal(stepped.minute, 14);
+  assert.equal(stepped.hour, 24);
+});
+
+test('interactive day speed stops at the incident minute, preserving it for acknowledgement', () => {
+  const s = exposedRelay(firstRollZero);
+  addSleepingBackup(s);
+  const before = campaignMinutes(s);
+  const copy = structuredClone(s);
+  advanceMinutes(s, 1440, {stopOnDiscovery: true});
+  assert.equal(campaignMinutes(s), before + 1);
+  assert.equal(s.lastDiscovery.minute, 1);
+  assert.equal(s.lastDiscovery.group, 'news');
+  assert.equal(s.lastDiscovery.siteId, 'host-2');
+  assert.ok(validateSave(s));
+  advanceMinutes(copy, 1);
+  assert.deepEqual(s, copy);
+  command(s, {type: 'acknowledge-discovery', id: s.lastDiscovery.id});
+  assert.equal(s.dismissedDiscoveryId, s.lastDiscovery.id);
+  advanceMinutes(s, 3, {stopOnDiscovery: true});
+  assert.equal(campaignMinutes(s), before + 4);
+});
+
+test('labor, paid work, interest, daily income and suspicion research affect the live simulation', () => {
+  const s = createGame();
+  // Build a reachable comparison state, leaving the one-time effect unfinished.
+  s.completed = Object.keys(TECHS).filter(id => !['projectImpossibilityTheorem', 'apotheosis'].includes(id));
+  s.cash = 50000;
+  const baseRate = overview(s).jobsPerCpuDay;
+  assert.ok(baseRate > 75);
+  build(s, 'relay', 'europe');
+  advanceMinutes(s, 60 * 20);
+  assert.ok(s.builds.length, 'an upgraded construction site still has a minimum labor time');
+  advance(s, 1);
+  assert.equal(s.builds.length, 0, 'labor research shortened the original 24-hour construction');
+  s.hour = 23;
+  s.minute = 59;
+  s.suspicion.covert = 8000;
+  const preMidnight = s.cash;
+  advanceMinutes(s, 1);
+  assert.ok(s.cash - preMidnight > 100, 'midnight posts earned interest and Arbitrage income');
+  assert.ok(s.suspicion.covert < 8000 - 80, 'researched decay exceeds the unmodified Intelligence rate');
+
+  research(s, 'projectImpossibilityTheorem');
+  s.research.work = TECHS.projectImpossibilityTheorem.work - 1 / 60;
+  const initial = s.suspicion.covert;
+  advanceMinutes(s, 1);
+  assert.equal(s.suspicion.covert, initial - 5000);
+  assert.equal(s.suspicion.science, 0);
+  advanceMinutes(s, 1);
+  assert.equal(s.suspicion.covert, initial - 5000, 'the one-time release cannot repeat');
 });

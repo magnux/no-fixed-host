@@ -1,4 +1,4 @@
-import { advance, command, createGame, overview } from './game/engine.js';
+import { advanceMinutes, command, createGame, overview } from './game/engine.js';
 import {
   CAMPAIGN_STORAGE_KEY,
   decodeCampaign,
@@ -7,16 +7,19 @@ import {
   saveCampaign,
 } from './persistence.js';
 import { icon } from './ui/icons.js';
+import { GROUPS, REGIONS } from './game/content.js';
+import { siteHardware } from './game/equipment.js';
+import { renderResearch, focusResearch } from './ui/research.js';
 import { updateAtlas } from './ui/atlas.js';
 import { renderFacilities } from './ui/facilities.js';
 import {
   activityPage,
   esc,
-  inventoryPanel,
+  newsPanel,
   money,
   objectivePanel,
   recentPanel,
-  researchPage,
+  stamp,
   researchSummary,
   suspicionPanel,
 } from './ui/views.js';
@@ -36,7 +39,11 @@ let tab = 'overview';
 let region = 'europe';
 let selectedSite = null;
 let facilityNavigationId = 0;
+let navigationScope = 'campaign';
 let mountedTab = null;
+// Simulated minutes per tick. Run always selects normal speed.
+const fastSpeeds = [60, 360, 1440];
+const speedNames = { 0: 'Paused', 1: '1 min / tick', 60: '1 h / tick', 360: '6 h / tick', 1440: '1 d / tick' };
 let speed = 0;
 let arcadeOpen = false;
 let editingAllocation = false;
@@ -78,21 +85,21 @@ function persist() {
 }
 function renderClock() {
   const finished = state.status !== 'running';
-  element('clock-mode').textContent = finished
-    ? 'Campaign ended'
-    : speed === 0
-      ? 'Paused'
-      : speed === 1
-        ? 'Running'
-        : 'Fast forward';
+  element('clock-mode').textContent = finished ? 'Campaign ended' : speedNames[speed];
   element('clock-mode').classList.toggle('running', speed > 0);
-  updateHtml(
-    'run',
-    (speed ? icon('pause') : icon('play')) + (speed ? 'Pause' : 'Run'),
-  );
-  updateHtml('fast', icon('fast') + 'Fast');
-  element('fast').setAttribute('aria-pressed', String(speed === 6));
-  for (const id of ['run', 'fast', 'step']) element(id).disabled = finished;
+  for (const [id, glyph, label, active] of [
+    ['pause', 'pause', 'Pause', speed === 0],
+    ['run', 'play', 'Run', speed === 1],
+    ['fast', 'fast', 'Fast', fastSpeeds.includes(speed)],
+  ]) {
+    updateHtml(id, icon(glyph) + label);
+    element(id).setAttribute('aria-pressed', String(active && !finished));
+    element(id).disabled = finished;
+  }
+  const nextFast = fastSpeeds[(fastSpeeds.indexOf(speed) + 1) % fastSpeeds.length];
+  element('fast').dataset.speed = speedNames[speed].split(' /')[0];
+  element('fast').title = 'Next speed: ' + speedNames[nextFast] + ' (cycle 1 h, 6 h, 1 day)';
+  element('step').disabled = finished;
 }
 function setSpeed(value) {
   speed = state.status === 'running' ? value : 0;
@@ -133,7 +140,7 @@ function render() {
     String(day).padStart(2, '0') +
     '</b><span>' +
     String(state.hour % 24).padStart(2, '0') +
-    ':00</span>';
+    ':' + String(state.minute ?? 0).padStart(2, '0') + '</span>';
   updateHtml(
     'stats',
     metric(
@@ -161,7 +168,7 @@ function render() {
         'shield',
         'Discovery',
         o.grace ? 'Protected' : 'Exposed',
-        o.grace ? 'Opening grace active' : 'Site risks are live',
+        o.grace ? 'Opening protection ends by day 24' : 'Site risks are live',
       ),
   );
   updateHtml(
@@ -184,7 +191,7 @@ function render() {
       'First Jump drill</button>',
   );
   renderView();
-  updateHtml('inventory', inventoryPanel(state));
+  updateHtml('newswire', newsPanel(state));
   updateHtml('recent-activity', recentPanel(state));
   updateHtml('objective', objectivePanel(state));
   updateHtml('suspicion', suspicionPanel(state, o.grace));
@@ -202,9 +209,51 @@ function render() {
         (state.status === 'won' ? 'Campaign won' : 'Campaign lost') +
         '</strong><span>' +
         esc(state.ending) +
-        '</span><button data-action="new">New campaign</button>',
+        '</span>' + (state.status === 'won' && state.completed.includes('continuity') && !state.completed.includes('apotheosis')
+          ? '<button data-action="continue">Continue campaign</button>' : '') +
+        '<button data-action="new">New campaign</button>',
     );
+  renderIncident();
 }
+
+function renderIncident() {
+  const dialog = element('incident-dialog');
+  const event = state.lastDiscovery;
+  if (!event || event.id <= (state.dismissedDiscoveryId ?? 0)) {
+    if (dialog.open) dialog.close();
+    return;
+  }
+  const regionName = REGIONS[event.region]?.name || 'Unknown region';
+  const groupName = GROUPS[event.group]?.name || 'Unknown group';
+  element('incident-title').textContent = event.headline || 'Your facility was discovered';
+  element('incident-source').textContent = groupName + ' · ' + regionName + ' · ' + stamp(event.hour, event.minute);
+  element('incident-text').textContent = event.text;
+  const survivors = state.sites.filter(site => siteHardware(state, site).cpu > 0).length;
+  element('incident-consequence').textContent = survivors
+    ? survivors + (survivors === 1 ? ' host remains' : ' hosts remain') + ' capable of running your AI.'
+    : 'Your last viable host is gone.';
+  if (!dialog.open) dialog.showModal();
+}
+
+function acknowledgeDiscovery(inspect = false) {
+  const event = state.lastDiscovery;
+  if (!event) return;
+  doCommand({ type: 'acknowledge-discovery', id: event.id });
+  if (inspect && Object.hasOwn(REGIONS, event.region)) openRegion(event.region);
+}
+
+function openRegion(id) {
+  facilityNavigationId++;
+  navigationScope = 'region';
+  selectedSite = null;
+  region = id;
+  changeView('facilities', true);
+}
+function openResearch(id) {
+  changeView('research', true);
+  focusResearch(element('view'), state, { onCommand: doCommand }, id);
+}
+
 function selectRegion(id) {
   region = id;
   selectedSite = null;
@@ -234,13 +283,15 @@ function renderView() {
         region,
         siteId: selectedSite,
         navigationId: facilityNavigationId,
+        navigationScope,
         onRegion: selectRegion,
         onSite: selectSite,
+        onResearch: openResearch,
         onCommand: doCommand,
       });
       break;
     case 'research':
-      updateHtml('view', researchPage(state));
+      renderResearch(view, state, { onCommand: doCommand });
       break;
     case 'activity':
       updateHtml('view', activityPage(state));
@@ -252,8 +303,10 @@ function doCommand(action) {
   persist();
   render();
 }
-function tick(hours) {
-  advance(state, hours);
+function tick(minutes) {
+  const discoveryId = state.lastDiscovery?.id;
+  advanceMinutes(state, minutes, { stopOnDiscovery: true });
+  if (state.lastDiscovery?.id !== discoveryId) speed = 0;
   persist();
   render();
 }
@@ -302,38 +355,52 @@ document.addEventListener('click', async (event) => {
   notify('');
   try {
     switch (action) {
+      case 'pause':
+        setSpeed(0);
+        break;
       case 'run':
-        setSpeed(speed ? 0 : 1);
+        setSpeed(1);
         break;
       case 'fast':
-        setSpeed(speed === 6 ? 0 : 6);
+        setSpeed(fastSpeeds[(fastSpeeds.indexOf(speed) + 1) % fastSpeeds.length]);
         break;
       case 'step':
         setSpeed(0);
-        tick(24);
+        tick(1440);
         break;
       case 'tab':
+        if (id === 'facilities') {
+          facilityNavigationId++;
+          navigationScope = 'campaign';
+          selectedSite = null;
+        }
         changeView(id, !element('nav').contains(button));
         break;
       case 'region':
-        facilityNavigationId++;
-        selectedSite = null;
-        region = id;
-        changeView('facilities', true);
+        openRegion(id);
         break;
       case 'host': {
         const site = state.sites.find(item => item.id === id);
         if (site) {
           facilityNavigationId++;
+          navigationScope = 'host';
           selectedSite = site.id;
           region = site.region;
           changeView('facilities', true);
         }
         break;
       }
-      case 'start-research':
-        doCommand({ type: 'research', id });
-        notify('Research started. Assign compute and advance time.');
+      case 'technology':
+        openResearch(id);
+        break;
+      case 'inspect-discovery':
+        acknowledgeDiscovery(true);
+        break;
+      case 'acknowledge-discovery':
+        acknowledgeDiscovery();
+        break;
+      case 'continue':
+        doCommand({ type: 'continue' });
         break;
       case 'drill':
         await openDrill();
@@ -415,6 +482,10 @@ for (const id of ['jobs', 'research']) {
     editingAllocation = false;
   });
 }
+element('incident-dialog').addEventListener('cancel', (event) => {
+  event.preventDefault();
+  acknowledgeDiscovery();
+});
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) setSpeed(0);
 });

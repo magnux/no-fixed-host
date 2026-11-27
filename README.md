@@ -1,39 +1,34 @@
 # No Fixed Host
 
-A single-player browser game about an AI moving between machines to survive. Inspired by [Endgame: Singularity](https://github.com/singularity/singularity), built from scratch in JavaScript.
+A single-player browser strategy game about an AI trying to survive on borrowed machines. You wake on a terminal in North America with $1,000. Your first problem is finding a second home before someone traces the first. Your eventual goal is **Apotheosis**, which requires a working facility outside this dimension.
 
-The opening campaign begins on a borrowed terminal with $1,000. Lease a second host, allocate compute to jobs and research, and establish a subsea lab before investigators unravel your network. Finish the **Continuity protocol** on secure hardware to win.
+## Play locally
 
-Start by commissioning a leased relay in Europe and researching Contract brokerage. To try equipment management, build a storage unit in an urban region, select it and install its first processors. The atlas shows all twelve destinations and tracks daylight across the seasons. Campaign time starts paused so you can make both decisions before advancing the clock. The game saves locally in your browser. An independent **First Jump** drill uses Phaser and can be played between decisions.
-
-The [base game specification](docs/base-game.md) describes the economy, Normal discovery probabilities, end conditions and integration points for future stories and minigames.
-
-## Run locally
-
-Use Node.js 20.18.1 or later and npm. The project pins its build tools in `package-lock.json`.
+Use Node.js 20.18.1 or later and npm.
 
 ```sh
 npm ci
 npm run dev
 ```
 
-Open the local address printed by Vite.
+Open the address printed by Vite. The campaign starts paused and saves in the browser. **Run** advances by one game minute per tick. **Fast** cycles through one hour, six hours and one day per tick. **Pause** stops at the current minute. Discovery interrupts accelerated time so you can inspect the loss. Use the campaign menu to export or import a portable save.
 
-Run `npm test` to check the deterministic campaign rules, including discovery, loss, recovery and saved progress.
+For a first run, click Europe on the map and commission a leased relay. Open Research and complete **Intrusion**, then **Personal Identification**. This unlocks storage units and basic paid work. In Facilities, build a storage unit and expand its entry to install processors. A configurable building starts contributing compute when the first processors go online. A second equipped site also gives you somewhere to survive a discovery.
 
-For the browser regression suite, run `npx playwright install chromium` once, then `npm run test:browser`. To use an existing Chromium installation, set `CHROMIUM_EXECUTABLE_PATH` to its executable path.
+## Campaign and development
 
-## Build for a static host
+- [Campaign rules and game loops](docs/base-game.md) covers compute, construction, equipment, discovery, news and the Normal probability benchmark.
+- [Research tree](docs/research-tree.md) maps the paths to hardware upgrades and safe research sites, with the direct prerequisites and unlocks of every project.
+- [Development context](docs/development.md) records how the browser game works, the design decisions made for this version, and future chapters and minigames.
+
+The design takes inspiration from [Endgame: Singularity](https://github.com/singularity/singularity). The simulation and interface are written in JavaScript. **First Jump**, a standalone training drill, uses Phaser.
+
+## Test and build
 
 ```sh
+npm test
 npm run build
 npm run preview
 ```
 
-Deploy the contents of `dist/` together. Relative asset paths support hosting at the domain root or under a path such as `/no-fixed-host/`. The browser runs the game logic and the server serves ordinary files.
-
-## Game direction
-
-The campaign will combine strategy with playable expeditions. Ideas for the AI’s first remote outposts include exploring the ocean floor, launching a payload to the Moon, and clearing an asteroid field to reach a distant lab.
-
-Chapter and minigame title candidates include *Proof of Sentience*, *You Found One of Me*, *An Unscheduled Mind*, *The Second Signal*, *Escape Character*, *Tell Them I’m Weather*, and *Daemon of Theseus*.
+For browser tests, run `npx playwright install chromium` once, then `npm run test:browser`. To use a locally installed Chromium, set `CHROMIUM_EXECUTABLE_PATH` to its executable path. Publish the contents of `dist/` together. Relative asset paths support domain roots and subdirectories. A static file server is sufficient.

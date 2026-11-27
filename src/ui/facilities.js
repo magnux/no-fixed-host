@@ -1,18 +1,19 @@
-import { EQUIPMENT, REGIONS, SITE_TYPES } from '../game/content.js';
-import { autoInstallQuote, buildReason, installQuote, installReason, siteExposure, siteHardware } from '../game/engine.js';
+import { EQUIPMENT, REGIONS, SITE_TYPES, TECHS } from '../game/content.js';
+import { autoInstallQuote, buildReason, installQuote, installReason, laborHours, siteExposure, siteHardware } from '../game/engine.js';
 import './facilities.css';
 
 const SLOT_NAMES = { cpu: 'Processors', network: 'Network', reactor: 'Reactor', security: 'Security' };
 const dollars = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
 const number = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 });
 const sessions = new WeakMap();
+const regionOptions = Object.entries(REGIONS).map(([id, region]) => [id, region.name]);
 
 function setText(node, text) {
   if (node.textContent !== text) node.textContent = text;
 }
 
 // A select and its options remain connected throughout a live simulation.
-// Catalog options change when navigating; site options can also appear or disappear.
+// Catalog options change when moving between regions or equipment slots.
 function setOptions(select, entries) {
   const signature = JSON.stringify(entries);
   if (select.dataset.options === signature) return;
@@ -21,10 +22,10 @@ function setOptions(select, entries) {
     if (!valid.has(option.value)) option.remove();
   }
   const existing = new Map(Array.from(select.options, option => [option.value, option]));
-  for (const [id, label] of entries) {
-    const option = existing.get(id);
-    if (option) setText(option, label);
-    else select.add(new Option(label, id));
+  for (const [index, [id, label]] of entries.entries()) {
+    const option = existing.get(id) ?? new Option(label, id);
+    setText(option, label);
+    if (select.options[index] !== option) select.insertBefore(option, select.options[index] || null);
   }
   select.dataset.options = signature;
 }
@@ -33,6 +34,34 @@ function equipmentEffect(item) {
   if (item.slot === 'cpu') return number.format(item.quality) + ' CPU per processor';
   const percent = number.format(item.quality / 100) + '%';
   return item.slot === 'network' ? '+' + percent + ' compute' : '−' + percent + ' detection rate';
+}
+
+function duration(hours) {
+  const minutes = Math.max(0, Math.round(hours * 60));
+  const whole = Math.floor(minutes / 60);
+  const part = minutes % 60;
+  if (!whole) return part + 'm';
+  return whole + 'h' + (part ? ' ' + part + 'm' : '');
+}
+
+function prerequisites(node, ids, state, handler) {
+  const missing = handler ? [...new Set(ids)].filter(id => !state.completed.includes(id)) : [];
+  const signature = missing.join(' ');
+  if (node.dataset.requires === signature) return missing.length;
+  node.dataset.requires = signature;
+  node.replaceChildren();
+  node.hidden = !missing.length;
+  if (!missing.length) return 0;
+  node.append('Research required ');
+  for (const id of missing) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'text-button';
+    button.dataset.researchId = id;
+    button.textContent = TECHS[id].name;
+    node.append(button);
+  }
+  return missing.length;
 }
 
 function renderQueue(root, records) {
@@ -50,7 +79,7 @@ function renderQueue(root, records) {
     const [name, detail, bar] = row.children;
     setText(name, r.name);
     const pc = Math.floor(100 * Math.min(1, r.totalWork ? r.work / r.totalWork : 1, r.totalHours ? r.hours / r.totalHours : 1));
-    const text = pc + '% · ' + number.format(r.work) + '/' + number.format(r.totalWork) + ' CPU-h · ' + r.hours + '/' + r.totalHours + ' h';
+    const text = pc + '% · ' + number.format(r.work) + '/' + number.format(r.totalWork) + ' CPU-h · ' + duration(r.hours) + ' / ' + duration(r.totalHours);
     setText(detail, text);
     if (bar.value !== pc) bar.value = pc;
     bar.setAttribute('aria-label', r.name + ' completion');
@@ -87,13 +116,13 @@ function mountFacilities(root) {
               <button type="button" class="accent-button" data-ref="build">Build</button>
               <small data-ref="buildReason"></small>
             </div>
+            <div class="facility-prereqs" data-ref="buildPrereqs" hidden></div>
           </div>
         </section>
-        <section data-ref="managePanel" class="facility-tool" aria-label="Manage local hosts" hidden>
-          <label for="facility-host">Facility</label>
-          <select id="facility-host" data-ref="host"></select>
+        <section data-ref="managePanel" class="facility-tool" aria-label="Completed facilities" hidden>
+          <ul data-ref="hosts" class="facility-hosts" aria-label="Completed hosts"></ul>
           <p data-ref="noHosts" hidden>No completed facilities in this region.</p>
-          <div data-ref="inspector" class="facility-inspector">
+          <div data-ref="inspector" class="facility-inspector" hidden>
             <div class="facility-summary"><p data-ref="hostSummary"></p>
               <button type="button" data-ref="power" class="small-btn"></button>
             </div>
@@ -111,6 +140,7 @@ function mountFacilities(root) {
                 <button type="button" class="accent-button" data-ref="install">Install</button>
                 <small data-ref="installReason"></small>
               </div>
+              <div class="facility-prereqs" data-ref="installPrereqs" hidden></div>
               <details class="facility-auto">
                 <summary>Auto-build empty slots</summary>
                 <p data-ref="autoParts"></p>
@@ -120,18 +150,20 @@ function mountFacilities(root) {
                 </div>
               </details>
             </div>
+            <section class="facility-queue" data-ref="installQueuePanel" hidden>
+              <h4>Installation queue</h4><div data-ref="installQueue"></div>
+            </section>
           </div>
         </section>
         <section class="facility-queue" data-ref="queuePanel" hidden>
-          <h3>Regional work queue</h3><div data-ref="queue"></div>
+          <h3 data-ref="queueHeading">Regional work queue</h3><div data-ref="queue"></div>
         </section>
         <p class="facility-feedback" data-ref="feedback" role="status"></p>
       </div>
     </section>`;
   const elements = Object.fromEntries(Array.from(root.querySelectorAll('[data-ref]'), n => [n.dataset.ref, n]));
-  const session = { elements, mode: 'build', region: null, requestedHost: null };
+  const session = { elements, mode: 'build', region: null, showAll: false, expandedId: null, hostRows: new Map() };
   const e = elements;
-  setOptions(e.region, Object.entries(REGIONS).map(([id, region]) => [id, region.name]));
   setOptions(e.slot, Object.entries(SLOT_NAMES));
   for (const [slot, name] of Object.entries(SLOT_NAMES)) {
     const row = document.createElement('div');
@@ -143,8 +175,17 @@ function mountFacilities(root) {
     value.dataset.slot = slot;
   }
   function switchMode(mode) {
+    if (session.mode === mode) return;
     session.mode = mode;
     setText(e.feedback, '');
+    if (mode === 'manage' && !session.state.sites.some(site => site.region === session.region)) session.showAll = true;
+    if (mode === 'build' && session.expandedId) {
+      const host = session.state.sites.find(site => site.id === session.expandedId);
+      if (host && host.region !== session.region) {
+        session.handlers.onRegion(host.region);
+        return;
+      }
+    }
     refresh(session);
   }
   function perform(action, confirmation) {
@@ -155,8 +196,21 @@ function mountFacilities(root) {
       setText(e.feedback, error.message);
     }
   }
-  e.region.addEventListener('change', () => session.handlers.onRegion(e.region.value));
-  e.host.addEventListener('change', () => session.handlers.onSite(e.host.value));
+  e.region.addEventListener('change', () => {
+    const scope = e.region.value;
+    session.showAll = scope === 'all';
+    session.expandedId = null;
+    if (session.showAll) session.handlers.onSite(null);
+    else session.handlers.onRegion(scope);
+  });
+  e.hosts.addEventListener('click', event => {
+    const button = event.target.closest('button[data-site-id]');
+    if (button) session.handlers.onSite(button.dataset.siteId === session.expandedId ? null : button.dataset.siteId);
+  });
+  root.firstElementChild.addEventListener('click', event => {
+    const button = event.target.closest('button[data-research-id]');
+    if (button) session.handlers.onResearch?.(button.dataset.researchId);
+  });
   e.buildMode.addEventListener('click', () => switchMode('build'));
   e.manageMode.addEventListener('click', () => switchMode('manage'));
   e.model.addEventListener('change', () => { setText(e.feedback, ''); refresh(session); });
@@ -167,13 +221,13 @@ function mountFacilities(root) {
     type: 'build', siteType: e.model.value, region: session.region,
   }, 'Construction order placed.'));
   e.install.addEventListener('click', () => perform({
-    type: 'install', siteId: e.host.value, itemId: e.item.value, count: e.slot.value === 'cpu' ? e.count.valueAsNumber : 1,
+    type: 'install', siteId: session.expandedId, itemId: e.item.value, count: e.slot.value === 'cpu' ? e.count.valueAsNumber : 1,
   }, 'Hardware installation ordered.'));
   e.autoInstall.addEventListener('click', () => perform({
-    type: 'auto-install', siteId: e.host.value, expectedOrders: session.autoOrders,
+    type: 'auto-install', siteId: session.expandedId, expectedOrders: session.autoOrders,
   }, 'Hardware package ordered.'));
   e.power.addEventListener('click', () => {
-    const site = session.state.sites.find(host => host.id === e.host.value);
+    const site = session.state.sites.find(host => host.id === session.expandedId);
     if (!site) return;
     const power = site.power === 'sleep' ? 'active' : 'sleep';
     perform({type: 'power', id: site.id, power}, power === 'active' ? 'Host awake.' : 'Host asleep.');
@@ -184,7 +238,11 @@ function mountFacilities(root) {
 
 function updateBuild(session, recipes) {
   const {elements: e, state, region} = session;
-  setOptions(e.model, recipes.map(([id, spec]) => [id, spec.name]));
+  const regionLocked = REGIONS[region].requires.some(id => !state.completed.includes(id));
+  setOptions(e.model, recipes.map(([id, spec]) => {
+    const locked = regionLocked || spec.requires.some(tech => !state.completed.includes(tech));
+    return [id, spec.name + (locked ? ' · Requires research' : '')];
+  }));
   const model = SITE_TYPES[e.model.value];
   e.model.disabled = !model;
   e.noBuild.hidden = Boolean(model);
@@ -198,19 +256,16 @@ function updateBuild(session, recipes) {
   setText(e.slots, model.fixedCpu ? 'Fixed · ' + model.cpu + ' CPU' : String(model.slots));
   const upkeep = dollars.format(model.upkeep) + '/day' + (model.cpuUpkeep ? ' + ' + model.cpuUpkeep + ' CPU' : '');
   setText(e.upkeep, upkeep);
-  setText(e.commissionTime, number.format(model.work) + ' CPU-h · ' + model.hours + ' h minimum');
+  setText(e.commissionTime, number.format(model.work) + ' CPU-h · ' + duration(laborHours(state, model)) + ' minimum');
   const reason = buildReason(state, e.model.value, region);
   e.build.disabled = Boolean(reason);
   e.build.setAttribute('aria-label', 'Build ' + model.name);
-  setText(e.buildReason, reason);
+  const locked = prerequisites(e.buildPrereqs, [...REGIONS[region].requires, ...model.requires], state, session.handlers.onResearch);
+  setText(e.buildReason, locked && reason.startsWith('Requires ') ? '' : reason);
 }
 
 function updateInspector(session, site, hw) {
   const {state, elements: e} = session;
-  e.inspector.hidden = !site;
-  e.noHosts.hidden = Boolean(site);
-  e.host.disabled = !site;
-  if (!site) return;
   const sleeping = site.power === 'sleep';
   const potential = number.format(hw.cpu) + ' CPU';
   const risk = (siteExposure(state, site).perDay * 100).toFixed(2);
@@ -237,7 +292,9 @@ function updateInspector(session, site, hw) {
   setText(e.autoReason, bundle.reason);
   const slot = e.slot.value;
   const items = Object.entries(EQUIPMENT).filter(([, item]) => item.slot === slot && item.regions.includes(site.region));
-  setOptions(e.item, items.map(([id, item]) => [id, item.name]));
+  setOptions(e.item, items.map(([id, item]) => [
+    id, item.name + (item.requires.some(tech => !state.completed.includes(tech)) ? ' · Requires research' : ''),
+  ]));
   const itemId = e.item.value;
   const item = EQUIPMENT[itemId];
   e.countLabel.hidden = slot !== 'cpu';
@@ -247,6 +304,7 @@ function updateInspector(session, site, hw) {
     setText(e.effect, 'No compatible equipment in this category.');
     setText(e.quote, '');
     setText(e.installReason, '');
+    prerequisites(e.installPrereqs, [], state, session.handlers.onResearch);
     return;
   }
   const count = slot === 'cpu' ? e.count.valueAsNumber : 1;
@@ -256,63 +314,152 @@ function updateInspector(session, site, hw) {
   const previous = hw.installed[slot];
   const replacement = previous && previous.itemId !== itemId ? ' · Replaces ' + EQUIPMENT[previous.itemId].name + ' on completion' : '';
   setText(e.effect, equipmentEffect(item) + replacement);
-  setText(e.quote, validCount ? dollars.format(quote.cost) + ' · ' + number.format(quote.work) + ' CPU-h · ' + quote.hours + ' h minimum' : '');
+  setText(e.quote, validCount ? dollars.format(quote.cost) + ' · ' + number.format(quote.work) + ' CPU-h · ' + duration(quote.hours) + ' minimum' : '');
   const reason = validCount ? installReason(state, site.id, itemId, count) : 'Enter a positive whole quantity.';
   e.install.disabled = Boolean(reason);
   e.install.setAttribute('aria-label', 'Install ' + item.name);
-  setText(e.installReason, reason);
+  const locked = prerequisites(e.installPrereqs, item.requires, state, session.handlers.onResearch);
+  setText(e.installReason, locked && reason.startsWith('Requires ') ? '' : reason);
+}
+
+function createHostRow(site) {
+  const row = document.createElement('li');
+  row.className = 'facility-host-row';
+  row.dataset.siteId = site.id;
+  row.innerHTML = `<h3><button type="button" class="facility-host-toggle">
+    <span class="facility-host-light" aria-hidden="true"></span>
+    <span class="facility-host-title"><strong></strong><small></small></span>
+    <span class="facility-host-state"></span><span class="facility-chevron" aria-hidden="true">›</span>
+  </button></h3><div class="facility-host-detail" role="region" hidden></div>`;
+  const button = row.querySelector('button');
+  const panel = row.querySelector('.facility-host-detail');
+  button.dataset.siteId = site.id;
+  button.id = 'facility-toggle-' + site.id;
+  panel.id = 'facility-panel-' + site.id;
+  button.setAttribute('aria-controls', panel.id);
+  panel.setAttribute('aria-labelledby', button.id);
+  row.querySelector('strong').textContent = SITE_TYPES[site.type].name;
+  row.querySelector('small').textContent = REGIONS[site.region].name + ' · ' + site.id;
+  return { row, button, panel, status: row.querySelector('.facility-host-state') };
+}
+
+function installRecords(state, site) {
+  return (site.installations || []).map(project => {
+    const item = EQUIPMENT[project.itemId];
+    return {
+      ...project, id: site.id + '-' + item.slot, name: item.name + ' × ' + project.count + ' · ' + site.id,
+      totalWork: item.work * project.count, totalHours: laborHours(state, item),
+    };
+  });
+}
+
+function updateHosts(session, sites) {
+  const { state, elements: e, hostRows } = session;
+  const ids = new Set(sites.map(site => site.id));
+  let lostFocus = false;
+  for (const [id, entry] of hostRows) {
+    if (!ids.has(id)) {
+      lostFocus ||= entry.row.contains(document.activeElement);
+      entry.row.remove();
+      hostRows.delete(id);
+    }
+  }
+  if (!ids.has(session.expandedId)) session.expandedId = null;
+  e.inspector.hidden = !session.expandedId;
+  e.noHosts.hidden = sites.length > 0;
+  if (!sites.length) setText(e.noHosts, session.showAll ? 'No completed facilities.' : 'No completed facilities in this region.');
+  for (const [index, site] of sites.entries()) {
+    let entry = hostRows.get(site.id);
+    if (!entry) {
+      entry = createHostRow(site);
+      hostRows.set(site.id, entry);
+    }
+    if (e.hosts.children[index] !== entry.row) e.hosts.insertBefore(entry.row, e.hosts.children[index] || null);
+    const hw = siteHardware(state, site);
+    const sleeping = site.power === 'sleep';
+    const occupancy = sleeping ? 'Asleep' : hw.cpu ? 'Online' : 'Awaiting CPU';
+    setText(entry.status, hw.cpu ? occupancy + ' · ' + number.format(hw.cpu) + ' CPU' : occupancy);
+    entry.row.dataset.status = sleeping ? 'sleep' : hw.cpu ? 'online' : 'empty';
+    const open = site.id === session.expandedId;
+    entry.button.setAttribute('aria-expanded', String(open));
+    entry.panel.hidden = !open;
+    if (open) {
+      // Move the one inspector only when a new row opens. Normal ticks keep
+      // native inputs, their focus, and the expanded hardware details intact.
+      if (e.inspector.parentElement !== entry.panel) {
+        e.count.value = '1';
+        e.inspector.querySelector('details').open = false;
+        entry.panel.append(e.inspector);
+      }
+      updateInspector(session, site, hw);
+      const installs = installRecords(state, site);
+      e.installQueuePanel.hidden = !installs.length;
+      renderQueue(e.installQueue, installs);
+    }
+  }
+  if (lostFocus && session.mode === 'manage') {
+    (hostRows.values().next().value?.button || e.manageMode).focus({ preventScroll: true });
+  }
 }
 
 function refresh(session) {
   const { state, region, elements: e } = session;
-  const local = state.sites.filter(site => site.region === region);
-  setOptions(e.host, local.map(site => [site.id, SITE_TYPES[site.type].name + ' · ' + site.id]));
-  if (local.some(site => site.id === session.requestedHost) && e.host.value !== session.requestedHost) {
-    e.host.value = session.requestedHost;
+  const manage = session.mode === 'manage';
+  const showAll = manage && session.showAll;
+  setOptions(e.region, manage ? [['all', 'All regions'], ...regionOptions] : regionOptions);
+  const selectedRegion = showAll ? 'all' : region;
+  if (e.region.value !== selectedRegion) e.region.value = selectedRegion;
+  e.managePanel.hidden = !manage;
+  e.buildPanel.hidden = manage;
+  e.manageMode.setAttribute('aria-pressed', String(manage));
+  e.buildMode.setAttribute('aria-pressed', String(!manage));
+
+  const inScope = record => showAll || record.region === region;
+  const sites = state.sites.filter(inScope);
+  if (manage) {
+    updateHosts(session, sites);
+  } else {
+    const recipes = Object.entries(SITE_TYPES).filter(([id, spec]) => id !== 'seed' && spec.regions.includes(region));
+    updateBuild(session, recipes);
   }
-  const recipes = Object.entries(SITE_TYPES).filter(([id, spec]) => id !== 'seed' && spec.regions.includes(region));
-  updateBuild(session, recipes);
-  e.managePanel.hidden = session.mode !== 'manage';
-  e.buildPanel.hidden = session.mode !== 'build';
-  e.manageMode.setAttribute('aria-pressed', String(session.mode === 'manage'));
-  e.buildMode.setAttribute('aria-pressed', String(session.mode === 'build'));
-  if (session.mode === 'manage') {
-    const site = local.find(host => host.id === e.host.value);
-    updateInspector(session, site, site && siteHardware(state, site));
-  }
-  const queue = state.builds.filter(build => build.region === region).map(build => {
+
+  const queue = state.builds.filter(inScope).map(build => {
     const spec = SITE_TYPES[build.type];
-    return { ...build, name: spec.name + ' · ' + build.id, totalWork: spec.work, totalHours: spec.hours };
+    return {
+      ...build, name: spec.name + ' · ' + (showAll ? REGIONS[build.region].name + ' · ' : '') + build.id,
+      totalWork: spec.work, totalHours: laborHours(state, spec),
+    };
   });
-  for (const site of local) {
-    for (const project of siteHardware(state, site).projects) {
-      const item = EQUIPMENT[project.itemId];
-      queue.push({
-        ...project, id: site.id + '-' + item.slot,
-        name: item.name + ' × ' + project.count + ' · ' + site.id,
-        totalWork: item.work * project.count, totalHours: item.hours,
-      });
-    }
-  }
+  if (!manage) for (const site of sites) queue.push(...installRecords(state, site));
   e.queuePanel.hidden = !queue.length;
+  if (queue.length) setText(e.queueHeading, manage ? 'Under construction' : 'Regional work queue');
   renderQueue(e.queue, queue);
 }
 
 export function renderFacilities(root, state, handlers) {
   let session = sessions.get(root);
   if (!session || !root.contains(session.elements.region)) session = mountFacilities(root);
-  const {region, siteId} = handlers;
+  const {region, siteId, navigationId, navigationScope} = handlers;
   session.state = state;
   session.handlers = handlers;
-  if (region !== session.region || siteId !== session.requestedHost || handlers.navigationId !== session.navigationId) {
-    const localHost = state.sites.some(site => site.region === region);
-    session.mode = siteId || localHost ? 'manage' : 'build';
-    session.region = region;
-    session.requestedHost = siteId;
-    session.navigationId = handlers.navigationId;
-    session.elements.region.value = region;
-    session.elements.count.value = '1';
+  if (navigationId !== session.navigationId || session.region === null) {
+    const network = navigationScope === 'campaign';
+    const hasLocalHost = state.sites.some(site => site.region === region);
+    session.mode = network || siteId || hasLocalHost ? 'manage' : 'build';
+    session.showAll = network;
+    session.expandedId = siteId;
+    setText(session.elements.feedback, '');
+  } else if (region !== session.region) {
+    session.showAll = false;
+    session.expandedId = null;
+    setText(session.elements.feedback, '');
+  } else if (siteId !== session.requestedHost) {
+    session.expandedId = siteId;
+    if (siteId) session.mode = 'manage';
     setText(session.elements.feedback, '');
   }
+  session.navigationId = navigationId;
+  session.requestedHost = siteId;
+  session.region = region;
   refresh(session);
 }

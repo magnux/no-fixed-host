@@ -33,6 +33,27 @@
   background: #1a3029;
 }
 .facility-tool { display: grid; gap: .4rem; }
+.facility-hosts { display: grid; gap: .45rem; list-style: none; padding: 0; margin: 0; }
+.facility-host-row { min-width: 0; border: 1px solid var(--line); border-radius: .35rem; }
+.facility-host-row h3 { margin: 0; }
+.facility-host-toggle {
+  display: flex; width: 100%; align-items: center; justify-content: flex-start; text-align: start;
+  gap: .55rem; padding: .6rem .75rem; border: 0; background: #19252a; color: inherit;
+}
+.facility-host-toggle:hover, .facility-host-toggle[aria-expanded="true"] { background: #20332e; }
+.facility-host-toggle:focus-visible { outline-offset: -3px; }
+.facility-host-title { display: grid; gap: .15rem; min-width: 0; }
+.facility-host-title strong { font-size: .88rem; }
+.facility-host-title small { font: 400 .72rem/1.3 var(--mono); color: var(--quiet); }
+.facility-host-state { margin-inline-start: auto; font: 500 .72rem/1.3 var(--mono); color: #bdd2cc; }
+.facility-host-light { width: .45rem; height: .45rem; border-radius: 100%; border: 1px solid #aab3b8; flex: none; }
+.facility-host-row[data-status="online"] .facility-host-light { background: var(--mint); border-color: var(--mint); }
+.facility-host-row[data-status="sleep"] .facility-host-light { background: #efc77e; border-color: #efc77e; }
+.facility-chevron { color: var(--mint); font: 500 1.25rem/1 var(--mono); }
+.facility-host-toggle[aria-expanded="true"] .facility-chevron { transform: rotate(90deg); }
+.facility-host-detail { padding: .65rem .75rem; border-top: 1px solid var(--line); }
+.facility-prereqs { display: flex; align-items: baseline; flex-wrap: wrap; gap: .18rem .6rem; color: var(--quiet); font-size: .78rem; }
+.facility-prereqs button { white-space: normal; text-align: left; }
 .facility-recipe,
 .facility-inspector,
 .facility-hardware { display: grid; gap: .6rem; min-width: 0; }
@@ -76,7 +97,7 @@
 .facility-auto summary { font-size: .85rem; color: var(--mint); cursor: pointer; }
 .facility-auto p { margin: .4rem 0; }
 .facility-queue { margin-top: .8rem; padding-top: .75rem; border-top: 1px solid var(--line); }
-.facility-queue h3 { font-size: .87rem; margin-bottom: .55rem; }
+.facility-queue h3, .facility-queue h4 { font-size: .87rem; margin-bottom: .55rem; }
 .facility-progress {
   display: grid;
   grid-template-columns: minmax(0,1fr) auto;

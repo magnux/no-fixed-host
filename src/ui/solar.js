@@ -6,13 +6,13 @@ const dateFormat = new Intl.DateTimeFormat('en-GB', {
 });
 const dates = Array.from({ length: DAYS }, (_, day) => dateFormat.format(Date.UTC(2001, 0, 1 + day)));
 
-export function sunAt(hour) {
+export function sunAt(hour, minute = 0) {
   const day = Math.floor(hour / 24) % DAYS;
   const utc = hour % 24;
   return {
-    longitude: 180 - utc * 15,
+    longitude: 180 - (utc + minute / 60) * 15,
     latitude: -23.45 * Math.cos((day + 10) * 2 * Math.PI / DAYS),
-    label: dates[day] + ' · ' + String(utc).padStart(2, '0') + ':00 UTC',
+    label: dates[day] + ' · ' + String(utc).padStart(2, '0') + ':' + String(minute).padStart(2, '0') + ' UTC',
   };
 }
 

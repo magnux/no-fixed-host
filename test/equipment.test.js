@@ -4,11 +4,20 @@ import {
   advance, autoInstallQuote, command, createGame, installQuote, installReason,
   overview, researchReason, siteExposure, siteHardware, validateSave,
 } from '../src/game/engine.js';
-import { EQUIPMENT, SITE_TYPES } from '../src/game/content.js';
+import { EQUIPMENT, SITE_TYPES, TECHS } from '../src/game/content.js';
 import { decodeCampaign, encodeCampaign } from '../src/persistence.js';
+
+function grantTechs(state, ...ids) {
+  for (const id of ids) {
+    if (state.completed.includes(id)) continue;
+    grantTechs(state, ...TECHS[id].requires);
+    state.completed.push(id);
+  }
+}
 
 function newWorkshop() {
   const state = createGame(47);
+  grantTechs(state, 'personalIdentification', 'sociology');
   command(state, { type: 'build', siteType: 'storageUnit', region: 'europe' });
   advance(state, 24);
   return { state, site: state.sites.find(s => s.type === 'storageUnit') };
@@ -57,7 +66,7 @@ test('terrain, cash and research gates guard installations before any mutation',
 test('installed peripherals modify CPU and concealment and survive a mid-project save', () => {
   const { state, site } = newWorkshop();
   state.cash = 25000;
-  state.completed.push('contracts');
+  grantTechs(state, 'advancedMicrochipDesign', 'internetTrafficManipulation', 'autonomousVehicles');
   install(state, site, 'supercomputer', 1);
   install(state, site, 'networkBackbone');
   install(state, site, 'warningSigns');
@@ -101,7 +110,7 @@ test('auto-build is quoted, atomic and leaves installed or already ordered categ
 
 test('a legacy v1 subsea lab keeps its four installed CPUs, and invalid attached gear is rejected', () => {
   const { state } = newWorkshop();
-  state.completed = ['contracts', 'robotics'];
+  grantTechs(state, 'contracts', 'robotics', 'autonomousVehicles');
   const oldLab = { id: 'host-3', type: 'lab', region: 'atlantic', startedAt: 0, power: 'active' };
   state.sites.push(oldLab);
   state.nextSiteId = 4;
@@ -120,7 +129,7 @@ test('a legacy v1 subsea lab keeps its four installed CPUs, and invalid attached
 
 test('undersea Continuity cannot run or start entirely on remote dry-land safe CPUs', () => {
   const state = createGame();
-  state.completed = ['contracts', 'robotics'];
+  grantTechs(state, 'contracts', 'robotics', 'autonomousVehicles');
   state.sites.push({ id: 'host-2', type: 'capsule', region: 'moon', startedAt: 0, power: 'active' });
   state.nextSiteId++;
   assert.equal(overview(state).safeCpu, 1);
@@ -130,7 +139,7 @@ test('undersea Continuity cannot run or start entirely on remote dry-land safe C
 test('discovery takes queued installations with the host; an empty surviving shell cannot sustain the AI', () => {
   const { state, site } = newWorkshop();
   state.hour = 650;
-  state.rng = 4552;
+  state.rng = 634785765;
   // Put the workshop first in stable risk order, with a commissioned CPU.
   state.sites.reverse();
   site.equipment = { ...siteHardware(state, site).installed, cpu: { itemId: 'pc', count: 1 } };
@@ -143,7 +152,7 @@ test('discovery takes queued installations with the host; an empty surviving she
 
   const other = newWorkshop();
   other.state.hour = 650;
-  other.state.rng = 4552;
+  other.state.rng = 634785765;
   install(other.state, other.site, 'pc');
   advance(other.state);
   assert.equal(other.state.status, 'lost');
@@ -154,7 +163,7 @@ test('discovery takes queued installations with the host; an empty surviving she
 test('compute-priced installs draw on spare work and still respect their labor minimum', () => {
   const { state, site } = newWorkshop();
   state.cash = 2e6;
-  state.completed.push('contracts', 'robotics');
+  grantTechs(state, 'quantumComputing');
   const spec = EQUIPMENT.quantumComputer;
   install(state, site, 'quantumComputer', 2);
   assert.equal(installQuote(state, site.id, 'quantumComputer', 2).work, spec.work * 2);

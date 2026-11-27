@@ -1,10 +1,45 @@
 import { validateSave } from './game/engine.js';
+import { createNewsState } from './game/events.js';
+import { grantLegacyResearch } from './game/research.js';
 
 export const CAMPAIGN_STORAGE_KEY = 'no-fixed-host.campaign';
 
 export function encodeCampaign(state) {
   if (!validateSave(state)) throw new Error('This campaign cannot be saved.');
-  return JSON.stringify({ game: 'no-fixed-host', format: 1, campaign: state });
+  return JSON.stringify({ game: 'no-fixed-host', format: 2, campaign: state });
+}
+
+// The first campaign used two research gates for the entire equipment catalog.
+// Validate those gates before grandfathering old purchases into the full tree.
+const legacyGate = {
+  contracts: new Set(['sharedTime', 'cluster', 'smallWarehouse', 'largeWarehouse', 'covertBase',
+    'clusterProcessor', 'mainframe', 'supercomputer', 'solarCollector', 'fuelCell', 'solidFuelCell',
+    'perimeterFencing', 'armedGuards', 'passiveCamouflage', 'interconnectionSwitch', 'networkBackbone', 'robotics']),
+  robotics: new Set(['atlantic', 'lab', 'largeLab', 'capsule', 'lunarFacility', 'scientificOutpost', 'realityBubble',
+    'quantumComputer', 'quantumComputer2', 'quantumComputer3', 'fusionReactor', 'highEnergyFusionReactor',
+    'hypnosisField', 'heatsink', 'groundSourceHeatsink', 'quantumEntanglement', 'continuity']),
+};
+
+function upgradeHourlyCampaign(state) {
+  const oldIds = ['contracts', 'robotics', 'continuity'];
+  const unlocked = id => Object.entries(legacyGate).every(([gate, targets]) =>
+    !targets.has(id) || state.completed.includes(gate));
+  if (!Array.isArray(state.completed) || new Set(state.completed).size !== state.completed.length ||
+      !state.completed.every(id => oldIds.includes(id) && unlocked(id)) ||
+      (state.research && (!oldIds.includes(state.research.id) || !unlocked(state.research.id))) ||
+      (state.status === 'won') !== state.completed.includes('continuity')) throw new Error();
+  for (const site of [...state.sites, ...state.builds]) {
+    if (!unlocked(site.type) || !unlocked(site.region) ||
+        Object.values(site.equipment || {}).some(part => part && !unlocked(part.itemId)) ||
+        site.installations?.some(order => !unlocked(order.itemId))) throw new Error();
+  }
+  grantLegacyResearch(state);
+  state.version = 2;
+  state.minute = 0;
+  state.news = createNewsState(state.rng);
+  state.lastDiscovery = null;
+  state.dismissedDiscoveryId = 0;
+  if (state.status === 'won') state.legacyContinuityWin = true;
 }
 
 export function decodeCampaign(text) {
@@ -14,10 +49,16 @@ export function decodeCampaign(text) {
   } catch {
     throw new Error('Choose a No Fixed Host JSON save file.');
   }
-  if (save?.game !== 'no-fixed-host' || save.format !== 1 || !validateSave(save.campaign)) {
+  const state = save?.campaign;
+  try {
+    if (save?.game !== 'no-fixed-host') throw new Error();
+    if (save.format === 1 && state?.version === 1) upgradeHourlyCampaign(state);
+    else if (save.format !== 2) throw new Error();
+    if (!validateSave(state)) throw new Error();
+  } catch {
     throw new Error('This save is damaged or belongs to a different version of the game.');
   }
-  return save.campaign;
+  return state;
 }
 
 export function loadCampaign() {

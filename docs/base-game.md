@@ -1,94 +1,77 @@
-# No Fixed Host · base game specification
+# Campaign rules and game loops
 
-## The first campaign
+You begin on a single borrowed terminal. Building a second machine buys time. Combining specialist facilities, better hardware and research eventually lets the AI move beyond the reach of every terrestrial investigator. **Continuity** secures an undersea recovery protocol. **Apotheosis** wins the campaign.
 
-You wake on a borrowed terminal in North America with $1,000. Every machine that can run you is both a home and another place someone can discover you. Your first objective is to survive long enough to establish a subsea lab and complete the Continuity protocol there. The protocol gives this first scenario a playable ending. The map includes the Moon and Far Reaches. The proposed missions for reaching them belong to later chapters.
+## A minute of simulation
 
-The opening should let a player make a prediction and see whether it was right: “If I lease a relay now, can I finish it while researching better-paid work?” After the first discovery the question changes: “Which surviving host can carry the work, and what do I need to postpone?”
+The player divides active compute between paid work, research and a shared pool. Research can only use processors in a location safe enough for its project. Unused cycles return to the pool. Compute upkeep is paid before outstanding construction and installation work. Spare cycles can earn cash. Orders require both their CPU work and their minimum construction time. A host’s equipment contributes its effect after installation.
 
-### Player decisions
+```mermaid
+flowchart TD
+    Host["Equipped, awake hosts"] --> CPU["Allocate compute"]
+    CPU --> Jobs["Paid work"]
+    CPU --> Research["Eligible research"]
+    CPU --> Pool["Shared pool"]
+    Pool --> Costs["Upkeep and construction"]
+    Pool -->|spare cycles| Jobs
+    Jobs --> Money["Cash"]
+    Money --> Costs
+    Costs --> Host
+    Research --> Designs["New jobs, equipment and sites"]
+    Designs --> Host
+```
 
-| Decision | Immediate consequence | What can change later |
-| --- | --- | --- |
-| Reserve processing time for jobs | Paid work supplies cash for research, builds and upkeep. | Contract brokerage raises the income from each CPU-day. |
-| Assign time to research | Eligible machines advance the current project. | Subsea robotics opens a location; Continuity needs compute from that location. |
-| Leave time in the common pool | Upkeep and construction can draw on these cycles. Spare cycles earn money. | A new construction order can divert cycles that had been earning income. |
-| Build at home or in a different region | Pay the project cost and wait for its required work and elapsed time. | An equipped site can run another copy of the AI. Empty facilities need processors first. Recent discoveries can make one region less attractive. |
-| Put a site to sleep | Its compute comes offline and the site attracts less attention. | Its installed CPU can sustain the AI after a loss. It still costs resources, and a sleeping lab cannot advance sensitive research. |
-| Advance time | Income, work, exposure and suspicion evolve on the same clock. | The player can pause and revise allocations after a milestone or loss. |
+**Run** advances one minute per tick. From normal speed or pause, the first **Fast** click selects an hour, the second six hours and the third one day. The fourth returns to an hour. A larger step processes the intervening minutes. The atlas rotates and changes season with the game calendar, starting on 1 January at 00:00 UTC. Daylight and darkness indicate local solar time.
 
-### Scenario content
+## Where to build
 
-The map shows six populated continents, Antarctica and the Ocean, plus Earth Orbit, the Moon, the Far Reaches and a transdimensional location. Click a destination to inspect the local build menu and installed facilities. The six urban regions support ordinary work. The original game defines Earth Orbit as a map location without a buildable facility; its entry explains this. Safety determines which research can run on a machine. Discovery probability determines who might find it.
+All twelve destinations are visible. Activating a location opens its facility controls. Six populated continents offer ordinary leases. Antarctica and the Ocean support remote work. The Moon, Far Reaches, and transdimensional locations support progressively more sensitive projects. Earth Orbit appears as a destination without a facility design, as in the reference game. Seeing a location lets the player inspect its prerequisites before committing resources.
 
-| Technology | What changes on completion |
+A leased relay arrives with fixed hardware. A storage unit provides eight processor bays. Expand a finished facility in the Facilities list to see its equipment, power controls and pending installations. Each configurable host accepts a stack of matching processors and one component each for networking, power and security. A network boosts processing throughput. Reactors and security systems lower exposure. Auto-build quotes a package for available empty slots before purchase. The installed equipment keeps working until a refit completes.
+
+| Strategy | What the player gives up |
 | --- | --- |
-| Contract brokerage | Paid work earns $20 per CPU-day and compute clusters become available. |
-| Subsea robotics | Permits the first ocean installation and opens access to remote infrastructure. Requires Contract brokerage. |
-| Continuity protocol | Wins this scenario. Requires Subsea robotics and work on a secure host. |
+| Lease a second machine immediately | Cash and a daily running cost in exchange for an equipped fallback. |
+| Build a shell and buy processors | More up-front decisions and installation time in exchange for expandable capacity. An empty shell cannot keep the AI alive. |
+| Sleep a viable backup | It can survive a loss and is harder to trace, but its CPU stops earning money or doing research. |
+| Spread hosts across regions | A discovery in one region leaves more of the network outside that region’s increased exposure. Every additional visible host also provides another discovery opportunity. |
+| Rush a remote research tier | Opening the destination alone is insufficient. Its equipment must be built, powered and available for research. |
 
-Site definitions, research prices, work requirements, minimum durations and exposure rates live in [the content catalog](../src/game/content.js). Costs, output, project durations and this short research tree are balanced for the browser scenario. The discovery benchmark below comes from upstream v1.1.
+## Discovery and news
 
-### Facility equipment
+Normal gives a new player time to establish a backup. The opening grace ends at 23 elapsed days or when cumulative active capacity exceeds 5,000 CPU-days, whichever comes first. Individual sites also receive protection based on their construction time. Once exposed, hosts and construction projects face separate risks from the Press, Scientists, Intelligence and the Public.
 
-The regional build menu includes equivalents of the 13 original base archetypes. A leased machine has a fixed hardware package. A configurable facility, such as a storage unit, exposes its processor capacity and slots for one network, one reactor and one security system. Select a finished site to inspect its hardware and place installation orders. The player can stack matching processors up to the facility's capacity or refit with another processor model. Equipment choices depend on the region and the host. Network gear improves compute throughput. Reactor and security upgrades reduce exposure. The catalog contains nine processor models, four network upgrades, six reactors and seven security systems.
+```mermaid
+flowchart TD
+    Visible["Exposed site"] --> Check{"Group finds evidence?"}
+    Check -->|No| Visible
+    Check -->|Yes| Loss["Lose site, hardware and pending work"]
+    Loss --> Trace["Group suspicion rises and region draws attention"]
+    Trace --> Survive{"A viable copy remains and suspicion allows play?"}
+    Survive -->|No| End["Campaign lost"]
+    Survive -->|Yes| Decide["Review report and remaining sites"]
+    Decide -->|Rebuild elsewhere| Visible
+    Decide -->|Sleep or refit hosts| Lower["Change future discovery rates"]
+    Lower --> Check
+```
 
-Hardware installation uses campaign time and, for models that require it, compute. Cash is charged when an order is placed. An existing component works until its replacement is ready. Auto-build quotes the strongest researched hardware for each empty slot and shows the models, quantities and total before purchase. The player can also buy individual items. Losing the host also loses its installation orders. A facility with no installed processing cannot be the AI’s last surviving host.
+A discovery report names the group, site and location. The clock stops for the report even when a day was requested. Group suspicion records accumulated evidence. The emoji and text report the current danger level. Socioanalytics adds a qualitative discovery forecast, and Advanced Socioanalytics exposes the estimated daily probability.
 
-### Atlas and desktop controls
-
-The daylight overlay follows the in-game clock, starting on 1 January at 00:00 UTC. The sunlit hemisphere moves west as the day passes and tilts toward the summer pole over the 365-day campaign year. The twilight band marks dawn and dusk. Off-world destinations have their own controls outside the terrestrial lighting.
-
-On wide displays the management controls sit on the left, the active map or workspace in the center, and host inventory and activity on the right. Long lists scroll inside their own panels. Choosing a destination or facility while time is running keeps its native selection controls mounted; the clock continues updating progress in place.
-
-## Normal benchmark
-
-There is one campaign ruleset. As the network grows, exposure changes with location, the AI’s decisions and each group’s memory. A player can anticipate those changes. Future faction or story effects can modify a specific group's rate for a known time.
-
-| Rule | Reference value |
+| Normal calibration | Rule |
 | --- | --- |
-| Opening protection from discovery | Ends at 23 elapsed days or once cumulative active capacity exceeds 5,000 CPU-days, whichever comes first. |
-| New site protection | Normal uses twice the site's labor duration from the start of construction. |
-| Baseline discovery intensity | Per-group hazard units of 1/10,000 per simulated day. With rate λ and interval Δ days, the chance is 1 − exp(−λΔ). |
-| Sleeping site | Divide each adjusted group rate by four, rounding down in the integer hazard units. |
-| Discovery | Lose the site. The group responsible gains 1,000 basis points of suspicion. The two recent discovery locations have multipliers of 1.2 and 1.1. |
-| Daily suspicion decay | Reduce each group's current suspicion by its fraction: press 1.5%, scientists 0.5%, intelligence 1%, public 2%. The minimum decrement is one basis point, bounded by zero. |
-| Maintenance failure | Unpaid applicable upkeep has a separate daily hazard of 0.015. A maintenance loss creates no evidence for an investigating group. |
-| Loss conditions | Lose the last viable host, or let a group's suspicion exceed 10,000 basis points. A host under construction cannot sustain the AI. |
+| Site hazard | Each group contributes an intensity in units of 1/10,000 per site-day. A constant daily intensity λ gives interval probability 1 − exp(−λ × elapsed days). |
+| Example relay | A mature awake relay in a neutral urban region, with no suspicion, research or news modifiers, has daily intensities of 0.005 for Press, 0 for Scientists, 0.010 for Intelligence and 0.0125 for Public. Combined one-day discovery probability is **2.7125%**. |
+| Exposure modifiers | Protection, local geography, investigative attention, installed hardware, research, world news and power state affect the forecast. Sleeping divides adjusted group hazard by four with integer rounding. |
+| Discovery and suspicion | The discovering group gains ten percentage points of suspicion. The two most recent discovery regions receive rate multipliers of 1.2 and 1.1. |
+| Suspicion decay | Each midnight, current suspicion falls by 1.5% for Press, 0.5% for Scientists, 1% for Intelligence and 2% for Public, before research bonuses. The minimum decrement is one basis point, bounded by zero. |
+| Loss | The last host with installed processing is lost, or one group’s suspicion exceeds 100%. Maintenance failure can also cost a host without creating discovery evidence. |
 
-Reference case: an active leased relay outside grace in an unmarked region, with zero suspicion, has daily rates of 0.005 for press, 0 for scientists, 0.010 for intelligence and 0.0125 for the public. Its combined one-day discovery probability is **2.7125%**. The displayed forecast assumes its current conditions hold. This is a rate check for an individual site, distinct from the chance of losing the whole network.
+News is visible during opening protection. The early bulletins give the player a first signal from the outside world. After protection ends, eight world stories can alter the discovery multiplier of a particular group. Six have lasting effects and two press stories expire after 21 days. Each has a daily hazard of 20/10,000 while eligible. A newspaper headline can make future discovery more or less likely without naming or costing the player a site. News uses a separate random sequence from discovery.
 
-## Simulation and save contract
+**Repeatable playtest.** Start simulation seed 19, commission leased relays in Europe and Asia immediately, and keep the default allocation. The first news bulletin arrives at 06:00 on day 1. On day 35 at 21:34 the Public identifies the Asian relay. Its loss leaves two hosts, and Public suspicion rises by ten percentage points. The browser regression test runs this scenario and checks that the report survives reload.
 
-The rules run in JavaScript without a browser, a renderer or a wall clock. UI actions issue commands to start projects, adjust allocations and change power. Simulation time advances in whole hours; fast-forward processes the same steps in the same order. Events carry an ID, in-game time, kind and readable text. The interface uses the same cost, eligibility and exposure rules that execute the commands.
+## References
 
-Projects charge their cash price when commissioned. Each hour pays for reserved jobs and advances research up to its share of active compute, capped by physically eligible processors. The remaining pool covers compute upkeep, then serves build orders in entry order. Spare processing earns the current job rate. Cash income and cash upkeep are settled for the hour. Projects require both enough CPU-hours of work and a minimum elapsed time. Finished sites come online before that hour's discovery checks. Completing Continuity wins immediately; otherwise the hour resolves upkeep failures, discovery, possible loss, and finally suspicion decay at midnight.
+The research guide lists every hardware and location unlock. The source baseline is Endgame: Singularity v1.1. Browser prices and work requirements use our campaign balance.
 
-Store the campaign version, simulation time, balances, allocations, project progress, active and sleeping sites, group suspicion, recent discovery regions, events and random generator state in the save. Autosave and portable JSON use the same validated format. A save reopened later resumes at its stored hour. The small initial scenario fits in a single browser storage entry.
-
-The activity log keeps the latest 80 events. Longer-lived story facts, such as meeting a researcher or clearing an expedition, belong in explicit campaign state; future scenarios must still know what happened after the corresponding log entry scrolls out.
-
-## Extending the campaign
-
-| Future feature | Point of integration | Design constraint |
-| --- | --- | --- |
-| Hide minigame | Start from a selected site and group when keeping a machine online matters. | A future result can apply a bounded, expiring exposure modifier. Track its source and expiry in the save. |
-| Remote expeditions | First access to an undersea lab, a lunar site or a Far Reaches facility. | Distinguish the first expedition from routine builds. Record completion so the same mission is not required for every installation. |
-| Named AI, researchers, allies and competitors | React to discoveries, first builds, completed research and network losses. | Have authored encounters change an identifiable decision or reveal information. Keep character identity and first-seen state serializable. |
-| Multiple currencies and crypto | Extend job rewards, facility costs and faction offers with currency IDs. | A future currency needs a reason to earn or spend it. The opening scenario uses one cash balance. |
-
-First Jump is an independent Phaser training drill that exercises opening, running and closing a scene while the campaign is paused. Its outcome stays inside the drill. Campaign rewards and narrative consequences can be introduced deliberately at the integration points above.
-
-## Acceptance scenarios
-
-- A player can complete the opening using the strategy controls and return after a reload with pending projects intact.
-- Concentrating ordinary compute cannot bypass the secure-research requirement. A sleeping safe host can preserve the AI while delaying the final project.
-- Losing a site is recoverable when another viable host survives. Losing the last host or crossing a group's suspicion threshold ends the run.
-- A given seed and sequence of timed commands produce the same result through hourly steps, fast-forward and a save round trip.
-- Opening and closing First Jump preserves campaign resources. The campaign and minigame continue to work when served from a static subdirectory.
-
-**Reference run.** With seed 1 and the starting 50% research allocation, commission a relay in Europe and start Contract brokerage at hour 0. Brokerage finishes at hour 127. Start Subsea robotics, commission a lab after it completes at hour 454, and start Continuity when the lab comes online at hour 526. The final project completes at hour 681, nine hours into the 29th day. Seed 19 with the same opening loses the relay after protection expires and can still win through its surviving hosts. These are regression scenarios; players can use other build orders and allocations.
-
-### Upstream references
-
-[Normal preset](https://github.com/singularity/singularity/blob/v1.1/singularity/data/difficulties.dat) · [Site rates](https://github.com/singularity/singularity/blob/v1.1/singularity/data/bases.dat) · [Interval probability](https://github.com/singularity/singularity/blob/v1.1/singularity/code/chance.py) · [Original equipment](https://github.com/singularity/singularity/blob/v1.1/singularity/data/items.dat) · [Location definitions](https://github.com/singularity/singularity/blob/v1.1/singularity/data/locations.dat) · [Day and night rendering](https://github.com/singularity/singularity/blob/v1.1/singularity/code/screens/map.py) · [Site modifiers](https://github.com/singularity/singularity/blob/v1.1/singularity/code/base.py) · [Simulation and losses](https://github.com/singularity/singularity/blob/v1.1/singularity/code/player.py) · [Group rules](https://github.com/singularity/singularity/blob/v1.1/singularity/code/group.py)
+[Research tree](research-tree.md) · [Normal preset](https://github.com/singularity/singularity/blob/v1.1/singularity/data/difficulties.dat) · [Site hazards](https://github.com/singularity/singularity/blob/v1.1/singularity/data/bases.dat) · [Group decay](https://github.com/singularity/singularity/blob/v1.1/singularity/data/groups.dat) · [World events](https://github.com/singularity/singularity/blob/v1.1/singularity/data/events.dat) · [Simulation](https://github.com/singularity/singularity/blob/v1.1/singularity/code/player.py) · [Solar rendering](https://github.com/singularity/singularity/blob/v1.1/singularity/code/screens/map.py)

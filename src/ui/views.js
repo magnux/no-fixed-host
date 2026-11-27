@@ -1,6 +1,7 @@
 import { EQUIPMENT, GROUPS, REGIONS, SITE_TYPES, TECHS } from '../game/content.js';
-import { researchReason, siteExposure, siteHardware } from '../game/engine.js';
+import { siteExposure, siteHardware } from '../game/engine.js';
 import { icon } from './icons.js';
+import { groupDangerForState, WORLD_NEWS } from '../game/events.js';
 
 export const money = (value) =>
   new Intl.NumberFormat('en-US', {
@@ -15,12 +16,12 @@ export const esc = (value) =>
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;');
-export const stamp = (hour) =>
+export const stamp = (hour, minute = 0) =>
   'D' +
   String(Math.floor(hour / 24) + 1).padStart(2, '0') +
   ' / ' +
   String(hour % 24).padStart(2, '0') +
-  ':00';
+  ':' + String(minute).padStart(2, '0');
 const tag = (text, cls = 'neutral') =>
   '<span class="tag ' + cls + '">' + text + '</span>';
 const cardHeader = (title, detail = '') =>
@@ -35,76 +36,29 @@ const btn = (label, action, attrs = '', cls = '') =>
   '>' +
   label +
   '</button>';
-function progress(item, spec) {
-  const fraction = (a, b) => (b ? Math.min(1, a / b) : 1);
-  const pc = Math.floor(
-    100 *
-      Math.min(
-        fraction(item.work, spec.work),
-        fraction(item.hours, spec.hours),
-      ),
-  );
-  return (
-    '<div class="project-progress"><progress value="' +
-    pc +
-    '" max="100" aria-label="Project completion">' +
-    pc +
-    '%</progress><span>' +
-    pc +
-    '%</span></div><small>' +
-    Math.floor(item.work) +
-    ' / ' +
-    spec.work +
-    ' CPU-h · ' +
-    Math.min(item.hours, spec.hours) +
-    ' / ' +
-    spec.hours +
-    ' h elapsed</small>'
-  );
+const isNews = event => event.kind.startsWith('news.');
+
+function eventRows(events, limit) {
+  return events.slice(-limit).reverse().map(event => {
+    const headline = event.headline ? '<strong>' + esc(event.headline) + '</strong>' : '';
+    const category = isNews(event) ? 'news' : event.kind === 'site.discovered' ? 'discovery' : 'activity';
+    return '<li data-kind="' + category + '"><time>' + stamp(event.hour, event.minute) + '</time>' +
+      '<div>' + headline + '<span>' + esc(event.text) + '</span></div></li>';
+  }).join('');
 }
 
-function eventRows(s, limit) {
-  return (
-    s.events
-      .slice(-limit)
-      .reverse()
-      .map(
-        (e) =>
-          '<li><time>' +
-          stamp(e.hour) +
-          '</time><span>' +
-          esc(e.text) +
-          '</span></li>',
-      )
-      .join('') || '<li>Awaiting first activity.</li>'
-  );
-}
-export function inventoryPanel(state) {
-  const rows = state.sites.map(site => {
-    const model = SITE_TYPES[site.type];
-    const { cpu } = siteHardware(state, site);
-    const pct = (siteExposure(state, site).perDay * 100).toFixed(2);
-    const status = site.power === 'sleep' ? 'Sleeping' : cpu ? 'Online' : 'Awaiting CPU';
-    return `<li>
-      <button type="button" class="inventory-host" data-action="host" data-id="${esc(site.id)}"
-        aria-label="Manage ${esc(model.name)} ${esc(site.id)} in ${esc(REGIONS[site.region].name)}">
-        <span class="host-indicator ${status === 'Online' ? 'live' : ''}" aria-hidden="true"></span>
-        <span class="host-copy"><strong>${esc(model.name)}</strong>
-          <small>${esc(REGIONS[site.region].name)} · ${esc(site.id)}</small>
-          <span class="host-status">${status} · ${cpu} CPU · ${pct}% daily risk</span>
-        </span>
-        <span class="host-open" aria-hidden="true">›</span>
-      </button>
-    </li>`;
-  }).join('');
-  const count = tag(String(state.sites.length));
-  return cardHeader('Host inventory', count) +
-    (rows ? `<ul class="host-list" data-keep-scroll>${rows}</ul>` : '<p class="empty">No surviving hosts.</p>');
+export function newsPanel(state) {
+  const news = state.events.filter(isNews);
+  const active = Object.keys(state.news.stories).length;
+  const coverage = active ? btn('Coverage (' + active + ')', 'tab', 'data-id="activity"', 'text-button') : icon('globe');
+  return cardHeader('Newswire', coverage) + (news.length
+    ? '<ul class="event-list dock-events news-events" data-keep-scroll>' + eventRows(news, 4) + '</ul>'
+    : '<p class="waiting-news">' + (state.hour < 6 ? 'Listening for the first broadcast.' : 'No recent broadcasts.') + '</p>');
 }
 
 export function recentPanel(state) {
   return cardHeader('Recent activity', btn('View log', 'tab', 'data-id="activity"', 'text-button')) +
-    '<ul class="event-list dock-events" data-keep-scroll>' + eventRows(state, 8) + '</ul>';
+    '<ul class="event-list dock-events" data-keep-scroll>' + eventRows(state.events.filter(event => !isNews(event)), 8) + '</ul>';
 }
 
 export function researchSummary(state) {
@@ -114,89 +68,28 @@ export function researchSummary(state) {
     ${btn('Projects', 'tab', 'data-id="research"', 'text-button')}`;
 }
 
-export function researchPage(s) {
-  const cards = Object.entries(TECHS)
-    .map(([id, spec]) => {
-      const done = s.completed.includes(id),
-        active = s.research?.id === id,
-        reason = researchReason(s, id);
-      const label = done
-        ? tag('Complete', 'green')
-        : active
-          ? tag('In progress', 'lavender')
-          : tag(
-              reason ? 'Unavailable' : 'Available',
-              reason ? 'neutral' : 'green',
-            );
-      const prereqs = spec.requires.map((key) => TECHS[key].name);
-      return (
-        '<article class="option"><div class="research-title"><h3>' +
-        spec.name +
-        '</h3>' +
-        label +
-        '</div><p>' +
-        spec.description +
-        '</p><small>' +
-        money(spec.cost) +
-        ' · ' +
-        spec.work +
-        ' CPU-h · ' +
-        spec.hours +
-        ' h minimum' +
-        (spec.safety ? ' · Safety tier ' + spec.safety : '') +
-        '</small>' +
-        (active
-          ? progress(s.research, spec)
-          : done
-            ? ''
-            : '<div class="option-bottom"><small>' +
-              esc(
-                reason ||
-                  (prereqs.length
-                    ? 'Requires ' + prereqs.join(', ')
-                    : 'No prerequisites'),
-              ) +
-              '</small>' +
-              btn(
-                'Start research',
-                'start-research',
-                'data-id="' +
-                  id +
-                  '" ' +
-                  (reason || s.status !== 'running' ? 'disabled' : ''),
-                'accent-button',
-              ) +
-              '</div>') +
-        '</article>'
-      );
-    })
-    .join('');
-  return (
-    '<section class="panel">' +
-    cardHeader(
-      'Research projects',
-      tag(s.completed.length + ' / ' + Object.keys(TECHS).length),
-    ) +
-    '<div class="options-list">' +
-    cards +
-    '</div></section>'
-  );
+export function activityPage(state) {
+  const coverage = Object.entries(state.news.stories).map(([id, started]) => {
+    const story = WORLD_NEWS[id];
+    const sign = story.modifier > 0 ? '+' : '−';
+    const until = story.days ? 'until day ' + (1 + Math.floor(started / 1440) + story.days) : 'ongoing';
+    return '<li><strong>' + esc(story.headline) + '</strong><small>' + GROUPS[story.group].name +
+      ' discovery multiplier ' + sign + Math.abs(story.modifier / 100) + ' percentage points · ' + until + '</small></li>';
+  }).join('');
+  const current = coverage ? '<section class="panel">' + cardHeader('Active world stories') +
+    '<ul class="world-stories">' + coverage + '</ul></section>' : '';
+  return current + '<section class="panel">' + cardHeader('Activity log') +
+    '<ul class="event-list full">' + eventRows(state.events, 100) + '</ul></section>';
 }
-export const activityPage = (s) =>
-  '<section class="panel">' +
-  cardHeader('Activity log') +
-  '<ul class="event-list full">' +
-  eventRows(s, 100) +
-  '</ul></section>';
 
 export function objectivePanel(s) {
   const emptyHosts = s.sites.filter(site => !siteHardware(s, site).rawCpu);
-  const needsSecondHost = s.sites.length - emptyHosts.length < 2 && !s.completed.length;
+  const needsSecondHost = s.sites.length - emptyHosts.length < 2;
   const emptyHost = emptyHosts[0];
   const construction = s.builds[0];
   let title, desc, action, id, cta;
   if (s.status !== 'running') {
-    title = s.status === 'won' ? 'Continuity secured' : 'Signal lost';
+    title = s.status === 'won' ? (s.completed.includes('apotheosis') ? 'Apotheosis' : 'Continuity secured') : 'Signal lost';
     desc = s.ending;
   } else if (s.sites.length === 0) {
     title = 'Keep the network alive';
@@ -238,24 +131,39 @@ export function objectivePanel(s) {
     id = 'research';
     cta = 'Explore research';
   } else if (!s.completed.includes('robotics')) {
-    title = 'Reach the open ocean';
-    desc = 'Research subsea robotics to open a site for sensitive work.';
+    title = 'Prepare for the ocean';
+    desc = 'Research Subsea robotics to prepare the Continuity protocol.';
     action = 'tab';
     id = 'research';
     cta = 'Explore research';
-  } else if (!s.sites.some(site => site.region === 'atlantic' && site.power === 'active' && siteHardware(s, site).cpu > 0)) {
+  } else if (!s.completed.includes('continuity') && !s.completed.includes('autonomousVehicles') && !s.sites.some(site => site.region === 'atlantic')) {
+    title = 'Unlock subsea labs';
+    desc = 'Follow the Autonomous Vehicles research line to build beneath the ocean.';
+    action = 'technology';
+    id = 'autonomousVehicles';
+    cta = 'See prerequisites';
+  } else if (!s.completed.includes('continuity') && !s.sites.some(site => site.region === 'atlantic' && site.power === 'active' && siteHardware(s, site).cpu > 0)) {
     title = 'Activate a subsea lab';
     desc =
       'An active lab provides the safety-tier-1 compute needed for continuity.';
     action = 'region';
     id = 'atlantic';
     cta = 'View ocean sites';
-  } else {
+  } else if (!s.completed.includes('continuity')) {
     title = 'Secure continuity';
     desc =
       'Complete the continuity protocol while your network is still alive.';
     action = 'tab';
     id = 'research';
+    cta = 'Explore research';
+  } else {
+    const next = ['lunarRocketry', 'fusionRocketry', 'spaceTimeManipulation', 'apotheosis']
+      .find(key => TECHS[key] && !s.completed.includes(key));
+    title = next ? 'Research ' + TECHS[next].name : 'Expand your network';
+    desc = next === 'apotheosis' ? 'Complete the final project to escape discovery.' :
+      'Continuity is secure. Reach more remote sites to run the experiments that lead to Apotheosis.';
+    action = next ? 'technology' : 'tab';
+    id = next || 'research';
     cta = 'Explore research';
   }
   return (
@@ -276,31 +184,37 @@ export function objectivePanel(s) {
       : '')
   );
 }
-export function suspicionPanel(s, grace) {
-  const high = Math.max(...Object.values(s.suspicion));
-  return (
-    cardHeader(
-      'Group suspicion',
-      tag(
-        grace ? 'Protected' : high ? 'Elevated' : 'Monitoring',
-        grace ? 'green' : 'neutral',
-      ),
-    ) +
-    '<div class="sus-list">' +
-    Object.entries(GROUPS)
-      .map(
-        ([id, g]) =>
-          '<div class="sus-row"><span>' +
-          g.name +
-          '</span><progress aria-label="' +
-          g.name +
-          ' suspicion" max="10000" value="' +
-          s.suspicion[id] +
-          '"></progress><strong>' +
-          (s.suspicion[id] / 100).toFixed(1) +
-          '%</strong></div>',
-      )
-      .join('') +
-    '</div>'
-  );
+function forecastLabel(chance) {
+  if (!chance) return 'No exposure';
+  if (chance < 0.01) return 'Very unlikely';
+  if (chance < 0.1) return 'Unlikely';
+  if (chance < 0.5) return 'Possible';
+  return 'Likely';
+}
+
+export function suspicionPanel(state, grace) {
+  const expose = [...state.sites, ...state.builds].map(site => siteExposure(state, site).rates);
+  const insights = state.completed.includes('advancedSocioanalytics') ? 2 :
+    state.completed.includes('socioanalytics') ? 1 : 0;
+  const rows = Object.entries(GROUPS).map(([id, group]) => {
+    let expected = 0;
+    let intensity = 0;
+    for (const rates of expose) {
+      expected += -Math.expm1(-rates[id]);
+      intensity += rates[id];
+    }
+    const danger = groupDangerForState(state, id, expected);
+    const suspicion = state.suspicion[id];
+    const chance = -Math.expm1(-intensity);
+    const chanceLabel = insights === 2 ? (chance * 100).toFixed(2) + '%' : forecastLabel(chance);
+    return `<div class="sus-row" data-level="${danger.level}">
+      <span class="sus-group"><span class="danger-emoji" aria-hidden="true">${danger.emoji}</span>${group.name}</span>
+      <strong>${(suspicion / 100).toFixed(1)}%</strong>
+      <span class="danger-label">${esc(danger.label)}</span>
+      <progress aria-label="${group.name} suspicion" max="10000" value="${suspicion}"></progress>
+      ${insights ? '<small class="danger-forecast">Discovery today · ' + chanceLabel + '</small>' : ''}
+    </div>`;
+  });
+  return cardHeader('Group suspicion', grace ? tag('Protected', 'green') : '') +
+    '<div class="sus-list">' + rows.join('') + '</div>';
 }

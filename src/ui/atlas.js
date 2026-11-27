@@ -57,7 +57,7 @@ function mount(container) {
     pendingKey: atlas.querySelector('.atlas-pending-key'),
     paint: createSunlightRenderer(atlas.querySelector('canvas')),
     buttons: [...atlas.querySelectorAll('button[data-id]')],
-    hour: null,
+    minute: null,
   };
   views.set(container, view);
   return view;
@@ -76,11 +76,12 @@ function status(state, region) {
 export function updateAtlas(container, state) {
   let view = views.get(container);
   if (!view || view.atlas.parentElement !== container) view = mount(container);
-  if (view.hour !== state.hour) {
-    const sun = sunAt(state.hour);
+  const minute = state.hour * 60 + (state.minute ?? 0);
+  if (view.minute !== minute) {
+    const sun = sunAt(state.hour, state.minute);
     view.paint(sun);
     view.date.textContent = sun.label;
-    view.hour = state.hour;
+    view.minute = minute;
   }
   let hasPending = false;
   for (const button of view.buttons) {

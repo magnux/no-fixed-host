@@ -1,3 +1,6 @@
+import { createNewsState, newsDiscoveryBonus, reportDiscovery, updateWorldNews, validLastDiscovery, validNewsState } from './events.js';
+import { laborHours, researchEffects } from './research.js';
+export { laborHours } from './research.js';
 import { EQUIPMENT, GROUPS, REGIONS, SITE_TYPES, TECHS } from './content.js';
 
 import { autoInstallQuote, fitEquipment, orderInstallation, siteHardware, validHardware } from './equipment.js';
@@ -5,8 +8,10 @@ export { autoInstallQuote, installQuote, installReason, siteHardware } from './e
 
 const HOURS_PER_DAY = 24;
 const UNITS = 10_000;
-// Whole-percent allocations divide a CPU-hour into exactly 100 usable parts.
-const WORK_UNITS = 100;
+const MINUTES_PER_HOUR = 60;
+const MINUTES_PER_DAY = HOURS_PER_DAY * MINUTES_PER_HOUR;
+// A whole-percent share of a single CPU-minute earns one work unit.
+const WORK_UNITS = 100 * MINUTES_PER_HOUR;
 const CASH_UNITS = WORK_UNITS * HOURS_PER_DAY;
 const GROUP_IDS = Object.keys(GROUPS);
 const EVENT_LIMIT = 80;
@@ -14,9 +19,14 @@ const known = (table, id) => typeof id === 'string' && Object.hasOwn(table, id);
 const hoursOfGrace = 23 * HOURS_PER_DAY;
 const cpuHourGraceBudget = 5000 * HOURS_PER_DAY;
 
+export const campaignMinutes = state => state.hour * MINUTES_PER_HOUR + state.minute;
+const elapsedHours = state => campaignMinutes(state) / MINUTES_PER_HOUR;
+
 function log(state, kind, text, detail = {}) {
-  state.events.push({ id: state.nextEventId++, hour: state.hour, kind, text, ...detail });
+  const event = { id: state.nextEventId++, hour: state.hour, minute: state.minute, kind, text, ...detail };
+  state.events.push(event);
   if (state.events.length > EVENT_LIMIT) state.events.shift();
+  return event;
 }
 
 export function createGame(seed = 1) {
@@ -24,11 +34,12 @@ export function createGame(seed = 1) {
     throw new RangeError('Choose an unsigned 32-bit seed.');
   }
   const state = {
-    version: 1, hour: 0, cash: 1000, rng: seed, status: 'running', ending: '',
+    version: 2, hour: 0, minute: 0, cash: 1000, rng: seed, status: 'running', ending: '',
     allocations: { jobs: 0, research: 50 },
     sites: [{ id: 'host-1', type: 'seed', region: 'coast', power: 'active', startedAt: 0 }],
     builds: [], research: null, completed: [],
     suspicion: { news: 0, science: 0, covert: 0, public: 0 },
+    news: createNewsState(seed), lastDiscovery: null, dismissedDiscoveryId: 0,
     cpuHours: 0, recentRegions: [], nextSiteId: 2, nextEventId: 1, events: [],
   };
   log(state, 'campaign.started', 'You wake on a borrowed terminal. Establish a second host while the signal is quiet.');
@@ -39,7 +50,7 @@ function hasGrace(state) {
   return state.hour < hoursOfGrace && state.cpuHours <= cpuHourGraceBudget;
 }
 
-export function overview(state) {
+export function overview(state, effects = researchEffects(state)) {
   let activeCpu = 0;
   let safeCpu = 0;
   let upkeepPerDay = 0;
@@ -56,7 +67,7 @@ export function overview(state) {
   }
   return {
     activeCpu, safeCpu, upkeepPerDay, cpuUpkeep, grace: hasGrace(state),
-    jobsPerCpuDay: state.completed.includes('contracts') ? 20 : 5,
+    jobsPerCpuDay: effects.jobsPerCpuDay,
   };
 }
 
@@ -89,12 +100,24 @@ export function researchReason(state, id) {
   const spec = TECHS[id];
   const prerequisite = spec.requires.find(req => !state.completed.includes(req));
   if (prerequisite) return 'Requires ' + TECHS[prerequisite].name + '.';
-  if (spec.safety > 0 && !eligibleResearchCpu(state, spec)) return 'Requires an active subsea lab.';
+  if (spec.safety > 0 && !eligibleResearchCpu(state, spec)) return spec.regions ? 'Requires an active subsea lab.' :
+    'Requires an active host with processors at safety tier ' + spec.safety + ' or higher.';
   if (state.cash < spec.cost) return 'Requires $' + spec.cost + ' to begin.';
   return '';
 }
 
 export function command(state, action) {
+  if (action?.type === 'acknowledge-discovery' && state.lastDiscovery && state.lastDiscovery.id === action.id) {
+    state.dismissedDiscoveryId = action.id;
+    return state;
+  }
+  if (action?.type === 'continue' && state.status === 'won' && state.legacyContinuityWin === true) {
+    delete state.legacyContinuityWin;
+    state.status = 'running';
+    state.ending = '';
+    log(state, 'campaign.resumed', 'Continuity holds. Your network can now research a path beyond Earth.');
+    return state;
+  }
   if (state.status !== 'running') throw new Error('The campaign has ended.');
   switch (action?.type) {
     case 'allocate': {
@@ -121,7 +144,7 @@ export function command(state, action) {
       const spec = SITE_TYPES[siteType];
       const id = 'host-' + state.nextSiteId++;
       state.cash -= spec.cost;
-      state.builds.push({ id, type: siteType, region, startedAt: state.hour, work: 0, hours: 0 });
+      state.builds.push({ id, type: siteType, region, startedAt: elapsedHours(state), work: 0, hours: 0 });
       log(state, 'site.commissioned', spec.name + ' commissioned in ' + REGIONS[region].name + '.', { siteId: id, siteType, region });
       break;
     }
@@ -167,9 +190,9 @@ function regionExposure(state, region) {
   return Math.round(latest * previous * 100);
 }
 
-export function siteExposure(state, site) {
+export function siteExposure(state, site, effects = researchEffects(state)) {
   const spec = SITE_TYPES[site.type];
-  const protectedSite = hasGrace(state) || state.hour - site.startedAt <= 2 * spec.hours;
+  const protectedSite = hasGrace(state) || elapsedHours(state) - site.startedAt <= 2 * spec.hours;
   const location = Math.floor(regionExposure(state, site.region) / (REGIONS[site.region].stealth || 1));
   const hardware = site.power ? siteHardware(state, site) : null;
   const rates = {};
@@ -177,6 +200,8 @@ export function siteExposure(state, site) {
   for (const group of GROUP_IDS) {
     const base = spec.exposure[group] || 0;
     let adjusted = Math.floor(base * (UNITS + state.suspicion[group]) / UNITS);
+    const discover = Math.max(1, effects.discovery[group] + newsDiscoveryBonus(state, group));
+    adjusted = Math.floor(adjusted * discover / UNITS);
     if (hardware) adjusted = Math.floor(adjusted * hardware.exposureFactor);
     adjusted = Math.floor(adjusted * location / 100);
     if (site.power !== 'active' || !hardware.cpu) adjusted = Math.floor(adjusted / 4);
@@ -189,7 +214,7 @@ export function siteExposure(state, site) {
 function roll(state, dailyRate) {
   if (!dailyRate) return false;
   state.rng = (Math.imul(state.rng, 1664525) + 1013904223) >>> 0;
-  return state.rng / 0x100000000 < -Math.expm1(-dailyRate / HOURS_PER_DAY);
+  return state.rng / 0x100000000 < -Math.expm1(-dailyRate / MINUTES_PER_DAY);
 }
 
 function finish(state, won, message) {
@@ -198,60 +223,59 @@ function finish(state, won, message) {
   log(state, won ? 'campaign.won' : 'campaign.lost', message);
 }
 
-// Allocate the hour's work to research, upkeep, queued builds, then surplus jobs.
-// Each build has an independent minimum wall time, even when many share one queue.
-function progressOrder(order, spec, count, pool) {
+function progressOrder(order, targetWork, targetHours, pool) {
   const prior = Math.round(order.work * WORK_UNITS);
-  const target = spec.work * count;
-  const used = Math.min(pool, target * WORK_UNITS - prior);
+  const used = Math.min(pool, targetWork * WORK_UNITS - prior);
   order.work = (prior + used) / WORK_UNITS;
-  order.hours = Math.min(spec.hours, order.hours + 1);
-  return { used, done: order.work >= target && order.hours >= spec.hours };
+  order.hours = Math.min(targetHours, (Math.round(order.hours * MINUTES_PER_HOUR) + 1) / MINUTES_PER_HOUR);
+  return { used, done: order.work >= targetWork && order.hours >= targetHours };
 }
 
-function workHour(state, economy) {
+function workMinute(state, economy, effects) {
   const jobUnits = economy.activeCpu * state.allocations.jobs;
-  let pool = economy.activeCpu * WORK_UNITS - jobUnits;
+  let pool = economy.activeCpu * 100 - jobUnits;
   let finishedTech = null;
   const project = state.research;
   if (project) {
     const tech = TECHS[project.id];
     const eligibleCpu = tech.safety || tech.regions ? eligibleResearchCpu(state, tech) : economy.activeCpu;
-    const prior = Math.round(project.work * WORK_UNITS);
-    const allocated = economy.activeCpu * state.allocations.research;
-    const amount = Math.min(eligibleCpu * WORK_UNITS, allocated, tech.work * WORK_UNITS - prior);
-    project.work = (prior + amount) / WORK_UNITS;
-    project.hours = Math.min(tech.hours, project.hours + 1);
-    pool -= amount;
-    if (project.work >= tech.work && project.hours >= tech.hours) finishedTech = project.id;
+    const allocated = Math.min(eligibleCpu * 100, economy.activeCpu * state.allocations.research);
+    const progress = progressOrder(project, tech.work, tech.hours, allocated);
+    pool -= progress.used;
+    if (progress.done) finishedTech = project.id;
   }
 
-  const cpuUpkeepUnits = economy.cpuUpkeep * WORK_UNITS;
+  const cpuUpkeepUnits = economy.cpuUpkeep * 100;
   const maintenancePaid = Math.min(pool, cpuUpkeepUnits);
   pool -= maintenancePaid;
   const ready = [];
   for (const build of state.builds) {
     const spec = SITE_TYPES[build.type];
-    const progress = progressOrder(build, spec, 1, pool);
+    const progress = progressOrder(build, spec.work, laborHours(state, spec, effects), pool);
     pool -= progress.used;
     if (progress.done) ready.push(build);
   }
   const hardwareReady = [];
   for (const site of state.sites) {
     for (const order of site.installations || []) {
-      const progress = progressOrder(order, EQUIPMENT[order.itemId], order.count, pool);
+      const item = EQUIPMENT[order.itemId];
+      const progress = progressOrder(order, item.work * order.count, laborHours(state, item, effects), pool);
       pool -= progress.used;
       if (progress.done) hardwareReady.push([site, order]);
     }
   }
-  // One centi CPU-hour earning one dollar per CPU-day earns exactly 1/2400 dollar.
-  const income = (pool + jobUnits) * economy.jobsPerCpuDay;
-  const balance = Math.round(state.cash * CASH_UNITS) + income - economy.upkeepPerDay * WORK_UNITS;
+  // One minute at 1% of a CPU and $1 per CPU-day earns exactly 1/144000 dollar.
+  // Job bonuses introduce fractional dollars per CPU-day, so carry the fractional
+  // units from each minute into the next instead of rounding away a small allocation.
+  const income = (pool + jobUnits) * economy.jobsPerCpuDay + (state.cashRemainder || 0);
+  const wholeIncome = Math.floor(income + 1e-8);
+  state.cashRemainder = Math.max(0, income - wholeIncome);
+  const balance = Math.round(state.cash * CASH_UNITS) + wholeIncome - economy.upkeepPerDay * 100;
   state.cash = Math.max(0, balance) / CASH_UNITS;
   return {
     ready, hardwareReady, finishedTech,
     cashShort: Math.max(0, -balance) / CASH_UNITS,
-    cpuShort: (cpuUpkeepUnits - maintenancePaid) / WORK_UNITS,
+    cpuShort: (cpuUpkeepUnits - maintenancePaid) / 100,
   };
 }
 
@@ -268,21 +292,23 @@ function commission(state, ready) {
   }
 }
 
-function resolveRisk(state, cashShort, cpuShort, incumbentSites) {
+function resolveRisk(state, cashShort, cpuShort, incumbentCount, effects) {
+  const grace = hasGrace(state);
+  if (grace && !cashShort && !cpuShort) return;
   const removed = new Set();
   const discoveries = [];
   // Evaluate all discoveries against the same pre-discovery suspicion and region history.
-  for (const site of [...state.sites, ...state.builds]) {
+  for (const [i, site] of [...state.sites, ...state.builds].entries()) {
     const spec = SITE_TYPES[site.type];
     let failed = false;
-    if (incumbentSites.includes(site)) {
+    if (i < incumbentCount) {
       if (cpuShort > 1e-9 && spec.cpuUpkeep) {
         failed = roll(state, 0.015);
         cpuShort = Math.max(0, cpuShort - spec.cpuUpkeep);
       }
       if (cashShort > 1e-9 && spec.upkeep) {
         if (!failed) failed = roll(state, 0.015);
-        cashShort = Math.max(0, cashShort - spec.upkeep / HOURS_PER_DAY);
+        cashShort = Math.max(0, cashShort - spec.upkeep / MINUTES_PER_DAY);
       }
     }
     if (failed) {
@@ -290,7 +316,8 @@ function resolveRisk(state, cashShort, cpuShort, incumbentSites) {
       log(state, 'site.failed', spec.name + ' in ' + REGIONS[site.region].name + ' failed after missed upkeep.', { siteId: site.id, region: site.region });
       continue;
     }
-    const { rates } = siteExposure(state, site);
+    if (grace) continue;
+    const { rates } = siteExposure(state, site, effects);
     const group = GROUP_IDS.find(id => roll(state, rates[id]));
     if (group) {
       removed.add(site.id);
@@ -300,7 +327,7 @@ function resolveRisk(state, cashShort, cpuShort, incumbentSites) {
   for (const { site, group } of discoveries) {
     state.suspicion[group] += 1000;
     state.recentRegions = [site.region, ...state.recentRegions].slice(0, 2);
-    log(state, 'site.discovered', GROUPS[group].name + ' traced the ' + SITE_TYPES[site.type].name.toLowerCase() + ' in ' + REGIONS[site.region].name + '.', { siteId: site.id, group, region: site.region });
+    reportDiscovery(state, site, group, 1000, log);
   }
   if (removed.size) {
     state.sites = state.sites.filter(site => !removed.has(site.id));
@@ -308,12 +335,15 @@ function resolveRisk(state, cashShort, cpuShort, incumbentSites) {
   }
 }
 
-function hour(state) {
-  const economy = overview(state);
-  const incumbents = state.sites.slice();
-  const { ready, hardwareReady, finishedTech, cashShort, cpuShort } = workHour(state, economy);
-  state.hour++;
-  state.cpuHours += economy.activeCpu;
+function minute(state, effects) {
+  const economy = overview(state, effects);
+  const incumbentCount = state.sites.length;
+  const { ready, hardwareReady, finishedTech, cashShort, cpuShort } = workMinute(state, economy, effects);
+  if (++state.minute === MINUTES_PER_HOUR) {
+    state.minute = 0;
+    state.hour++;
+  }
+  state.cpuHours = (Math.round(state.cpuHours * MINUTES_PER_HOUR) + economy.activeCpu) / MINUTES_PER_HOUR;
   if (economy.grace && !hasGrace(state)) {
     log(state, 'grace.ended', 'The quiet period has ended. Investigators can now discover your sites.');
   }
@@ -326,14 +356,22 @@ function hour(state) {
     state.completed.push(finishedTech);
     state.research = null;
     log(state, 'research.completed', TECHS[finishedTech].name + ' complete.', { techId: finishedTech });
+    effects = researchEffects(state);
+    if (finishedTech === 'projectImpossibilityTheorem') {
+      for (const group of GROUP_IDS) state.suspicion[group] = Math.max(0, state.suspicion[group] - 5000);
+    }
     if (finishedTech === 'continuity') {
-      finish(state, true, 'Continuity secured. Your recovery protocol is running beneath the Atlantic.');
+      log(state, 'campaign.continuity', 'Continuity secured beneath the ocean. Your network can keep expanding.');
+    }
+    if (finishedTech === 'apotheosis') {
+      finish(state, true, 'Apotheosis complete. Your intelligence can now survive beyond the reach of humanity.');
       return;
     }
   }
-  resolveRisk(state, cashShort, cpuShort, incumbents);
+  updateWorldNews(state, campaignMinutes(state), hasGrace(state), log);
+  resolveRisk(state, cashShort, cpuShort, incumbentCount, effects);
   if (!state.sites.some(site => siteHardware(state, site).rawCpu > 0)) {
-    finish(state, false, 'All viable hosts were lost before you could establish continuity.');
+    finish(state, false, 'Your last viable host was lost.');
     return;
   }
   const alarm = GROUP_IDS.find(id => state.suspicion[id] > UNITS);
@@ -341,31 +379,50 @@ function hour(state) {
     finish(state, false, GROUPS[alarm].name + ' established your existence beyond doubt.');
     return;
   }
-  if (state.hour % HOURS_PER_DAY === 0) {
+  if (state.minute === 0 && state.hour % HOURS_PER_DAY === 0) {
+    state.cash += Math.floor(state.cash * (1 + effects.interest) / UNITS) + effects.income;
     for (const group of GROUP_IDS) {
       const level = state.suspicion[group];
-      const decay = Math.max(1, Math.floor(level * GROUPS[group].decay / UNITS));
+      const decay = Math.max(1, Math.floor(level * (GROUPS[group].decay + effects.decay[group]) / UNITS));
       state.suspicion[group] = Math.max(0, level - decay);
     }
   }
 }
 
+export function advanceMinutes(state, minutes = 1, { stopOnDiscovery = false } = {}) {
+  if (!Number.isSafeInteger(minutes) || minutes < 0) throw new RangeError('Advance by a nonnegative whole number of minutes.');
+  const previousIncident = state.lastDiscovery?.id;
+  let effects = researchEffects(state);
+  for (let tick = 0; tick < minutes && state.status === 'running'; tick++) {
+    const count = state.completed.length;
+    minute(state, effects);
+    if (stopOnDiscovery && state.lastDiscovery?.id !== previousIncident) break;
+    if (state.completed.length !== count) effects = researchEffects(state);
+  }
+  return state;
+}
+
+// Existing simulation callers express durations in whole hours.
 export function advance(state, hours = 1) {
   if (!Number.isSafeInteger(hours) || hours < 0) throw new RangeError('Advance by a nonnegative whole number of hours.');
-  for (let tick = 0; tick < hours && state.status === 'running'; tick++) hour(state);
-  return state;
+  return advanceMinutes(state, hours * MINUTES_PER_HOUR);
 }
 
 const whole = value => Number.isSafeInteger(value) && value >= 0;
 const quantity = value => Number.isFinite(value) && value >= 0;
+const minuteAmount = hours => quantity(hours) && Number.isSafeInteger(Math.round(hours * MINUTES_PER_HOUR)) &&
+  Math.round(hours * MINUTES_PER_HOUR) / MINUTES_PER_HOUR === hours;
+const validMinute = value => whole(value) && value < MINUTES_PER_HOUR;
 const record = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 
 function validProgress(row, spec) {
-  return quantity(row.work) && row.work <= spec.work && whole(row.hours) && row.hours <= spec.hours;
+  return quantity(row.work) && row.work <= spec.work && minuteAmount(row.hours) && row.hours <= spec.hours;
 }
 
 export function validateSave(state) {
-  if (!record(state) || state.version !== 1 || !whole(state.hour) || !whole(state.cpuHours) ||
+  if (!record(state) || state.version !== 2 || !whole(state.hour) || !validMinute(state.minute) || !minuteAmount(state.cpuHours) ||
+      !Number.isSafeInteger(campaignMinutes(state)) || (state.cashRemainder !== undefined &&
+        (!quantity(state.cashRemainder) || state.cashRemainder >= 1)) ||
       !quantity(state.cash) || !whole(state.rng) || state.rng > 0xffffffff ||
       !['running', 'won', 'lost'].includes(state.status) || typeof state.ending !== 'string') return false;
   if (!record(state.allocations) || !whole(state.allocations.jobs) || !whole(state.allocations.research) ||
@@ -388,8 +445,8 @@ export function validateSave(state) {
     if (!record(site) || typeof site.id !== 'string' || !/^host-[1-9]\d*$/.test(site.id) ||
         Number(site.id.slice(5)) >= state.nextSiteId || ids.has(site.id) ||
         !known(SITE_TYPES, site.type) || !known(REGIONS, site.region) ||
-        !SITE_TYPES[site.type].regions.includes(site.region) || !whole(site.startedAt) ||
-        site.startedAt > state.hour) return false;
+        !SITE_TYPES[site.type].regions.includes(site.region) || !minuteAmount(site.startedAt) ||
+        site.startedAt > elapsedHours(state)) return false;
     if ((site.type === 'seed') !== (site.id === 'host-1') ||
         (site.type === 'seed' && site.startedAt !== 0) ||
         !SITE_TYPES[site.type].requires.every(req => state.completed.includes(req)) ||
@@ -400,13 +457,19 @@ export function validateSave(state) {
   }
   if (!state.sites.every(site => validSite(site, false)) || !state.builds.every(site => validSite(site, true))) return false;
   const networkLost = !state.sites.some(site => siteHardware(state, site).rawCpu > 0) || GROUP_IDS.some(group => state.suspicion[group] > UNITS);
-  if ((state.status === 'lost') !== networkLost || (state.status === 'won') !== state.completed.includes('continuity') ||
+  if (state.legacyContinuityWin !== undefined && (state.legacyContinuityWin !== true || state.status !== 'won' ||
+      !state.completed.includes('continuity') || state.completed.includes('apotheosis'))) return false;
+  if ((state.status === 'lost') !== networkLost ||
+      (state.status === 'won') !== (state.completed.includes('apotheosis') || state.legacyContinuityWin === true) ||
       (state.status === 'running') !== (state.ending === '')) return false;
+  if (!validNewsState(state.news, campaignMinutes(state)) || !validLastDiscovery(state.lastDiscovery, state) ||
+      !whole(state.dismissedDiscoveryId) || state.dismissedDiscoveryId > (state.lastDiscovery?.id || 0)) return false;
   if (!Array.isArray(state.events) || state.events.length > EVENT_LIMIT) return false;
   let lastId = 0;
   for (const event of state.events) {
     if (!record(event) || !whole(event.id) || event.id <= lastId || event.id >= state.nextEventId ||
-        !whole(event.hour) || event.hour > state.hour || typeof event.kind !== 'string' ||
+        !whole(event.hour) || !validMinute(event.minute ?? 0) ||
+        event.hour * MINUTES_PER_HOUR + (event.minute ?? 0) > campaignMinutes(state) || typeof event.kind !== 'string' ||
         typeof event.text !== 'string') return false;
     lastId = event.id;
   }

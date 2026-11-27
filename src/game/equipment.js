@@ -1,4 +1,5 @@
 import { EQUIPMENT, SITE_TYPES, TECHS } from './content.js';
+import { laborHours } from './research.js';
 
 const SLOTS = ['cpu', 'network', 'reactor', 'security'];
 const slotsOf = site => SITE_TYPES[site.type];
@@ -44,7 +45,7 @@ export function installQuote(state, siteId, itemId, count = 1) {
   const site = state.sites.find(s => s.id === siteId);
   const item = Object.hasOwn(EQUIPMENT, itemId) ? EQUIPMENT[itemId] : null;
   if (!item || !site) return { cost: 0, work: 0, hours: 0, maxCount: 0 };
-  return { cost: item.cost * count, work: item.work * count, hours: item.hours, maxCount: room(site, itemId) };
+  return { cost: item.cost * count, work: item.work * count, hours: laborHours(state, item), maxCount: room(site, itemId) };
 }
 
 export function installReason(state, siteId, itemId, count = 1) {
@@ -145,6 +146,7 @@ export function validHardware(state, site) {
     const prior = installed[item.slot];
     const cap = (item.slot === 'cpu' ? spec.slots : 1) - (prior?.itemId === p.itemId ? prior.count : 0);
     return p.count <= cap && Number.isFinite(p.work) && p.work >= 0 && p.work <= item.work * p.count &&
-      Number.isSafeInteger(p.hours) && p.hours >= 0 && p.hours <= item.hours;
+      Number.isFinite(p.hours) && Math.abs(p.hours * 60 - Math.round(p.hours * 60)) < 1e-8 &&
+      p.hours >= 0 && p.hours <= item.hours;
   });
 }

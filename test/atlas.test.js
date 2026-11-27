@@ -25,6 +25,8 @@ test('daylight travels west with game time and repeats after a 365-day year', ()
   assert.ok(noon(0, 0) < noon(0, 90) && noon(0, 90) < noon(0, 180));
   assert.ok(evening(0, -90) < 0.25 && evening(0, 90) > 0.7);
   assert.deepEqual(sunAt(24 * 365 + 18), sunAt(18));
+  assert.equal(sunAt(18, 1).longitude, sunAt(18).longitude - 0.25);
+  assert.match(sunAt(18, 1).label, /18:01 UTC/);
 });
 
 test('solstices reverse midnight sunlight and midday darkness at the poles', () => {

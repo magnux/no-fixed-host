@@ -23,12 +23,13 @@
         </div>
         <div class="clock-controls" aria-label="Simulation controls">
           <span id="clock-mode" class="clock-mode"></span>
-          <button type="button" id="run" data-action="run"></button>
+          <button type="button" id="pause" data-action="pause" title="Pause the simulation">Pause</button>
+          <button type="button" id="run" data-action="run" title="Advance one game minute per tick">Run</button>
           <button
             type="button"
             id="fast"
             data-action="fast"
-            title="Fast simulation speed"
+            title="Cycle fast speed: 1 hour, 6 hours, 1 day"
           ></button>
           <button
             type="button"
@@ -57,7 +58,7 @@
       <div class="title-row">
         <div class="briefing">
           <h1>Network operations</h1>
-          <p>You woke on a borrowed terminal. Keep a copy alive long enough to establish a secure home beneath the ocean.</p>
+          <p>You woke on a borrowed terminal. Keep a second copy alive, then find a way out before humanity traces your network.</p>
         </div>
         <span id="game-date"></span>
       </div>
@@ -106,20 +107,31 @@
               <div id="research-summary" class="research-summary"></div>
             </div>
           </section>
-          <section id="suspicion" class="panel"></section>
         </aside>
         <div class="primary">
           <nav id="nav" aria-label="Campaign views"></nav>
           <section id="view" aria-label="Campaign view"></section>
         </div>
         <aside class="network-dock" aria-label="Network intelligence">
-          <section id="inventory" class="panel dock-panel"></section>
+          <section id="newswire" class="panel dock-panel" aria-label="Newswire"></section>
           <section id="recent-activity" class="panel dock-panel"></section>
+          <section id="suspicion" class="panel dock-panel"></section>
         </aside>
       </div>
       <div id="notice" role="status" aria-live="polite"></div>
       <noscript>Enable JavaScript to play No Fixed Host.</noscript>
     </main>
+    <dialog id="incident-dialog" aria-labelledby="incident-title" aria-describedby="incident-text">
+      <p class="incident-label">Discovery report</p>
+      <h2 id="incident-title"></h2>
+      <p class="incident-source" id="incident-source"></p>
+      <p id="incident-text"></p>
+      <p class="incident-consequence" id="incident-consequence"></p>
+      <div class="dialog-actions">
+        <button type="button" data-action="inspect-discovery">Inspect region</button>
+        <button type="button" class="primary-button" data-action="acknowledge-discovery" autofocus>Acknowledge</button>
+      </div>
+    </dialog>
     <dialog id="reset-dialog">
       <h2>Start a new campaign?</h2>
       <p>
