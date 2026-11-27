@@ -42,7 +42,22 @@ flowchart TD
     Bubble --> Victory["Research Apotheosis"]
 ```
 
-The undersea Continuity protocol is a separate milestone. It combines the Contract brokerage and Subsea robotics line with an operational ocean host. A campaign can continue into space after securing Continuity. Players who already won an earlier version can select **Continue campaign** to keep their network.
+## Offshore recovery
+
+Our three campaign projects now join the original tree at two points. Personal Identification qualifies the AI for basic jobs at $20 per CPU-day. Contract brokerage then increases pay by 5% of the base rate, bringing those jobs to $21. Autonomous Vehicles lets the AI operate where it has no physical presence. Subsea robotics needs both the engineering capability and the contracts that supply the recovery operation.
+
+```mermaid
+flowchart TD
+    ID["Personal Identification"] --> Contracts["Contract brokerage"]
+    Chip["Microchip Design"] --> Vehicles["Autonomous Vehicles"]
+    Contracts --> Robotics["Subsea robotics"]
+    Vehicles --> Robotics
+    Vehicles --> Lab["Build and operate an ocean lab"]
+    Robotics --> Continuity["Continuity protocol"]
+    Lab -->|eligible compute| Continuity
+```
+
+The small subsea lab opens with Autonomous Vehicles. The large lab opens with Pressure Domes. Players can build and equip an ocean lab while researching the recovery protocol. The campaign continues into space after Continuity. Players who won an earlier version at that milestone can select **Continue campaign** to keep their network.
 
 ## Branch reference
 
@@ -141,8 +156,8 @@ The undersea Continuity protocol is a separate milestone. It combines the Contra
 
 | Project | Direct prerequisites | Safety | $ / CPU-h | Effect and direct unlocks |
 | --- | --- | --- | --- | --- |
-| Contract brokerage | None | 0 | $50 / 300 | Secure a basic work contract paying $20 per CPU-day and begin the Continuity project line. |
-| Subsea robotics | Contract brokerage | 0 | $300 / 980 | Design the offshore recovery equipment needed for the Continuity protocol. Autonomous Vehicles unlocks the ocean site. |
+| Contract brokerage | Personal Identification | 0 | $50 / 300 | Negotiate recurring contracts under your established identity. Paid jobs earn an additional 5% of base pay, and the contracts can finance offshore recovery operations. |
+| Subsea robotics | Contract brokerage, Autonomous Vehicles | 0 | $300 / 980 | Use autonomous vehicles and contracted supplies to build the recovery systems for the Continuity protocol. |
 | Continuity protocol | Subsea robotics | 1 (Ocean) | $200 / 620 | Establish a secure offshore recovery copy and complete the opening campaign milestone. |
 
 [Original projects](https://github.com/singularity/singularity/blob/v1.1/singularity/data/techs.dat) · [Facilities](https://github.com/singularity/singularity/blob/v1.1/singularity/data/bases.dat) · [Equipment](https://github.com/singularity/singularity/blob/v1.1/singularity/data/items.dat) · [Locations](https://github.com/singularity/singularity/blob/v1.1/singularity/data/locations.dat) · [Jobs](https://github.com/singularity/singularity/blob/v1.1/singularity/data/tasks.dat)

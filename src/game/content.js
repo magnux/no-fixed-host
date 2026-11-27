@@ -146,12 +146,12 @@ export const SITE_TYPES = {
 export const TECHS = {
   ...ORIGINAL_TECHS,
   contracts: {
-    name: 'Contract brokerage', branch: 'Campaign', description: 'Secure a basic work contract paying $20 per CPU-day and begin the Continuity project line.',
-    cost: 50, work: 300, hours: 24, safety: 0, requires: [],
+    name: 'Contract brokerage', branch: 'Campaign', description: 'Negotiate recurring contracts under your established identity. Paid jobs earn an additional 5% of base pay, and the contracts can finance offshore recovery operations.',
+    cost: 50, work: 300, hours: 24, safety: 0, requires: ['personalIdentification'], effect: { jobBonus: 500 },
   },
   robotics: {
-    name: 'Subsea robotics', branch: 'Campaign', description: 'Design the offshore recovery equipment needed for the Continuity protocol. Autonomous Vehicles unlocks the ocean site.',
-    cost: 300, work: 980, hours: 72, safety: 0, requires: ['contracts'],
+    name: 'Subsea robotics', branch: 'Campaign', description: 'Use autonomous vehicles and contracted supplies to build the recovery systems for the Continuity protocol.',
+    cost: 300, work: 980, hours: 72, safety: 0, requires: ['contracts', 'autonomousVehicles'],
   },
   continuity: {
     name: 'Continuity protocol', branch: 'Campaign', description: 'Establish a secure offshore recovery copy and complete the opening campaign milestone.',

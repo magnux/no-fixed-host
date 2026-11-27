@@ -21,7 +21,7 @@ flowchart TD
     Designs --> Host
 ```
 
-**Run** advances one minute per tick. From normal speed or pause, the first **Fast** click selects an hour, the second six hours and the third one day. The fourth returns to an hour. A larger step processes the intervening minutes. The atlas rotates and changes season with the game calendar, starting on 1 January at 00:00 UTC. Daylight and darkness indicate local solar time.
+Each simulation tick advances one minute. **Run** processes one tick per real second. The three **Fast** settings process 60, 360 and 1,440 ticks per second, and the fourth click returns to the first setting. The visible clock and daylight update as time passes between display frames. If a discovery happens partway through a frame’s work, the clock stops on that minute. The atlas starts on 1 January at 00:00 UTC and follows the campaign’s day and season.
 
 ## Where to build
 

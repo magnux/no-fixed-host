@@ -153,7 +153,7 @@ test('allocated research and construction draw on the same finite hourly capacit
   const game = createGame(9);
   allocate(game, 0, 50);
   build(game, 'relay', 'europe');
-  research(game, 'contracts');
+  research(game, 'stealth');
   const capacity = overview(game).activeCpu;
   advance(game);
   assert.ok(game.research.work > 0 && game.builds[0].work > 0);
@@ -162,6 +162,7 @@ test('allocated research and construction draw on the same finite hourly capacit
 
 test('fractional research allocation completes on the exact hour and pays the remaining cycles once', () => {
   const game = createGame(71);
+  game.completed.push('intrusion', 'personalIdentification');
   build(game, 'relay', 'europe');
   advance(game, SITE_TYPES.relay.hours);
   assert.equal(overview(game).activeCpu, 6);
@@ -172,8 +173,8 @@ test('fractional research allocation completes on the exact hour and pays the re
   assert.equal(game.research.id, 'contracts');
   advance(game, 1);
   assert.equal(game.research, null);
-  assert.deepEqual(game.completed, ['contracts']);
-  const surplusRevenue = 250 * (6 - 1.2) * 5 / 24;
+  assert.deepEqual(game.completed, ['intrusion', 'personalIdentification', 'contracts']);
+  const surplusRevenue = 250 * (6 - 1.2) * 20 / 24;
   const upkeep = 250 * SITE_TYPES.relay.upkeep / 24;
   assert.ok(Math.abs(game.cash - (startingCash + surplusRevenue - upkeep)) < 1e-8);
   assert.equal(game.events.filter(e => e.kind === 'research.completed').length, 1);
@@ -255,12 +256,8 @@ test('a seeded playable opening can establish ocean Continuity and keep expandin
   build(game, 'relay', 'europe');
   build(game, 'relay', 'coast');
   build(game, 'relay', 'africa');
-  research(game, 'contracts');
-  until(game, () => game.completed.includes('contracts'));
-  until(game, () => !researchReason(game, 'robotics'));
-  research(game, 'robotics');
-  until(game, () => game.completed.includes('robotics'));
-  for (const id of ['telepresence', 'parallelComputation', 'microchipDesign', 'autonomousVehicles']) {
+  for (const id of ['intrusion', 'personalIdentification', 'contracts', 'telepresence', 'parallelComputation',
+    'microchipDesign', 'autonomousVehicles', 'robotics']) {
     until(game, () => !researchReason(game, id));
     research(game, id);
     until(game, () => game.completed.includes(id));
@@ -312,7 +309,7 @@ test('work, construction, income, and timestamps advance in real game minutes', 
   assert.equal(campaignMinutes(s), 13);
   assert.ok(s.cash > 1000);
   build(s, 'relay', 'europe');
-  research(s, 'contracts');
+  research(s, 'stealth');
   assert.equal(s.builds[0].startedAt, 13 / 60);
   assert.equal(s.events.at(-1).minute, 13);
   advanceMinutes(s, 1);

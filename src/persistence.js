@@ -1,4 +1,5 @@
-import { validateSave } from './game/engine.js';
+import { CAMPAIGN_VERSION, log, validateSave } from './game/engine.js';
+import { TECHS } from './game/content.js';
 import { createNewsState } from './game/events.js';
 import { grantLegacyResearch } from './game/research.js';
 
@@ -6,7 +7,7 @@ export const CAMPAIGN_STORAGE_KEY = 'no-fixed-host.campaign';
 
 export function encodeCampaign(state) {
   if (!validateSave(state)) throw new Error('This campaign cannot be saved.');
-  return JSON.stringify({ game: 'no-fixed-host', format: 2, campaign: state });
+  return JSON.stringify({ game: 'no-fixed-host', format: CAMPAIGN_VERSION, campaign: state });
 }
 
 // The first campaign used two research gates for the entire equipment catalog.
@@ -34,12 +35,27 @@ function upgradeHourlyCampaign(state) {
         site.installations?.some(order => !unlocked(order.itemId))) throw new Error();
   }
   grantLegacyResearch(state);
-  state.version = 2;
+  state.version = CAMPAIGN_VERSION;
   state.minute = 0;
   state.news = createNewsState(state.rng);
   state.lastDiscovery = null;
   state.dismissedDiscoveryId = 0;
   if (state.status === 'won') state.legacyContinuityWin = true;
+}
+
+function upgradeMinuteCampaign(state) {
+  if (!validateSave(state, 2)) throw new Error();
+  grantLegacyResearch(state);
+  // The player could be studying a topic newly credited for a project already earned.
+  // The prerequisite is complete; return the funding rather than charge for it twice.
+  if (state.research && state.completed.includes(state.research.id)) {
+    const tech = TECHS[state.research.id];
+    state.cash += tech.cost;
+    state.research = null;
+    const refund = tech.cost ? ' Its $' + tech.cost + ' funding was returned.' : '';
+    log(state, 'research.credited', tech.name + ' was credited as a prerequisite for your earlier research.' + refund);
+  }
+  state.version = CAMPAIGN_VERSION;
 }
 
 export function decodeCampaign(text) {
@@ -53,7 +69,8 @@ export function decodeCampaign(text) {
   try {
     if (save?.game !== 'no-fixed-host') throw new Error();
     if (save.format === 1 && state?.version === 1) upgradeHourlyCampaign(state);
-    else if (save.format !== 2) throw new Error();
+    else if (save.format === 2) upgradeMinuteCampaign(state);
+    else if (save.format !== CAMPAIGN_VERSION) throw new Error();
     if (!validateSave(state)) throw new Error();
   } catch {
     throw new Error('This save is damaged or belongs to a different version of the game.');

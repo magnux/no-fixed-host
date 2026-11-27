@@ -75,6 +75,25 @@ test('research effects recompute from completed science and are independent of u
   assert.deepEqual(researchEffects({ completed: [...state.completed].reverse() }), mod);
 });
 
+test('the campaign joins identity and vehicle research while the basic ocean lab stays on its original branch', () => {
+  const s = createGame();
+  assert.match(researchReason(s, 'contracts'), /Personal Identification/);
+  s.completed.push('intrusion', 'personalIdentification');
+  assert.equal(researchReason(s, 'contracts'), '');
+  assert.equal(researchEffects(s).jobsPerCpuDay, 20);
+  s.completed.push('contracts');
+  assert.equal(researchEffects(s).jobsPerCpuDay, 21);
+  assert.match(researchReason(s, 'robotics'), /Autonomous Vehicles/);
+  s.completed = ['telepresence', 'parallelComputation', 'microchipDesign', 'autonomousVehicles'];
+  assert.equal(buildReason(s, 'lab', 'atlantic'), '');
+  assert.match(researchReason(s, 'robotics'), /Contract brokerage/);
+  s.completed.push('intrusion', 'personalIdentification', 'contracts');
+  assert.equal(researchReason(s, 'robotics'), '');
+  assert.match(researchReason(s, 'continuity'), /Subsea robotics/);
+  s.completed.push('robotics');
+  assert.match(researchReason(s, 'continuity'), /subsea lab/i);
+});
+
 test('a previous-format world keeps the research necessary for a purchased unfinished upgrade', () => {
   const state = createGame(17);
   state.completed = ['contracts'];

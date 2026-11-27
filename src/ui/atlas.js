@@ -73,9 +73,9 @@ function status(state, region) {
   return ['empty', 'Unoccupied'];
 }
 
-export function updateAtlas(container, state) {
-  let view = views.get(container);
-  if (!view || view.atlas.parentElement !== container) view = mount(container);
+export function updateAtlasTime(container, state) {
+  const view = views.get(container);
+  if (!view || view.atlas.parentElement !== container) return;
   const minute = state.hour * 60 + (state.minute ?? 0);
   if (view.minute !== minute) {
     const sun = sunAt(state.hour, state.minute);
@@ -83,6 +83,12 @@ export function updateAtlas(container, state) {
     view.date.textContent = sun.label;
     view.minute = minute;
   }
+}
+
+export function updateAtlas(container, state) {
+  let view = views.get(container);
+  if (!view || view.atlas.parentElement !== container) view = mount(container);
+  updateAtlasTime(container, state);
   let hasPending = false;
   for (const button of view.buttons) {
     const id = button.dataset.id;

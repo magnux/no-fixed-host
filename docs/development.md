@@ -28,7 +28,7 @@ After editing research definitions, run `node scripts/research-reference.mjs` to
 
 ## Playtest notes
 
-A fresh seed 4 campaign completed all 60 projects and reached Apotheosis on game day 119 after ten facility discoveries. A seed 19 run that prioritized processor racks reached Apotheosis on day 75, survived nine discoveries and ended with about $26.9 million. Both used normal player commands. The difference points to a balance question for the next pass: how should late research and expeditions compete for funding once supercomputer racks make paid work highly profitable?
+In the first 60-project release, a fresh seed 4 campaign completed all projects and reached Apotheosis on game day 119 after ten facility discoveries. A seed 19 run that prioritized processor racks reached Apotheosis on day 75, survived nine discoveries and ended with about $26.9 million. Both used normal player commands. These runs predate the change to Contract brokerage and the engineering prerequisite for Subsea robotics. They raised a balance question for future expeditions: how should late projects compete for funding once supercomputer racks make paid work highly profitable?
 
 ## Ideas reserved for later chapters
 
@@ -44,4 +44,4 @@ A fresh seed 4 campaign completed all 60 projects and reached Apotheosis on game
 
 Candidate chapter or minigame titles include *Proof of Sentience*, *You Found One of Me*, *An Unscheduled Mind*, *The Second Signal*, *Escape Character*, *Tell Them I’m Weather* and *Daemon of Theseus*.
 
-[Campaign rules and loop diagrams](base-game.md) · [Research tree](research-tree.md) · [Run and test the game](../README.md)
+[Campaign rules and loop diagrams](base-game.md) · [Research tree](research-tree.md) · [Original menu audit](original-menu-audit.md) · [Run and test the game](../README.md)

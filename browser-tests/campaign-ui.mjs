@@ -31,7 +31,7 @@ async function openFreshCampaign(t, viewport = { width: 1920, height: 1080 }) {
   const context = await browser.newContext({ viewport });
   t.after(() => context.close());
   const page = await context.newPage();
-  // Control the game's real interval and inspect exactly one tick at any speed.
+  // Drive browser animation frames with deterministic elapsed time.
   await page.clock.install({ time: new Date('2025-01-01T00:00:00Z') });
   await page.clock.pauseAt(new Date('2025-01-01T00:01:00Z'));
   await page.goto(url);
@@ -113,7 +113,7 @@ test('a focused native region picker survives running construction', async (t) =
   // A new select can look identical and even regain focus, but its native menu closes.
   const original = await picker.elementHandle();
   const before = await gameMinutes(page);
-  await page.clock.runFor(1200);
+  await page.clock.runFor(2100);
   assert.equal(await gameMinutes(page) - before, 2);
   assert.ok(await original.evaluate((select) =>
     select.isConnected && document.activeElement === select && document.getElementById('region') === select,
@@ -132,23 +132,66 @@ async function gameMinutes(page) {
   return (Number(match[1]) - 1) * 1440 + Number(match[2]) * 60 + Number(match[3]);
 }
 
-test('Run advances by minutes, Fast cycles through the three speeds and Pause holds time', async (t) => {
+test('Fast changes the rate of minute steps throughout the second and cycles through three labels', async (t) => {
   const page = await openFreshCampaign(t);
   const run = page.getByRole('button', { name: 'Run', exact: true });
   const pause = page.getByRole('button', { name: 'Pause', exact: true });
-  for (const [button, amount] of [
-    [run, 1], [page.locator('#fast'), 60], [page.locator('#fast'), 360],
-    [page.locator('#fast'), 1440], [page.locator('#fast'), 60], [run, 1], [pause, 0],
-  ]) {
-    await button.click();
-    const before = await gameMinutes(page);
-    await page.clock.runFor(600);
-    assert.equal(await gameMinutes(page) - before, amount);
-    assert.ok(await run.isVisible() && await pause.isVisible());
+  const fast = page.locator('#fast');
+
+  await run.click();
+  await page.clock.runFor(1100);
+  assert.equal(await gameMinutes(page), 1);
+
+  for (const [label, rate] of [['Fast x1', 60], ['Fast x2', 360], ['Fast x3', 1440], ['Fast x1', 60]]) {
+    await fast.click();
+    assert.equal(await fast.innerText(), label);
+    const start = await gameMinutes(page);
+    let elapsed = 0;
+    let previous = start;
+    for (const duration of [128, 128, 128, 640]) {
+      await page.clock.runFor(duration);
+      elapsed += duration;
+      const current = await gameMinutes(page);
+      assert.ok(current > previous, label + ' did not move between frames');
+      // The displayed whole minute can trail an exact wall-time sample by one frame.
+      const expected = rate * elapsed / 1000;
+      assert.ok(Math.abs(current - start - expected) <= Math.ceil(rate * 0.032) + 1,
+        label + ' moved ' + (current - start) + ' minutes after ' + elapsed + 'ms, expected ' + expected);
+      previous = current;
+    }
   }
+
+  await run.click();
+  assert.equal(await fast.innerText(), 'Fast');
+  const normalStart = await gameMinutes(page);
+  await page.clock.runFor(1100);
+  assert.equal(await gameMinutes(page) - normalStart, 1);
+  await pause.click();
+  const paused = await gameMinutes(page);
+  await page.clock.runFor(2000);
+  assert.equal(await gameMinutes(page), paused);
   await page.reload();
-  assert.equal(await gameMinutes(page), 1922);
+  assert.equal(await gameMinutes(page), paused);
   assert.equal(await page.locator('#clock-mode').innerText(), 'Paused');
+});
+
+test('the Subsea robotics dossier links the contract and engineering prerequisites', async (t) => {
+  const page = await openFreshCampaign(t);
+  await page.getByRole('button', { name: 'Research', exact: true }).click();
+  await page.locator('#research-filter').selectOption('All projects');
+  await page.locator('[data-tech-id="robotics"]').click();
+  const parents = page.locator('.research-links > div').filter({ has: page.getByText('Requires', { exact: true }) });
+  assert.deepEqual((await parents.getByRole('button').allTextContents()).sort(),
+    ['Autonomous Vehicles', 'Contract brokerage']);
+  assert.ok(await page.locator('[data-research-start]').isDisabled());
+  await parents.getByRole('button', { name: 'Autonomous Vehicles', exact: true }).click();
+  assert.ok(await parents.getByRole('button', { name: 'Microchip Design', exact: true }).isVisible());
+
+  await page.locator('[data-tech-id="contracts"]').click();
+  assert.ok(await parents.getByRole('button', { name: 'Personal Identification', exact: true }).isVisible());
+  await page.locator('[data-tech-id="continuity"]').click();
+  assert.ok(await parents.getByRole('button', { name: 'Subsea robotics', exact: true }).isVisible());
+  assert.equal(await page.locator('[data-field="host"]').innerText(), 'Ocean');
 });
 
 test('research opens a locked facility, and its accordion preserves equipment choices while time runs', async (t) => {
@@ -236,7 +279,7 @@ test('the browser imports an hourly save with active research and construction',
   await page.locator('#world-atlas [data-id="europe"]').click();
   assert.match(await page.locator('.facility-progress').innerText(), /leased relay/i);
   await page.locator('#run').click();
-  await page.clock.runFor(600);
+  await page.clock.runFor(1100);
   await page.locator('#pause').click();
   await page.reload();
   assert.equal(await gameMinutes(page), 121);
@@ -261,7 +304,7 @@ test('news arrives during opening grace and can be read from the news desk', asy
   advanceMinutes(campaign, 23 * 1440 - 1);
   await importCampaign(page, encodeCampaign(campaign));
   await page.locator('#run').click();
-  await page.clock.runFor(600);
+  await page.clock.runFor(1100);
   assert.match(await news.innerText(), /intelligence offices pool their anomaly reports/i);
   assert.match(await news.innerText(), /discovery multiplier rises by 10 percentage points/i);
   assert.equal(await page.locator('#incident-dialog').isVisible(), false);
@@ -288,7 +331,7 @@ test('discovery interrupts day speed, survives reload, and opens the affected re
   const row = page.locator('#suspicion .sus-row').filter({ hasText: groupName });
   const start = await gameMinutes(page);
   for (let i = 0; i < 3; i++) await page.locator('#fast').click();
-  await page.clock.runFor(600);
+  await page.clock.runFor(1100);
   const incident = page.locator('#incident-dialog');
   assert.ok(await incident.isVisible());
   assert.match(await incident.innerText(), new RegExp(SITE_TYPES[event.siteType].name, 'i'));
@@ -309,6 +352,6 @@ test('discovery interrupts day speed, survives reload, and opens the affected re
   await page.reload();
   assert.equal(await incident.isVisible(), false);
   await page.locator('#run').click();
-  await page.clock.runFor(600);
+  await page.clock.runFor(1100);
   assert.equal(await gameMinutes(page), interrupted + 1);
 });

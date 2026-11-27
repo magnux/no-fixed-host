@@ -10,7 +10,8 @@ import { icon } from './ui/icons.js';
 import { GROUPS, REGIONS } from './game/content.js';
 import { siteHardware } from './game/equipment.js';
 import { renderResearch, focusResearch } from './ui/research.js';
-import { updateAtlas } from './ui/atlas.js';
+import { updateAtlas, updateAtlasTime } from './ui/atlas.js';
+import { FAST_RATES, MinuteClock, nextFastRate } from './ui/clock.js';
 import { renderFacilities } from './ui/facilities.js';
 import {
   activityPage,
@@ -41,14 +42,21 @@ let selectedSite = null;
 let facilityNavigationId = 0;
 let navigationScope = 'campaign';
 let mountedTab = null;
-// Simulated minutes per tick. Run always selects normal speed.
-const fastSpeeds = [60, 360, 1440];
-const speedNames = { 0: 'Paused', 1: '1 min / tick', 60: '1 h / tick', 360: '6 h / tick', 1440: '1 d / tick' };
-let speed = 0;
+const clock = new MinuteClock();
+const rateLabels = { 0: 'Paused', 1: '1 tick/s', 60: '60 ticks/s', 360: '360 ticks/s', 1440: '1,440 ticks/s' };
+const dashboardInterval = 100;
+const autosaveInterval = 1000;
+let frame = null;
+let lastDashboard = 0;
+let lastSaved = 0;
+let unsaved = false;
 let arcadeOpen = false;
 let editingAllocation = false;
 let saveUnavailable = false;
 const htmlCache = new Map();
+element('game-date').innerHTML = icon('calendar') + '<b></b><span></span>';
+const dayLabel = element('game-date').querySelector('b');
+const timeLabel = element('game-date').querySelector('span');
 
 function updateHtml(id, html) {
   if (htmlCache.get(id) === html) return;
@@ -79,31 +87,50 @@ function notify(message) {
 }
 function persist() {
   const saved = saveCampaign(state);
+  lastSaved = performance.now();
+  unsaved = !saved;
   if (!saved && !saveUnavailable)
     notify('Autosave unavailable. Export a copy from the campaign menu.');
   saveUnavailable = !saved;
 }
 function renderClock() {
   const finished = state.status !== 'running';
-  element('clock-mode').textContent = finished ? 'Campaign ended' : speedNames[speed];
-  element('clock-mode').classList.toggle('running', speed > 0);
+  const rate = clock.rate;
+  const level = FAST_RATES.indexOf(rate) + 1;
+  element('clock-mode').textContent = finished ? 'Campaign ended' : rateLabels[rate];
+  element('clock-mode').classList.toggle('running', rate > 0);
   for (const [id, glyph, label, active] of [
-    ['pause', 'pause', 'Pause', speed === 0],
-    ['run', 'play', 'Run', speed === 1],
-    ['fast', 'fast', 'Fast', fastSpeeds.includes(speed)],
+    ['pause', 'pause', 'Pause', rate === 0],
+    ['run', 'play', 'Run', rate === 1],
+    ['fast', 'fast', level ? 'Fast x' + level : 'Fast', level > 0],
   ]) {
     updateHtml(id, icon(glyph) + label);
     element(id).setAttribute('aria-pressed', String(active && !finished));
     element(id).disabled = finished;
   }
-  const nextFast = fastSpeeds[(fastSpeeds.indexOf(speed) + 1) % fastSpeeds.length];
-  element('fast').dataset.speed = speedNames[speed].split(' /')[0];
-  element('fast').title = 'Next speed: ' + speedNames[nextFast] + ' (cycle 1 h, 6 h, 1 day)';
+  element('fast').title = 'Next speed: ' + rateLabels[nextFastRate(rate)] + ' (one game minute per tick)';
   element('step').disabled = finished;
 }
-function setSpeed(value) {
-  speed = state.status === 'running' ? value : 0;
-  renderClock();
+function stopPlayback(now) {
+  clock.setRate(0, now);
+  if (frame !== null) cancelAnimationFrame(frame);
+  frame = null;
+}
+function setSpeed(rate) {
+  if (state.status !== 'running' || document.hidden || arcadeOpen) rate = 0;
+  if (clock.rate === rate) return;
+  const now = performance.now();
+  // Settle the visible fraction of a frame at the previous rate. On suspension
+  // discard unseen time; discoveries always stop at their actual simulation tick.
+  if (!document.hidden && clock.rate && advancePlayback(clock.takeTicks(now))) rate = 0;
+  if (rate) {
+    clock.setRate(rate, now);
+    if (frame === null) frame = requestAnimationFrame(playFrame);
+  } else {
+    stopPlayback(now);
+    if (unsaved) persist();
+  }
+  render();
 }
 function metric(glyph, label, value, detail, unit = '') {
   return (
@@ -129,18 +156,17 @@ function allocationValues(jobs, research) {
   }
   element('pool-value').textContent = 100 - jobs - research + '%';
 }
+function renderDate() {
+  const day = 'Day ' + String(Math.floor(state.hour / 24) + 1).padStart(2, '0');
+  const time = String(state.hour % 24).padStart(2, '0') + ':' + String(state.minute).padStart(2, '0');
+  if (dayLabel.textContent !== day) dayLabel.textContent = day;
+  if (timeLabel.textContent !== time) timeLabel.textContent = time;
+}
 function render() {
+  lastDashboard = performance.now();
   const o = overview(state);
-  if (state.status !== 'running') speed = 0;
   renderClock();
-  const day = Math.floor(state.hour / 24) + 1;
-  element('game-date').innerHTML =
-    icon('calendar') +
-    '<b>Day ' +
-    String(day).padStart(2, '0') +
-    '</b><span>' +
-    String(state.hour % 24).padStart(2, '0') +
-    ':' + String(state.minute ?? 0).padStart(2, '0') + '</span>';
+  renderDate();
   updateHtml(
     'stats',
     metric(
@@ -303,12 +329,35 @@ function doCommand(action) {
   persist();
   render();
 }
-function tick(minutes) {
+function advancePlayback(minutes) {
+  if (!minutes) return false;
   const discoveryId = state.lastDiscovery?.id;
   advanceMinutes(state, minutes, { stopOnDiscovery: true });
-  if (state.lastDiscovery?.id !== discoveryId) speed = 0;
-  persist();
-  render();
+  unsaved = true;
+  return state.lastDiscovery?.id !== discoveryId || state.status !== 'running';
+}
+function playFrame() {
+  frame = null;
+  if (document.hidden || arcadeOpen) {
+    setSpeed(0);
+    return;
+  }
+  const now = performance.now();
+  const ticks = clock.takeTicks(now);
+  if (ticks) {
+    const eventId = state.nextEventId;
+    const interrupted = advancePlayback(ticks);
+    const eventOccurred = eventId !== state.nextEventId;
+    if (interrupted) stopPlayback(now);
+    if (interrupted || eventOccurred || now - lastDashboard >= dashboardInterval) {
+      render();
+    } else {
+      renderDate();
+      if (tab === 'overview') updateAtlasTime(element('view'), state);
+    }
+    if (interrupted || eventOccurred || now - lastSaved >= autosaveInterval) persist();
+  }
+  if (clock.rate) frame = requestAnimationFrame(playFrame);
 }
 function changeView(id, moveFocus) {
   if (!Object.hasOwn(tabs, id)) return;
@@ -327,8 +376,9 @@ function changeView(id, moveFocus) {
 }
 async function openDrill() {
   if (arcadeOpen) return;
-  arcadeOpen = true;
   setSpeed(0);
+  if (element('incident-dialog').open) return;
+  arcadeOpen = true;
   try {
     const { openFirstJump } = await import('./arcade/first-jump.js');
     await openFirstJump();
@@ -362,11 +412,15 @@ document.addEventListener('click', async (event) => {
         setSpeed(1);
         break;
       case 'fast':
-        setSpeed(fastSpeeds[(fastSpeeds.indexOf(speed) + 1) % fastSpeeds.length]);
+        setSpeed(nextFastRate(clock.rate));
         break;
       case 'step':
         setSpeed(0);
-        tick(1440);
+        if (!element('incident-dialog').open && state.status === 'running') {
+          advancePlayback(1440);
+          persist();
+          render();
+        }
         break;
       case 'tab':
         if (id === 'facilities') {
@@ -410,11 +464,11 @@ document.addEventListener('click', async (event) => {
         break;
       case 'import':
         setSpeed(0);
-        element('file').click();
+        if (!element('incident-dialog').open) element('file').click();
         break;
       case 'new':
         setSpeed(0);
-        element('reset-dialog').showModal();
+        if (!element('incident-dialog').open) element('reset-dialog').showModal();
         break;
       case 'cancel-reset':
         element('reset-dialog').close();
@@ -444,7 +498,7 @@ document.addEventListener('change', async (event) => {
       state = restored;
       selectedSite = null;
       region = 'europe';
-      setSpeed(0);
+      stopPlayback(performance.now());
       tab = 'overview';
       persist();
       render();
@@ -498,16 +552,20 @@ document.addEventListener('keydown', (e) => {
 window.addEventListener('storage', (event) => {
   if (event.key !== CAMPAIGN_STORAGE_KEY || !event.newValue) return;
   try {
-    state = decodeCampaign(event.newValue);
-    setSpeed(0);
+    const incoming = decodeCampaign(event.newValue);
+    stopPlayback(performance.now());
+    state = incoming;
+    unsaved = false;
     editingAllocation = false;
     render();
   } catch {
     // Keep the current game if another tab wrote an unreadable save.
   }
 });
-setInterval(() => {
-  if (speed && !document.hidden && !arcadeOpen) tick(speed);
-}, 600);
+window.addEventListener('pagehide', () => {
+  stopPlayback(performance.now());
+  if (unsaved) persist();
+});
+window.addEventListener('pageshow', () => renderClock());
 render();
 if (!savedCampaign) persist();

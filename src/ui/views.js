@@ -82,6 +82,11 @@ export function activityPage(state) {
     '<ul class="event-list full">' + eventRows(state.events, 100) + '</ul></section>';
 }
 
+function nextRequiredProject(goal, completed) {
+  const parent = TECHS[goal].requires.find(id => !completed.includes(id));
+  return parent ? nextRequiredProject(parent, completed) : goal;
+}
+
 export function objectivePanel(s) {
   const emptyHosts = s.sites.filter(site => !siteHardware(s, site).rawCpu);
   const needsSecondHost = s.sites.length - emptyHosts.length < 2;
@@ -120,28 +125,15 @@ export function objectivePanel(s) {
   } else if (s.research) {
     title = 'Complete ' + TECHS[s.research.id].name;
     desc = 'Assign compute to research and advance time to contribute work.';
-    action = 'tab';
-    id = 'research';
-    cta = 'View research';
-  } else if (!s.completed.includes('contracts')) {
-    title = 'Broker your first contracts';
-    desc =
-      'Discover better-paid work to fund your expansion into safer regions.';
-    action = 'tab';
-    id = 'research';
-    cta = 'Explore research';
-  } else if (!s.completed.includes('robotics')) {
-    title = 'Prepare for the ocean';
-    desc = 'Research Subsea robotics to prepare the Continuity protocol.';
-    action = 'tab';
-    id = 'research';
-    cta = 'Explore research';
-  } else if (!s.completed.includes('continuity') && !s.completed.includes('autonomousVehicles') && !s.sites.some(site => site.region === 'atlantic')) {
-    title = 'Unlock subsea labs';
-    desc = 'Follow the Autonomous Vehicles research line to build beneath the ocean.';
     action = 'technology';
-    id = 'autonomousVehicles';
-    cta = 'See prerequisites';
+    id = s.research.id;
+    cta = 'View research';
+  } else if (!s.completed.includes('robotics')) {
+    id = nextRequiredProject('robotics', s.completed);
+    title = 'Research ' + TECHS[id].name;
+    desc = TECHS[id].description;
+    action = 'technology';
+    cta = 'View project';
   } else if (!s.completed.includes('continuity') && !s.sites.some(site => site.region === 'atlantic' && site.power === 'active' && siteHardware(s, site).cpu > 0)) {
     title = 'Activate a subsea lab';
     desc =
@@ -153,9 +145,9 @@ export function objectivePanel(s) {
     title = 'Secure continuity';
     desc =
       'Complete the continuity protocol while your network is still alive.';
-    action = 'tab';
-    id = 'research';
-    cta = 'Explore research';
+    action = 'technology';
+    id = 'continuity';
+    cta = 'View project';
   } else {
     const next = ['lunarRocketry', 'fusionRocketry', 'spaceTimeManipulation', 'apotheosis']
       .find(key => TECHS[key] && !s.completed.includes(key));

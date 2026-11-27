@@ -6,7 +6,7 @@ import { decodeCampaign, encodeCampaign } from '../src/persistence.js';
 test('a portable save resumes construction, research, the clock and the random sequence', () => {
   const live = createGame(12345);
   command(live, { type: 'build', siteType: 'relay', region: 'europe' });
-  command(live, { type: 'research', id: 'contracts' });
+  command(live, { type: 'research', id: 'stealth' });
   advance(live, 3);
   const restored = decodeCampaign(encodeCampaign(live));
   assert.deepEqual(restored, live);
@@ -27,6 +27,40 @@ test('the loader rejects malformed, foreign and incompatible saves', () => {
   ]) {
     assert.throws(() => decodeCampaign(text));
   }
+});
+
+test('version 2 preserves paid campaign work and grants only its newly required research', () => {
+  const state = createGame(51);
+  state.version = 2;
+  state.completed = ['contracts'];
+  state.research = { id: 'robotics', work: 27.5, hours: 5.5 };
+  const pack = () => JSON.stringify({ game: 'no-fixed-host', format: 2, campaign: state });
+  const migrated = decodeCampaign(pack());
+  assert.equal(migrated.version, 3);
+  assert.equal(migrated.cash, state.cash);
+  assert.deepEqual(migrated.research, state.research);
+  assert.deepEqual(new Set(migrated.completed), new Set(['contracts', 'intrusion', 'personalIdentification',
+    'telepresence', 'parallelComputation', 'microchipDesign', 'autonomousVehicles']));
+  assert.deepEqual(decodeCampaign(encodeCampaign(migrated)), migrated);
+
+  state.completed = [];
+  assert.throws(() => decodeCampaign(pack()), 'v2 already required brokerage for subsea robotics');
+  state.completed = ['contracts', 'advancedQuantumComputing'];
+  assert.throws(() => decodeCampaign(pack()), 'unrelated invalid research is not grandfathered');
+});
+
+test('version 2 refunds an in-flight upstream project already credited by the revised prerequisites', () => {
+  const state = createGame(52);
+  state.version = 2;
+  state.completed = ['contracts', 'robotics'];
+  state.research = { id: 'telepresence', work: 9, hours: 0 };
+  state.cash = 738;
+  const migrated = decodeCampaign(JSON.stringify({ game: 'no-fixed-host', format: 2, campaign: state }));
+  assert.equal(migrated.research, null);
+  assert.equal(migrated.cash, 738 + 192);
+  assert.equal(migrated.completed.filter(id => id === 'telepresence').length, 1);
+  assert.equal(migrated.events.at(-1).kind, 'research.credited');
+  assert.deepEqual(decodeCampaign(encodeCampaign(migrated)), migrated);
 });
 
 test('hourly campaigns retain paid orders, and an archived Continuity win can be resumed once', () => {

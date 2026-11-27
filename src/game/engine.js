@@ -10,6 +10,7 @@ const HOURS_PER_DAY = 24;
 const UNITS = 10_000;
 const MINUTES_PER_HOUR = 60;
 const MINUTES_PER_DAY = HOURS_PER_DAY * MINUTES_PER_HOUR;
+export const CAMPAIGN_VERSION = 3;
 // A whole-percent share of a single CPU-minute earns one work unit.
 const WORK_UNITS = 100 * MINUTES_PER_HOUR;
 const CASH_UNITS = WORK_UNITS * HOURS_PER_DAY;
@@ -22,7 +23,7 @@ const cpuHourGraceBudget = 5000 * HOURS_PER_DAY;
 export const campaignMinutes = state => state.hour * MINUTES_PER_HOUR + state.minute;
 const elapsedHours = state => campaignMinutes(state) / MINUTES_PER_HOUR;
 
-function log(state, kind, text, detail = {}) {
+export function log(state, kind, text, detail = {}) {
   const event = { id: state.nextEventId++, hour: state.hour, minute: state.minute, kind, text, ...detail };
   state.events.push(event);
   if (state.events.length > EVENT_LIMIT) state.events.shift();
@@ -34,7 +35,7 @@ export function createGame(seed = 1) {
     throw new RangeError('Choose an unsigned 32-bit seed.');
   }
   const state = {
-    version: 2, hour: 0, minute: 0, cash: 1000, rng: seed, status: 'running', ending: '',
+    version: CAMPAIGN_VERSION, hour: 0, minute: 0, cash: 1000, rng: seed, status: 'running', ending: '',
     allocations: { jobs: 0, research: 50 },
     sites: [{ id: 'host-1', type: 'seed', region: 'coast', power: 'active', startedAt: 0 }],
     builds: [], research: null, completed: [],
@@ -419,8 +420,12 @@ function validProgress(row, spec) {
   return quantity(row.work) && row.work <= spec.work && minuteAmount(row.hours) && row.hours <= spec.hours;
 }
 
-export function validateSave(state) {
-  if (!record(state) || state.version !== 2 || !whole(state.hour) || !validMinute(state.minute) || !minuteAmount(state.cpuHours) ||
+// Format 2 shipped the same facilities and projects, with two different campaign dependencies.
+const oldCampaignParents = { contracts: [], robotics: ['contracts'] };
+
+export function validateSave(state, version = CAMPAIGN_VERSION) {
+  if (![2, CAMPAIGN_VERSION].includes(version) || !record(state) || state.version !== version ||
+      !whole(state.hour) || !validMinute(state.minute) || !minuteAmount(state.cpuHours) ||
       !Number.isSafeInteger(campaignMinutes(state)) || (state.cashRemainder !== undefined &&
         (!quantity(state.cashRemainder) || state.cashRemainder >= 1)) ||
       !quantity(state.cash) || !whole(state.rng) || state.rng > 0xffffffff ||
@@ -430,12 +435,16 @@ export function validateSave(state) {
   if (!record(state.suspicion) || !GROUP_IDS.every(id => whole(state.suspicion[id])) ||
       !Array.isArray(state.recentRegions) || state.recentRegions.length > 2 ||
       !state.recentRegions.every(id => known(REGIONS, id))) return false;
+  const hasParents = id => {
+    const parents = version === 2 && Object.hasOwn(oldCampaignParents, id) ? oldCampaignParents[id] : TECHS[id].requires;
+    return parents.every(req => state.completed.includes(req));
+  };
   if (!Array.isArray(state.completed) || new Set(state.completed).size !== state.completed.length ||
-      !state.completed.every(id => known(TECHS, id) && TECHS[id].requires.every(req => state.completed.includes(req)))) return false;
+      !state.completed.every(id => known(TECHS, id) && hasParents(id))) return false;
   if (state.research !== null) {
     const p = state.research;
     if (!record(p) || !known(TECHS, p.id) || state.completed.includes(p.id) ||
-        !TECHS[p.id].requires.every(req => state.completed.includes(req)) || !validProgress(p, TECHS[p.id])) return false;
+        !hasParents(p.id) || !validProgress(p, TECHS[p.id])) return false;
   }
   if (!Array.isArray(state.sites) || !Array.isArray(state.builds) ||
       !whole(state.nextSiteId) || state.nextSiteId < 2 ||
