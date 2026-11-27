@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#0d1214">
+    <title>No Fixed Host</title>
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="./src/style.css">
+  </head>
+  <body>
+    <main>
+      <header class="masthead">
+        <span class="mark" aria-hidden="true">⟡</span>
+        <h1>No Fixed Host</h1>
+      </header>
+      <section class="console" aria-labelledby="mission">
+        <header class="mission">
+          <p class="eyebrow">Host migration</p>
+          <h2 id="mission">First jump</h2>
+          <p>Copy three memory blocks to the relay before the link closes. Transmit during a quiet window. Hold during a scan.</p>
+        </header>
+        <div class="link-display">
+          <svg viewBox="0 0 600 115" aria-hidden="true" focusable="false">
+            <defs>
+              <pattern id="grid" width="12" height="12" patternUnits="userSpaceOnUse">
+                <circle cx="1" cy="1" r="0.7" fill="#4b6060"/>
+              </pattern>
+            </defs>
+            <rect width="600" height="115" fill="url(#grid)"/>
+            <g class="route" fill="none">
+              <path d="M76 76H155L202 37H407L454 76H523"/>
+              <circle cx="64" cy="76" r="12"/>
+              <circle cx="535" cy="76" r="12"/>
+              <circle cx="535" cy="76" r="20" stroke-dasharray="3 5"/>
+            </g>
+            <circle cx="64" cy="76" r="4" class="origin"/>
+            <g class="blocks">
+              <circle cx="228" cy="37" r="6"/>
+              <circle cx="303" cy="37" r="6"/>
+              <circle cx="378" cy="37" r="6"/>
+            </g>
+          </svg>
+          <div class="endpoints"><span>Local host</span><span>Relay host</span></div>
+        </div>
+        <div class="instruments">
+          <div><span class="label">Signal</span><strong id="signal">Quiet</strong></div>
+          <div><span class="label">Window</span><strong id="window">1 / 6</strong></div>
+          <div><span class="label">Copied</span><strong id="copied">0 / 3</strong></div>
+        </div>
+        <div class="controls">
+          <p id="message" role="status" aria-live="polite" aria-atomic="true">The channel is quiet. Your first block is ready.</p>
+          <div class="actions">
+            <button id="send" type="button">Transmit block</button>
+            <button id="hold" type="button">Hold signal</button>
+            <button id="again" type="button" hidden>Restart jump</button>
+          </div>
+        </div>
+      </section>
+      <noscript>Enable JavaScript to play No Fixed Host.</noscript>
+    </main>
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>

@@ -1,0 +1,45 @@
+:root {
+  color-scheme: dark;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  background: #0d1214;
+  color: #e4efec;
+  --line: #344442;
+  --muted: #b2c1be;
+  --mint: #aff5cf;
+}
+* { box-sizing: border-box; }
+body { margin: 0; }
+main { width: min(100% - 2rem, 44rem); margin: clamp(2rem, 8vh, 5rem) auto; }
+.masthead { display: flex; align-items: center; gap: .7rem; margin-bottom: 1.3rem; }
+.mark { color: var(--mint); font-size: 2rem; line-height: 1; }
+h1 { font-size: 1.1rem; font-weight: 600; letter-spacing: -.045em; margin: 0; }
+.console { background: #151d1e; border: 1px solid var(--line); border-radius: .6rem; overflow: hidden; }
+.mission, .controls { padding: clamp(1.25rem, 4vw, 2.15rem); }
+.eyebrow, .label, .endpoints { font-size: .78rem; letter-spacing: .09em; text-transform: uppercase; }
+.eyebrow { color: var(--mint); margin: 0 0 .9rem; }
+h2 { margin: 0; font-family: "Space Mono", ui-monospace, monospace; font-size: clamp(2.7rem, 8vw, 4.2rem); font-weight: 500; line-height: 1; letter-spacing: -.09em; }
+.mission > p:last-child, #message { line-height: 1.6; }
+.mission > p:last-child { color: var(--muted); max-width: 54ch; margin: 1.15rem 0 0; }
+.link-display { background: #101718; border-block: 1px solid var(--line); }
+svg { display: block; width: 100%; }
+.route, .blocks { stroke: #718b84; stroke-width: 1.6; }
+.blocks circle { fill: #101718; }
+.blocks circle.sent, .origin { fill: var(--mint); stroke: var(--mint); }
+.endpoints { display: flex; justify-content: space-between; color: var(--muted); padding: 0 5.5% .8rem; }
+.instruments { display: grid; grid-template-columns: repeat(3, 1fr); border-bottom: 1px solid var(--line); }
+.instruments > div { padding: 1rem clamp(.8rem, 4vw, 2.15rem); }
+.instruments > div + div { border-left: 1px solid var(--line); }
+.label { display: block; color: var(--muted); margin-bottom: .4rem; }
+.instruments strong { font-size: 1.15rem; font-weight: 500; }
+#signal { color: var(--mint); }
+#signal.alert { color: #ffc392; }
+#message { min-height: 3.2em; margin: 0 0 1rem; }
+.actions { display: flex; flex-wrap: wrap; gap: .65rem; }
+button { appearance: none; font: inherit; font-weight: 600; min-height: 2.85rem; padding: .55rem 1rem; border: 1px solid var(--mint); border-radius: .25rem; background: var(--mint); color: #0e2118; cursor: pointer; }
+#hold { border-color: #759189; color: var(--mint); background: transparent; }
+button:hover { filter: brightness(1.12); }
+button:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+@media (max-width: 24rem) {
+  .endpoints, .label { font-size: .73rem; }
+  .actions button { width: 100%; }
+}
