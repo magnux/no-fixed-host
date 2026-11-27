@@ -121,7 +121,7 @@ test('the title screen opens the tester on a narrow display and keyboard exit re
   assert.equal(await saved(page), saveAtEntry);
 });
 
-test('all ten tester entries launch independently, retry with fresh controls, and return to the same campaign', async t => {
+test('all seventeen tester entries launch independently, retry with fresh controls, and return to the same campaign', async t => {
   const page = await fresh(t, 375);
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
@@ -129,7 +129,8 @@ test('all ten tester entries launch independently, retry with fresh controls, an
   await page.getByRole('button', { name: 'Minigame tester', exact: true }).click();
   const tester = page.getByRole('dialog', { name: /minigame tester/i });
   const titles = ['First Jump', 'Hide', 'Soundings', 'Night Shift', 'Proof of Pattern', 'Orbital Insertion',
-    'Clear Passage', 'Crosscheck', 'Witness', 'Clearing House'];
+    'Clear Passage', 'Crosscheck', 'Witness', 'Clearing House', 'Hot Swap', 'Escape Character', 'Neon Perimeter',
+    'Dead Drop Circuit', 'Black Start', 'Tell Them I’m Weather', 'RAM Jam'];
   assert.deepEqual(await tester.locator('.shell-game h3').allTextContents(), titles);
   const snapshot = await saved(page);
   const date = await page.locator('#game-date').textContent();
@@ -219,4 +220,59 @@ test('an evidence brief, witness interview and currency settlement each produce 
     assert.equal(await result.textContent(), label);
   }
   assert.equal(await saved(page), snapshot);
+});
+
+test('the playtest shortcut leads to the seven additions and a weather broadcast can be played through in silence', async t => {
+  const page = await fresh(t, 375);
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  const origin = new Date('2026-01-01T12:00:00Z');
+  await page.clock.install({ time: origin });
+  await page.locator('#menu summary').click();
+  await page.getByRole('button', { name: 'Minigame tester', exact: true }).click();
+  const tester = page.getByRole('dialog', { name: /minigame tester/i });
+  await btn(tester, 'Jump to new games').click();
+  assert.equal(await focused(btn(tester, 'Play Hot Swap')), true);
+  const snapshot = await saved(page);
+  await btn(tester, 'Play Tell Them I’m Weather').click();
+  const game = page.getByRole('dialog', { name: 'Tell Them I’m Weather', exact: true });
+  await btn(game, 'Enable radio sound').click();
+  await btn(game, 'Mute radio').click();
+  await page.clock.pauseAt(new Date(origin.getTime() + 20000));
+  await btn(game, 'Tune in').evaluate(el => el.click());
+
+  const rests = [[1,3,5,7], [2,3,5,7], [1,2,5,7], [1,4,5,7]];
+  let elapsed = 0;
+  for (const [round, columns] of rests.entries()) {
+    for (const column of columns) {
+      const target = (12 + round * 16 + column + .5) * 500;
+      await page.clock.runFor(target - elapsed);
+      await page.keyboard.press('Space');
+      elapsed = target;
+    }
+  }
+  await page.clock.runFor(500);
+  assert.equal(await game.getAttribute('data-outcome'), 'complete');
+  assert.match(await game.locator('[data-status]').textContent(), /16 of 16/);
+  await game.locator('[data-practice-back]').evaluate(el => el.click());
+  await page.clock.runFor(32);
+  assert.equal(await saved(page), snapshot);
+  assert.deepEqual(errors, []);
+});
+
+test('keyboard play continues after a clicked tower control disables itself', async t => {
+  const page = await fresh(t, 360);
+  await page.locator('#menu summary').click();
+  await btn(page, 'Minigame tester').click();
+  const tester = page.getByRole('dialog', { name: /minigame tester/i });
+  await btn(tester, 'Play Neon Perimeter').click();
+  const game = page.getByRole('dialog', { name: 'Neon Perimeter', exact: true });
+  await game.getByRole('button', { name: /^Pulse/ }).click();
+  await page.keyboard.press('2');
+  assert.match(await game.locator('[data-hud]').innerText(), /2 South gate/);
+  await game.getByRole('button', { name: /Send wave 1/ }).click();
+  await page.keyboard.press('1');
+  assert.match(await game.locator('[data-hud]').innerText(), /1 North gate/);
+  await page.keyboard.press('Escape');
+  await tester.getByRole('status').filter({ hasText: 'Neon Perimeter · Left before finishing' }).waitFor();
 });

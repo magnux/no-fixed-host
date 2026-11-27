@@ -1,6 +1,20 @@
 # Minigames in the campaign
 
-Open **Campaign menu → Minigame tester** or enter from the title screen. All ten games below are playable. You can go straight to the genre you want to try, retry a run, or leave early. Results belong to this playtest session. The campaign clock stays paused and campaign encounters and rewards are deferred until after player feedback.
+Open **Campaign menu → Minigame tester** or enter from the title screen. All 17 games are playable here. You can go straight to the genre you want to try, retry a run, or leave early. Results belong to this playtest session. The campaign clock stays paused and campaign encounters and rewards are deferred until after player feedback.
+
+## Seven more games to playtest
+
+| Game | Try this on a second run |
+| --- | --- |
+| **Hot Swap** | Fight the bosses in the opposite order and see where the first upgrade changes the route. |
+| **Escape Character** | Revisit the rooms that seemed inaccessible before the core could detach. Look for the lost memory on the way out. |
+| **Neon Perimeter** | Compare clustering towers at the merge with delaying one approach. Use the wave preview before moving a tower. |
+| **Dead Drop Circuit** | Take the tram depot shortcut and compare your exit speed against your previous delivery ghost. |
+| **Black Start** | Pick a different breaker bank to light first, then line up the open generator ramp. |
+| **Tell Them I’m Weather** | Follow the weather station through the rival signal. Both stations have distinct sounds and beat markings. |
+| **RAM Jam** | Try greeting the most impatient RAM first. Watch what the dog does when you chirp near a cluster. |
+
+These seven games are in the tester for feedback. Their campaign placements are open.
 
 ## Where a game fits
 

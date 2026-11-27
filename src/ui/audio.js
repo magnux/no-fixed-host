@@ -7,6 +7,7 @@ export function createAudio() {
   let beat = 0;
   let settings;
   let activated = false;
+  let radio;
 
   function note(destination, frequency, duration, level, type) {
     const voice = context.createOscillator();
@@ -30,7 +31,8 @@ export function createAudio() {
   }
   function apply(prefs) {
     settings = prefs;
-    const audible = settings.sound && !document.hidden && activated;
+    const audible = (radio ? radio.enabled : settings.sound) && !document.hidden && activated;
+    const campaignAudible = audible && !radio;
     if (audible && !context) {
       const Ctx = window.AudioContext || window.webkitAudioContext;
       if (!Ctx) return;
@@ -41,18 +43,36 @@ export function createAudio() {
       } catch { return; }
     }
     if (!context) return;
-    mix.gain.value = audible ? prefs.uiVolume / 100 : 0;
-    music.gain.value = audible ? prefs.musicVolume / 100 : 0;
+    mix.gain.value = campaignAudible ? prefs.uiVolume / 100 : 0;
+    music.gain.value = campaignAudible ? prefs.musicVolume / 100 : 0;
     if (audible) {
       if (context.state === 'suspended') context.resume().catch(() => {});
-      if (!timer && prefs.musicVolume > 0) { phrase(); timer = setInterval(phrase, 1900); }
+      if (!timer && campaignAudible && prefs.musicVolume > 0) { phrase(); timer = setInterval(phrase, 1900); }
     } else if (context.state === 'running') context.suspend().catch(() => {});
-    if (!audible || !prefs.musicVolume) { clearInterval(timer); timer = null; }
+    if (!campaignAudible || !prefs.musicVolume) { clearInterval(timer); timer = null; }
   }
   function activate() { activated = true; if (settings) apply(settings); }
   function click() {
-    if (!settings?.sound || !context || document.hidden) return;
+    if (radio || !settings?.sound || !context || document.hidden) return;
     note(mix, 493.88, .085, .12, 'triangle');
   }
-  return { apply, activate, click };
+  // A rhythm round has its own short tones and needs the normal score to go quiet.
+  function openRadio() {
+    const session = { enabled: Boolean(settings?.sound && settings.musicVolume) };
+    radio = session;
+    apply(settings);
+    return {
+      get enabled() { return session.enabled; },
+      setEnabled(enabled) { session.enabled = enabled; activate(); },
+      tone(frequency, duration, level, type) {
+        if (radio !== session || !session.enabled || !context || document.hidden) return;
+        const volume = (settings.musicVolume || 35) / 100;
+        note(context.destination, frequency, duration, level * volume, type);
+      },
+      close() {
+        if (radio === session) { radio = null; apply(settings); }
+      },
+    };
+  }
+  return { apply, activate, click, openRadio };
 }

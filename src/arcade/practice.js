@@ -3,7 +3,7 @@ import './practice.css';
 const resultLabels = { complete: 'Completed', partial: 'Partial result', failed: 'Attempt ended' };
 let currentSession;
 
-export async function openPractice(game, mount, { closeLabel = 'Back to tester' } = {}) {
+export async function openPractice(game, mount, { closeLabel = 'Back to tester', radio } = {}) {
   if (currentSession) return currentSession;
 
   const returnFocus = document.activeElement;
@@ -91,6 +91,12 @@ export async function openPractice(game, mount, { closeLabel = 'Back to tester' 
       scheduleFrame();
     }
     function keydown(event) {
+      if (!dialog.open) return;
+      if (!dialog.contains(event.target)) {
+        // A focused control that disables itself returns keyboard focus to the body.
+        if (event.target !== document.body || [...document.querySelectorAll('dialog:modal')].at(-1) !== dialog) return;
+        stage.focus({ preventScroll: true });
+      }
       if (!active || event.defaultPrevented || event.isComposing || event.ctrlKey || event.altKey || event.metaKey) return;
       if (event.key === 'Escape' || event.key === 'Tab') return;
       if (event.target === back || event.target === retry) return;
@@ -100,13 +106,13 @@ export async function openPractice(game, mount, { closeLabel = 'Back to tester' 
         if (!active) return;
       }
     }
-    dialog.addEventListener('keydown', keydown);
+    document.addEventListener('keydown', keydown);
     document.addEventListener('visibilitychange', visibilityChanged);
     dispose = () => {
       if (!active) return;
       active = false;
       cancelAnimationFrame(frameId);
-      dialog.removeEventListener('keydown', keydown);
+      document.removeEventListener('keydown', keydown);
       document.removeEventListener('visibilitychange', visibilityChanged);
       for (const callback of cleanups.reverse()) {
         try { callback(); } catch (error) { console.error(error); }
@@ -143,7 +149,7 @@ export async function openPractice(game, mount, { closeLabel = 'Back to tester' 
     }
     try {
       mount({
-        stage, controls, canvas, action, finish,
+        stage, controls, canvas, action, finish, radio,
         setHud: text => update(hud, text),
         setStatus: text => update(status, text),
         onKey: handler => keys.push(handler),

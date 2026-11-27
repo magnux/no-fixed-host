@@ -125,7 +125,8 @@ export function initShell({ getState, pause, setRate, restore, restartUnsupporte
         <button type="button" data-shell-action="play" data-minigame="${game.id}">${t(game.playLabel)}</button></div>
       </li>`;
     }).join('');
-    return `<p>${t('Practice while the campaign is paused. Results stay in the tester.')}</p><ul class="shell-games">${cards}</ul>`;
+    return `<div class="shell-gallery-head"><p>${t('Practice while the campaign is paused. Results stay in the tester.')}</p>
+      ${button('latest-games','Jump to new games')}</div><ul class="shell-games">${cards}</ul>`;
   }
   async function playPractice(trigger) {
     if (practiceRequest?.trigger === trigger) return;
@@ -138,11 +139,13 @@ export function initShell({ getState, pause, setRate, restore, restartUnsupporte
     const isCurrent = () => practiceRequest === request && dialog.open && trigger.isConnected;
     trigger.setAttribute('aria-disabled', 'true');
     say(t('Loading minigame…'));
+    let radio;
     try {
       const play = await game.load();
       if (!isCurrent()) return;
       trigger.focus();
-      const outcome = await play({ closeLabel: t('Back to tester') });
+      if (game.id === 'tell-them-im-weather') radio = audio.openRadio();
+      const outcome = await play({ closeLabel: t('Back to tester'), radio });
       if (!isCurrent()) return;
       const result = game.outcomes[outcome];
       practiceResults.set(game.id, result);
@@ -154,6 +157,7 @@ export function initShell({ getState, pause, setRate, restore, restartUnsupporte
         say(cardStatus.textContent);
       }
     } finally {
+      radio?.close();
       if (practiceRequest === request) {
         practiceRequest = null;
         trigger.removeAttribute('aria-disabled');
@@ -343,6 +347,11 @@ export function initShell({ getState, pause, setRate, restore, restartUnsupporte
     try {
       const act = trigger.dataset.shellAction;
       if (Object.hasOwn(screens,act)) open(act);
+      else if (act === 'latest-games') {
+        const firstNew = body.querySelector('[data-minigame="hot-swap"]');
+        firstNew.focus({ preventScroll: true });
+        firstNew.closest('.shell-game').scrollIntoView({ block: 'center' });
+      }
       else if (act === 'play') await playPractice(trigger);
       else if (act === 'close') close();
       else if (act === 'new') { close(); onNew(); }

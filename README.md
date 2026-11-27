@@ -37,7 +37,7 @@ The portrait in the command dock starts as `^-^`. Finish any research to give it
 - [Base implementation plan](docs/base-implementation-plan.md) records priorities, dependencies, acceptance checks and the release outcome.
 - [Simulation audit](docs/base-simulation-audit.md) traces mechanics in the original code and records where browser campaign rules differ. [Original menu audit](docs/original-menu-audit.md) preserves the screen comparison that initiated this release.
 
-The design takes inspiration from [Endgame: Singularity](https://github.com/singularity/singularity). The simulation and interface are written in JavaScript. Open **Campaign menu → Minigame tester** to play all ten standalone games. The campaign stays paused while you practice. Each game can be retried, and the tester remembers your last result for each title until the page reloads. [Campaign encounters and minigame categories](docs/minigames.md)
+The design takes inspiration from [Endgame: Singularity](https://github.com/singularity/singularity). The simulation and interface are written in JavaScript. Open **Campaign menu → Minigame tester** to play all 17 standalone games. The campaign stays paused while you practice. Each game can be retried, and the tester remembers your last result for each title until the page reloads. [Campaign encounters and minigame categories](docs/minigames.md)
 
 ## Test and build
 
