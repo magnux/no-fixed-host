@@ -1,0 +1,108 @@
+.arcade-practice {
+  --arcade-accent: #91e9c8;
+  --arcade-line: #394c53;
+  box-sizing: border-box;
+  width: min(46rem, calc(100% - 1.5rem));
+  max-height: calc(100dvh - 1.5rem);
+  margin: auto;
+  border: 1px solid var(--arcade-line);
+  border-radius: .7rem;
+  padding: 0;
+  color: #e8efed;
+  background: #121c22;
+  box-shadow: 0 1.4rem 5rem #000a;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  color-scheme: dark;
+}
+.arcade-practice::backdrop { background: #03090dd9; }
+.arcade-practice[data-practice-game="soundings"] { --arcade-accent: #8fe2f2; }
+.arcade-practice[data-practice-game="night-shift"],
+.arcade-practice[data-practice-game="orbital-insertion"] { --arcade-accent: #f0c48d; }
+.arcade-practice[data-practice-game="proof-of-pattern"],
+.arcade-practice[data-practice-game="witness"] { --arcade-accent: #cebdfa; }
+.arcade-practice[data-practice-game="clear-passage"] { --arcade-accent: #ffb6a7; }
+.arcade-practice .practice-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .8rem;
+  border-bottom: 1px solid var(--arcade-line);
+  padding: .85rem clamp(.8rem, 3vw, 1.4rem);
+  background: #18252c;
+}
+.arcade-practice .practice-genre {
+  margin: 0 0 .25rem;
+  color: var(--arcade-accent);
+  font: 600 .68rem/1.3 var(--mono, monospace);
+  text-transform: uppercase;
+  letter-spacing: .09em;
+}
+.arcade-practice h2 {
+  margin: 0;
+  color: #f0f6f5;
+  font-size: clamp(1.4rem, 3.2vw, 1.85rem);
+  font-weight: 650;
+  line-height: 1.05;
+  letter-spacing: -.04em;
+}
+.arcade-practice .practice-body { display: grid; gap: .75rem; padding: 1rem clamp(.8rem, 3vw, 1.4rem); }
+.arcade-practice #practice-brief { font-size: .9rem; line-height: 1.45; color: #c0d0d1; }
+.arcade-practice .practice-hud {
+  font: 550 .81rem/1.55 var(--mono, monospace);
+  color: var(--arcade-accent);
+  overflow-wrap: anywhere;
+  border-inline-start: .2rem solid var(--arcade-accent);
+  padding-inline-start: .65rem;
+}
+.arcade-practice .practice-stage, .arcade-practice .practice-controls { min-width: 0; }
+.arcade-practice .practice-stage {
+  border: 1px solid var(--arcade-line);
+  border-radius: .38rem;
+  background: #0b141a;
+  overflow: clip;
+  overflow-wrap: anywhere;
+}
+.arcade-practice .practice-stage:focus { outline: none; }
+.arcade-practice .practice-stage:focus-visible { border-color: var(--arcade-accent); }
+.arcade-practice .practice-stage > canvas { display: block; width: 100%; height: auto; }
+.arcade-practice .practice-controls { display: flex; flex-wrap: wrap; gap: .45rem; align-items: center; }
+.arcade-practice .practice-controls[inert] { opacity: .55; }
+.arcade-practice button { touch-action: manipulation; }
+.arcade-practice .practice-controls > button,
+.arcade-practice [data-practice-back],
+.arcade-practice [data-retry] {
+  min-height: 2.65rem;
+  border-color: var(--arcade-line);
+  color: #e1eded;
+  background: #1d2c33;
+  font-size: .85rem;
+}
+.arcade-practice .practice-controls > .practice-primary {
+  background: var(--arcade-accent);
+  color: #112520;
+  border-color: var(--arcade-accent);
+}
+.arcade-practice .practice-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: .65rem;
+  padding-top: .65rem;
+  border-top: 1px solid var(--arcade-line);
+}
+.arcade-practice .practice-status { min-width: 0; line-height: 1.4; font-size: .86rem; }
+.arcade-practice [data-result] { display: block; color: var(--arcade-accent); }
+.arcade-practice[data-outcome="failed"] [data-result] { color: #ffb1a3; }
+.arcade-practice[data-outcome="partial"] [data-result] { color: #f1c78c; }
+.arcade-practice [data-retry],
+.arcade-practice [data-practice-back] { flex-shrink: 0; }
+.arcade-practice :is(.practice-hud, .practice-controls, [data-result]):empty { display: none; }
+.arcade-practice [hidden] { display: none; }
+.arcade-practice button:focus-visible { outline: 2px solid var(--arcade-accent); outline-offset: 2px; }
+@media (max-width: 30rem) {
+  .arcade-practice { width: calc(100% - .7rem); max-height: calc(100dvh - .7rem); }
+  .arcade-practice .practice-body { gap: .6rem; padding: .75rem; }
+  .arcade-practice .practice-controls > button { padding: .45rem .65rem; }
+}

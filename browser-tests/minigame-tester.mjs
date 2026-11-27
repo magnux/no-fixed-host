@@ -120,3 +120,103 @@ test('the title screen opens the tester on a narrow display and keyboard exit re
   assert.equal(await focused(page.locator('#pause')), true);
   assert.equal(await saved(page), saveAtEntry);
 });
+
+test('all ten tester entries launch independently, retry with fresh controls, and return to the same campaign', async t => {
+  const page = await fresh(t, 375);
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.locator('#menu summary').click();
+  await page.getByRole('button', { name: 'Minigame tester', exact: true }).click();
+  const tester = page.getByRole('dialog', { name: /minigame tester/i });
+  const titles = ['First Jump', 'Hide', 'Soundings', 'Night Shift', 'Proof of Pattern', 'Orbital Insertion',
+    'Clear Passage', 'Crosscheck', 'Witness', 'Clearing House'];
+  assert.deepEqual(await tester.locator('.shell-game h3').allTextContents(), titles);
+  const snapshot = await saved(page);
+  const date = await page.locator('#game-date').textContent();
+
+  for (const title of titles.slice(1)) {
+    const launch = btn(tester, 'Play ' + title);
+    await launch.click();
+    const game = page.getByRole('dialog', { name: title, exact: true });
+    await game.locator('[data-stage] > *').first().waitFor({ state: 'attached' });
+    assert.ok(await game.evaluate(el => el.scrollWidth <= el.clientWidth + 1), title + ' fits at 375px');
+    assert.ok((await game.locator('[data-hud]').innerText()).length, title + ' exposes its game state');
+    const stage = await game.locator('[data-stage]').elementHandle();
+    await game.locator('[data-retry]').click();
+    assert.equal(await stage.evaluate(el => el.isConnected), false, title + ' resets its scene on replay');
+    await page.keyboard.press('Escape');
+    await tester.getByRole('status').filter({ hasText: title + ' · Left before finishing' }).waitFor();
+    assert.equal(await focused(launch), true, title + ' restores selection');
+  }
+  assert.equal(await page.locator('#game-date').textContent(), date);
+  assert.equal(await saved(page), snapshot);
+  assert.deepEqual(errors, []);
+});
+
+test('switching games during a delayed download opens only the final choice', { timeout: 20000 }, async t => {
+  const page = await fresh(t);
+  let releaseChunk;
+  const gated = new Promise(resolve => { releaseChunk = resolve; });
+  let requested;
+  const started = new Promise(resolve => { requested = resolve; });
+  await page.route('**/prototypes/soundings.js*', async route => {
+    requested();
+    await gated;
+    await route.continue();
+  });
+  try {
+    await page.locator('#menu summary').click();
+    await page.getByRole('button', { name: 'Minigame tester', exact: true }).click();
+    const tester = page.getByRole('dialog', { name: /minigame tester/i });
+    await btn(tester, 'Play Soundings').click();
+    await started;
+    await btn(tester, 'Play Hide').click();
+    const hide = page.getByRole('dialog', { name: 'Hide', exact: true });
+    await hide.waitFor();
+    const arrived = page.waitForResponse(r => r.url().includes('/prototypes/soundings.js'));
+    releaseChunk();
+    await arrived;
+    await hide.locator('[data-practice-back]').click();
+    assert.equal(await page.locator('[data-practice-game][open]').count(), 0);
+    assert.equal(await focused(btn(tester, 'Play Hide')), true);
+  } finally {
+    releaseChunk();
+  }
+});
+
+test('an evidence brief, witness interview and currency settlement each produce their own tester result', async t => {
+  const page = await fresh(t);
+  await page.locator('#menu summary').click();
+  await page.getByRole('button', { name: 'Minigame tester', exact: true }).click();
+  const tester = page.getByRole('dialog', { name: /minigame tester/i });
+  const snapshot = await saved(page);
+  for (const title of ['Crosscheck', 'Witness', 'Clearing House']) {
+    const launch = btn(tester, 'Play ' + title);
+    await launch.click();
+    const game = page.getByRole('dialog', { name: title, exact: true });
+    if (title === 'Crosscheck') {
+      const pins = game.getByRole('checkbox');
+      await pins.nth(0).check();
+      await pins.nth(1).check();
+      await game.getByRole('radio').first().check();
+      await btn(game, 'File the brief').click();
+    } else if (title === 'Witness') {
+      const choices = game.locator('[data-controls] button');
+      await choices.first().click();
+      await choices.first().click();
+      await choices.first().click();
+    } else {
+      for (let leg = 0; leg < 3; leg++) await game.locator('.ch-stop[data-state="next"]').first().click();
+      await btn(game, 'Settle payout').click();
+    }
+    const outcome = await game.getAttribute('data-outcome');
+    const label = { complete: 'Complete', partial: 'Partial success', failed: 'Unsuccessful' }[outcome];
+    assert.ok(label, title + ' produced a scored ending');
+    assert.ok((await game.locator('[data-status]').innerText()).length > 20);
+    await btn(game, 'Back to tester').click();
+    const result = tester.locator('.shell-game').filter({ has: page.getByRole('heading', { name: title, exact: true }) }).locator('[data-practice-result]');
+    await result.filter({ hasText: label }).waitFor();
+    assert.equal(await result.textContent(), label);
+  }
+  assert.equal(await saved(page), snapshot);
+});

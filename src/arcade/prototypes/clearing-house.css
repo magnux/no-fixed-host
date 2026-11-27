@@ -1,0 +1,19 @@
+.ch-desk { padding: .7rem; color: #f1ede4; background: #192321; border: 1px solid #52665c; border-radius: .45rem; }
+.ch-order h3 { margin: 0 0 .2rem; color: #ffdb94; font-size: 1rem; }
+.ch-order p { margin: 0; font-size: .88rem; line-height: 1.45; }
+.ch-map { position: relative; height: clamp(8rem, 20vh, 11rem); margin: .6rem 0; border-block: 1px dashed #56665a; background: repeating-linear-gradient(0deg, transparent 0 15px, #637b6b18 15px 16px); }
+.ch-map svg { position: absolute; width: 100%; height: 100%; inset: 0; }
+.ch-map path { stroke: #65736a; stroke-width: 1.5px; vector-effect: non-scaling-stroke; fill: none; }
+.ch-map .ch-next { stroke: #a9d6ab; stroke-width: 2px; stroke-dasharray: 4 3; }
+.ch-map .ch-taken { stroke: #f9cf7b; stroke-width: 3px; }
+.ch-desk button.ch-stop { position: absolute; transform: translate(-50%, -50%); display: grid; align-content: center; justify-items: center; gap: .12rem; width: 22%; max-width: 6rem; min-width: 0; min-height: 44px; padding: .25rem .1rem; margin: 0; border: 1px solid #626d62; border-radius: .35rem; line-height: 1.2; background: #28332f; color: #bdc9bd; opacity: 1; }
+.ch-stop strong { color: inherit; font: 650 .87rem/1.1 system-ui, sans-serif; }
+.ch-stop small { color: inherit; font: .65rem/1.2 ui-monospace, monospace; white-space: nowrap; }
+.ch-desk .ch-stop[data-state="current"] { color: #fff0d4; background: #4b3c23; border: 2px solid #ffcf7b; }
+.ch-desk .ch-stop[data-state="visited"] { color: #f4d293; border-color: #a18a62; }
+.ch-desk .ch-stop[data-state="next"] { cursor: pointer; background: #c7e9be; border-color: #dcf7df; color: #172b1e; }
+.ch-desk .ch-stop:focus-visible, .ch-sheet summary:focus-visible { outline: 3px solid #f7ce80; outline-offset: 2px; }
+.ch-sheet summary { cursor: pointer; color: #d9e6d8; font-size: .9rem; }
+.ch-sheet table { margin: .4rem 0 0; width: 100%; border-collapse: collapse; font: .78rem/1.3 ui-monospace, monospace; }
+.ch-sheet caption { padding: .2rem 0 .4rem; color: #c9d5c9; text-align: left; line-height: 1.4; }
+.ch-sheet th, .ch-sheet td { padding: .2rem .3rem; text-align: left; border-bottom: 1px solid #405248; }

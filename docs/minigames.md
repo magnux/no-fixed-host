@@ -1,6 +1,6 @@
 # Minigames in the campaign
 
-**First Jump** is playable in the Minigame Tester. The encounters and rewards below are proposals for the campaign. Start with **Hide** and **Soundings**. Hide asks which surviving host is worth protecting. Soundings lets the player explore a destination they have spent hours trying to reach. Between them we can test both a repeatable response to danger and a once-per-destination expedition.
+Open **Campaign menu → Minigame tester** or enter from the title screen. All ten games below are playable. You can go straight to the genre you want to try, retry a run, or leave early. Results belong to this playtest session. The campaign clock stays paused and campaign encounters and rewards are deferred until after player feedback.
 
 ## Where a game fits
 
@@ -38,14 +38,14 @@
 | Deduction and dialogue | Compare testimony and decide whom to trust. Use for news investigations and later factions. |
 | Resource routing | Match routes, fees and deadlines. Reserve for contracts once the currency systems exist. |
 
-## First playable sequence
+## Playtest and integration order
 
-1. **Tester and First Jump.** Launch from the main menu, learn the controls, finish a run, retry, and return to a paused campaign. Each run uses its own state.
-2. **Hide.** Prototype one small patrol board in the tester. Then connect one surviving-host choice to an ordinary discovery. Check the target, the next-day expiry, simultaneous discoveries, losing the final copy and replaying the saved report.
-3. **Soundings.** Prototype a single map with two viable beacon sites. Then connect it to the first Ocean order from both Facilities and the order forecast. Test canceling before commissioning and building a second lab.
-4. **Night Shift.** Try it on one long refit. Track whether players voluntarily return to the activity. If it becomes another chore, retain the best levels as milestone encounters.
+1. Try **Hide**, **Soundings** and **Night Shift** to compare responding to a loss, reaching a new location and filling a productive wait. For player feedback, the most useful details are the moment you understood the controls, the decision you enjoyed most, and whether you wanted another run.
+2. If Hide works as a response to danger, connect one surviving-host choice to an ordinary discovery. Check simultaneous discoveries, losing the final copy, expiry and reopening a saved report.
+3. If Soundings makes the first Ocean base feel earned, connect it at order confirmation in Facilities and the order forecast. Test canceling before commissioning and building a second lab. The Moon and Far Reaches can reuse that mechanism.
+4. If players return to Night Shift voluntarily, attach the invitation to one long refit. Research, news, characters and contracts can follow where the playtest supports them.
 
-Moon and Far Reaches can follow once first-destination offers and their outcomes survive save/load. The existing First Jump covers a discrete timing mechanic. Hide, Soundings and Night Shift then give us three distinct kinds of play to compare.
+The [tester catalog](../src/arcade/catalog.js) loads a game when selected. Each new game owns its own rules and input. The [practice dialog](../src/arcade/practice.js) manages replay, keyboard focus, frame timing and cleanup. Campaign state is never passed into these games.
 
 ## Where the current code supplies a hook
 

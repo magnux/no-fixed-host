@@ -18,11 +18,22 @@
 .shell-current, .shell-note, .shell-when { color: var(--quiet); }
 .shell-actions, .shell-save-bar > div { display: flex; align-items: center; flex-wrap: wrap; gap: .45rem; }
 .shell-actions.hub { margin-top: 1.1rem; }
-.shell-games { list-style: none; padding: 0; margin: .8rem 0 0; display: grid; gap: .75rem; }
-.shell-games li { padding: .9rem; border: 1px solid var(--line); border-radius: .35rem; }
-.shell-games h3 { margin-bottom: .2rem; }
-.shell-games .shell-current { font: .75rem var(--mono); }
-.shell-games button { margin-top: .75rem; }
+.campaign-shell[data-page="tester"] { width: min(67rem, calc(100vw - 1.5rem)); max-height: 90dvh; }
+.shell-games {
+  list-style: none; padding: 0; margin: .85rem 0 0; display: grid; gap: .85rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+}
+.shell-game { display: flex; flex-direction: column; min-width: 0; overflow: hidden;
+  background: var(--ink); border: 1px solid var(--line); border-radius: .45rem; }
+.shell-game-preview { display: block; width: 100%; height: auto; aspect-ratio: 20 / 7; object-fit: cover;
+  background: #102025; border-bottom: 1px solid var(--line); }
+.shell-game-info { padding: .8rem; flex: 1; display: flex; align-items: start; flex-direction: column; }
+.shell-games .shell-current { color: var(--mint); font: .72rem var(--mono); }
+.shell-games h3 { margin: .3rem 0; font-size: 1.1rem; }
+.shell-game-brief { flex: 1; }
+.shell-game-result { color: var(--mint); font: .75rem var(--mono); }
+.shell-game-result:empty { display: none; }
+.shell-games button { margin-top: .7rem; }
 .shell-games button[aria-disabled=true] { opacity: .7; }
 .shell-back { margin-top: .9rem; }
 .shell-save-bar { margin-bottom: .7rem; }

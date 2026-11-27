@@ -42,6 +42,8 @@ export function initShell({ getState, pause, setRate, restore, restartUnsupporte
   const status = dialog.querySelector('.shell-notice');
   let page = null;
   let fromHub = false;
+  const practiceResults = new Map();
+  let practiceRequest = null;
   let returnFocus = null;
   let pending = null;
   let search = '';
@@ -113,28 +115,49 @@ export function initShell({ getState, pause, setRate, restore, restartUnsupporte
       button('saves','Save library') + button('tester','Minigame tester') + button('options','Options') + button('about','About')}</div>`;
   }
   function testerPage() {
-    const cards = minigames.map(game => `<li>
-      <h3>${escape(game.title)}</h3><p class="shell-current">${t(game.category)}</p><p>${t(game.brief)}</p>
-      <button type="button" class="primary-button" data-shell-action="play" data-minigame="${game.id}">${t(game.playLabel)}</button>
-    </li>`).join('');
+    const cards = minigames.map(game => {
+      const result = practiceResults.get(game.id);
+      return `<li class="shell-game">
+        <img class="shell-game-preview" src="${import.meta.env.BASE_URL}arcade-previews/${game.id}.webp" alt="" width="480" height="168" loading="lazy">
+        <div class="shell-game-info"><p class="shell-current">${t(game.category)}</p><h3>${escape(game.title)}</h3>
+        <p class="shell-game-brief">${t(game.brief)}</p>
+        <p class="shell-game-result" data-practice-result>${result ? t(result) : ''}</p>
+        <button type="button" data-shell-action="play" data-minigame="${game.id}">${t(game.playLabel)}</button></div>
+      </li>`;
+    }).join('');
     return `<p>${t('Practice while the campaign is paused. Results stay in the tester.')}</p><ul class="shell-games">${cards}</ul>`;
   }
   async function playPractice(trigger) {
-    if (trigger.getAttribute('aria-disabled') === 'true') return;
+    if (practiceRequest?.trigger === trigger) return;
     const game = minigames.find(entry => entry.id === trigger.dataset.minigame);
+    const cardStatus = trigger.closest('.shell-game').querySelector('[data-practice-result]');
+    // If two chunks are requested, only the player's latest choice may open a dialog.
+    practiceRequest?.trigger.removeAttribute('aria-disabled');
+    const request = { trigger };
+    practiceRequest = request;
+    const isCurrent = () => practiceRequest === request && dialog.open && trigger.isConnected;
     trigger.setAttribute('aria-disabled', 'true');
     say(t('Loading minigame…'));
     try {
       const play = await game.load();
-      // The player can leave the tester while a game chunk is downloading.
-      if (!dialog.open || !trigger.isConnected) return;
+      if (!isCurrent()) return;
       trigger.focus();
       const outcome = await play({ closeLabel: t('Back to tester') });
-      if (dialog.open && trigger.isConnected) say(`${game.title} · ${t(game.outcomes[outcome])}`);
+      if (!isCurrent()) return;
+      const result = game.outcomes[outcome];
+      practiceResults.set(game.id, result);
+      cardStatus.textContent = t(result);
+      say(`${game.title} · ${t(result)}`);
     } catch {
-      if (dialog.open && trigger.isConnected) say(t('Could not open the minigame. Try again.'));
+      if (isCurrent()) {
+        cardStatus.textContent = t('Could not open the minigame. Try again.');
+        say(cardStatus.textContent);
+      }
     } finally {
-      trigger.removeAttribute('aria-disabled');
+      if (practiceRequest === request) {
+        practiceRequest = null;
+        trigger.removeAttribute('aria-disabled');
+      }
     }
   }
   function savesPage() {
