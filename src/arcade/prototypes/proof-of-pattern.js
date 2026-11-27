@@ -170,6 +170,7 @@ export default function mount(api) {
     model.masks[selected] = turnMask(model.masks[selected], amount);
     rotations++; markLeaks = false;
     const reading = display();
+    api.sfx?.(reading.complete ? 'matched' : 'rotate');
     api.setStatus(reading.complete ? 'All four observations agree. Test your model to record the finding.' : describeCell());
   }
   function select(cell) {
@@ -187,6 +188,7 @@ export default function mount(api) {
       ended = true;
       api.finish(reading.lit.size ? 'partial' : 'failed', reading.lit.size + ' of four observations matched when the test samples ran out.');
     } else {
+      api.sfx?.('test');
       api.setStatus(reading.visited.size === 0 ? 'The input has no path into its tile. Rotate that piece to start the signal.' :
         reading.lit.size + ' of four observations matched. Open live leads are marked ×. Keep rotating and test again.');
     }

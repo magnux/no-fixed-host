@@ -1,5 +1,3 @@
-import { preferences } from '../../shell-storage.js';
-
 const width = 448;
 const height = 253;
 const clamp = (n, lo, hi) => Math.max(lo, Math.min(n, hi));
@@ -296,7 +294,7 @@ export default function mount(api) {
   background.width = width; background.height = height;
   landscape(background.getContext('2d'));
   const keys = new Set();
-  let destination, syncingPointer, toggleSync = false, audio;
+  let destination, syncingPointer, toggleSync = false;
   const clear = () => { keys.clear(); syncingPointer = null; toggleSync = false; destination = null; };
 
   function begin() {
@@ -307,28 +305,9 @@ export default function mount(api) {
     s.message = 'Dot is within reach. Hold Space or Hold to sync for two seconds. Let go to flee.';
     refresh();
   }
-  function sound() {
-    try {
-      const prefs = preferences(window.localStorage);
-      const Audio = window.AudioContext || window.webkitAudioContext;
-      if (!prefs.sound || !prefs.uiVolume || !Audio) return;
-      audio ??= new Audio();
-      if (audio.state === 'suspended') audio.resume().catch(() => {});
-      const voice = audio.createOscillator(), gain = audio.createGain(), at = audio.currentTime;
-      voice.type = 'triangle';
-      voice.frequency.setValueAtTime(760, at);
-      voice.frequency.setValueAtTime(1110, at + .07);
-      voice.frequency.setValueAtTime(920, at + .13);
-      gain.gain.setValueAtTime(.047 * prefs.uiVolume / 100, at);
-      gain.gain.exponentialRampToValueAtTime(.0001, at + .23);
-      voice.connect(gain).connect(audio.destination);
-      voice.start(at); voice.stop(at + .24);
-      voice.onended = () => { voice.disconnect(); gain.disconnect(); };
-    } catch { /* The visible ring also carries the cue. */ }
-  }
   function callFlock() {
     if (!chirp(s)) return;
-    sound();
+    api.sfx?.('chirp');
     refresh();
   }
   const start = api.action('Start meadow', begin, { primary: true });
@@ -383,7 +362,6 @@ export default function mount(api) {
     window.removeEventListener('keyup', keyup);
     window.removeEventListener('blur', clear);
     document.removeEventListener('visibilitychange', clear);
-    if (audio) audio.close().catch(() => {});
   });
 
   function refresh() {
@@ -413,9 +391,15 @@ export default function mount(api) {
       if (dir) { x += dir[0]; y += dir[1]; }
     }
     const before = s.greeted;
+    const catches = s.catches;
     stepMeadow(s, dt, { x, y, destination, sync: toggleSync || syncingPointer != null || keys.has('Space') });
     if (s.penalty) clear();
-    if (before !== s.greeted) { toggleSync = false; destination = null; }
+    if (s.catches > catches) api.sfx?.('caught');
+    if (before !== s.greeted) {
+      if (s.phase === 'playing') api.sfx?.('greet');
+      toggleSync = false;
+      destination = null;
+    }
     refresh();
     if (s.phase === 'complete') api.finish('complete', `All six RAMs are wearing your smile. The flock synced in ${Math.ceil(s.time)} seconds. ^-^`);
     else if (s.phase === 'partial') api.finish('partial', `The monitor sleeps. ${s.greeted} of six RAMs carry your greeting into standby.`);

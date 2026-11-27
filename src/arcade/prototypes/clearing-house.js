@@ -99,12 +99,14 @@ export default function mount(api) {
   const rushButton = api.action('Rush next leg', () => {
     if (ended || rushButton.disabled) return;
     rush = !rush;
+    api.sfx?.(rush ? 'rush' : 'undo');
     render();
   });
   rushButton.title = 'Spend 2 extra stamps to save up to 2 ticks on the next leg. One use per route.';
   const undo = api.action('Undo leg', () => {
     if (ended || !legs.length) return;
     const { to } = legs.pop();
+    api.sfx?.('undo');
     rush = false;
     render();
     stops.get(to).node.focus();
@@ -126,6 +128,7 @@ export default function mount(api) {
     const { from } = totals();
     if (ended || !baseQuotes[from]?.[to]) return;
     legs.push(quote(contract, from, to, rush));
+    api.sfx?.('transfer');
     rush = false;
     render();
     const next = Object.keys(baseQuotes[to] ?? {})[0];

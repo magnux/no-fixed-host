@@ -91,6 +91,7 @@ export default function mount(api) {
       }
       if (input.checked) chosen.add(index);
       else chosen.delete(index);
+      api.sfx?.(input.checked ? 'pin' : 'unpin');
       update();
     });
   }
@@ -102,7 +103,11 @@ export default function mount(api) {
     const input = element('input');
     input.type = 'radio';
     input.name = 'crosscheck-finding';
-    input.addEventListener('change', () => { claim = index; update(); });
+    input.addEventListener('change', () => {
+      claim = index;
+      api.sfx?.('headline');
+      update();
+    });
     label.append(input, element('span', packet.claims[index]));
     headlines.append(label);
   }

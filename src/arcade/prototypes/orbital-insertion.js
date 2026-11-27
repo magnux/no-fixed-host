@@ -280,6 +280,7 @@ export default function mount(api) {
   const setBrake = () => {
     if (craft.phase !== 'descent' || !craft.fuel) return;
     craft.braking = !craft.braking;
+    api.sfx?.(craft.braking ? 'brake' : 'cutoff');
     brake.textContent = craft.braking ? 'Cut brake (B)' : 'Fire brake (B)';
     brake.setAttribute('aria-pressed', String(craft.braking));
     render();
@@ -287,6 +288,7 @@ export default function mount(api) {
   function transfer() {
     if (craft.phase !== 'orbit') return;
     depart(craft);
+    api.sfx?.('transfer');
     launch.hidden = true;
     left.hidden = right.hidden = brake.hidden = false;
     brake.focus();

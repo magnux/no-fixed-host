@@ -287,6 +287,16 @@ export default function mount(api) {
   canvas.setAttribute('role', 'img');
   const keys = new Set(), touches = new Map();
   let tapDirection = 0, tapUntil = 0, lastHud = '', lastMessage = '', lastUse = null;
+  function shift() {
+    const wasCore = s.core;
+    shiftForm(s);
+    if (s.core !== wasCore) api.sfx?.(s.core ? 'shift' : 'rebuild');
+  }
+  function jump() {
+    const onGround = s.grounded;
+    leap(s);
+    if (onGround && !s.grounded) api.sfx?.('jump');
+  }
   function walkButton(label, direction) {
     let heldAt = null;
     const button = api.action(label, () => {
@@ -303,8 +313,8 @@ export default function mount(api) {
       button.addEventListener(name, event => touches.delete(event.pointerId));
   }
   walkButton('← Move', -1); walkButton('Move →', 1);
-  api.action('Jump', () => leap(s));
-  const form = api.action('Shift form', () => shiftForm(s));
+  api.action('Jump', jump);
+  const form = api.action('Shift form', shift);
   const interact = api.action('Use', () => useFixture(s), { primary: true });
   const release = event => keys.delete(event.code);
   const clear = () => { keys.clear(); touches.clear(); tapUntil = 0; };
@@ -324,9 +334,9 @@ export default function mount(api) {
     if (code === 'Space' && event.target.tagName === 'BUTTON') return;
     event.preventDefault();
     if (event.repeat) return;
-    if (code === 'KeyC') shiftForm(s);
+    if (code === 'KeyC') shift();
     else if (code === 'KeyE') useFixture(s);
-    else leap(s);
+    else jump();
   });
   function render(dir) {
     const hud = rooms[s.room].name + ' · ' + s.visited.size + '/7 rooms · ' + (s.core ? 'Rolling core' : 'Walking shell') +
@@ -350,6 +360,7 @@ export default function mount(api) {
   s.message = 'Move with ←/→ or A/D. Jump with Space or ↑. The uplink glows behind the grate. Explore the amber door to the east.';
   render(0);
   api.frame(dt => {
+    const { rescues, unlocked, memory } = s;
     const left = keys.has('KeyA') || keys.has('ArrowLeft');
     const right = keys.has('KeyD') || keys.has('ArrowRight');
     const direction = Number(right) - Number(left) || [...touches.values()].at(-1) || (s.time < tapUntil ? tapDirection : 0);
@@ -357,6 +368,9 @@ export default function mount(api) {
       const h = Math.min(1 / 120, remaining);
       stepEscape(s, h, direction); remaining -= h;
     }
+    if (s.rescues > rescues) api.sfx?.('rescue');
+    else if (!unlocked && s.unlocked) api.sfx?.('coupling');
+    else if (!memory && s.memory) api.sfx?.('memory');
     render(direction);
     if (s.ended) api.finish(s.ended, s.message);
   });

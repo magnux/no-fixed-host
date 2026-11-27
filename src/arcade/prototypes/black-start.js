@@ -306,20 +306,29 @@ export default function mount(api) {
   canvas.setAttribute('role', 'img');
   canvas.setAttribute('aria-label', 'Pinball table with Cooling, Memory and Relay breakers. Shoot up the center ramp after lighting all three.');
   const pressed = new Map();
+  function launch() {
+    if (table.phase !== 'ready' && table.phase !== 'charging') return;
+    launchBall(table);
+    api.sfx?.('plunger');
+  }
+  function flip(index, pulseDuration) {
+    if (table.phase === 'play' && !table.held[index] && !table.pulse[index]) api.sfx?.('flipper');
+    table.pulse[index] = pulseDuration;
+  }
   function press(id, control) {
     if (pressed.has(id)) return;
     pressed.set(id, control);
     if (control === 2) pullPlunger(table);
     else {
+      flip(control, 0.1);
       table.held[control] = true;
-      table.pulse[control] = 0.1;
     }
   }
   function release(id) {
     const control = pressed.get(id);
     pressed.delete(id);
     if (control === undefined || [...pressed.values()].includes(control)) return;
-    if (control === 2) launchBall(table);
+    if (control === 2) launch();
     else table.held[control] = false;
   }
   function bindPointer(el, identify) {
@@ -334,12 +343,12 @@ export default function mount(api) {
     el.addEventListener('lostpointercapture', event => release(event.pointerId));
   }
   const plunge = api.action('Plunger', event => {
-    if (event.detail === 0) launchBall(table);
+    if (event.detail === 0) launch();
   }, { primary: true });
   bindPointer(plunge, () => 2);
   const flippers = ['Left flipper', 'Right flipper'].map((label, index) => {
     const button = api.action(label, event => {
-      if (event.detail === 0) table.pulse[index] = 0.13;
+      if (event.detail === 0) flip(index, 0.13);
     });
     bindPointer(button, () => index);
     return button;
@@ -389,8 +398,19 @@ export default function mount(api) {
   }
   api.setStatus('Hold Space or the plunger for power, then release. Flip with ← / → or A / D. On touch, press the left or right half of the table.');
   update();
+  const bankCues = ['cooling', 'memory', 'relay'];
+  const rang = [false, false, false];
   api.frame(dt => {
+    const balls = table.balls;
     const outcome = stepTable(table, dt);
+    // A bank rings once when its breaker latches, even if the ball keeps bouncing there.
+    for (let i = 0; i < bankCues.length; i++) {
+      if (table.lit[i] && !rang[i]) {
+        api.sfx?.(bankCues[i]);
+        rang[i] = true;
+      }
+    }
+    if (!outcome && table.balls < balls) api.sfx?.('drain');
     update();
     if (outcome) api.finish(outcome, outcome === 'complete' ? 'Generator spinning. Every window in the facility lights up.' :
       table.lit.filter(Boolean).length + ' of three breaker banks stayed online when the last ball drained.');

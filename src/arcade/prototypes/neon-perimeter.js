@@ -318,11 +318,13 @@ export default function mount(api) {
         api.setStatus('Choose an empty socket to move this tower.'); return;
       }
       movingFrom=null;
+      api.sfx?.('move');
     }
     selected=index; update(); api.setStatus(advice());
   }
   function install(type) {
     if (movingFrom!==null || !installTower(state,selected,type)) return;
+    api.sfx?.('install');
     update(); api.setStatus(advice());
   }
   function adjust() {
@@ -335,10 +337,12 @@ export default function mount(api) {
   }
   function launchWave() {
     if (movingFrom!==null || !sendWave(state)) return;
+    api.sfx?.('wave');
     update(); api.setStatus(advice());
   }
   function boost() {
     if (!overdrive(state,selected)) return;
+    api.sfx?.('boost');
     update(); api.setStatus('Tower '+(selected+1)+' overdriven for 2.5 seconds.');
   }
   canvas.addEventListener('pointerdown', event => {
@@ -373,6 +377,7 @@ export default function mount(api) {
       const detail=state.outcome==='failed'?'The core went dark during wave '+(state.wave+1)+'.':'All four waves cleared with '+state.hp+' core integrity.';
       api.finish(state.outcome, detail+' Your towers stopped '+state.blocked+' units.');
     } else if (state.phase==='build') {
+      api.sfx?.('clear');
       update(); api.setStatus('Wave cleared. +2 charge. '+advice());
     } else if (state.hp!==hp) update();
     else paint(ctx,state,selected);

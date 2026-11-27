@@ -319,6 +319,21 @@ export default function mount(api) {
     menu();
     api.stage.focus({ preventScroll: true });
   }
+  function jump() {
+    const deck = game.deck;
+    jumpChassis(game);
+    if (deck !== null && game.deck === null) api.sfx?.('jump');
+  }
+  function fire() {
+    const cooldown = game.cooldown;
+    fireChassis(game);
+    if (game.cooldown > cooldown) api.sfx?.('pulse');
+  }
+  function dash() {
+    const previous = game.dash;
+    airDash(game);
+    if (game.dash > previous) api.sfx?.('dash');
+  }
   function heldButton(label, input, tap) {
     let downAt;
     const button = api.action(label, event => {
@@ -347,9 +362,9 @@ export default function mount(api) {
           stride = direction; strideUntil = game.time + .15;
         });
       }
-      api.action('Jump', () => jumpChassis(game));
-      heldButton('Fire', 'fire', () => fireChassis(game));
-      if (game.cleared.includes('turbine')) api.action('Air dash', () => airDash(game), { primary: true });
+      api.action('Jump', jump);
+      heldButton('Fire', 'fire', fire);
+      if (game.cleared.includes('turbine')) api.action('Air dash', dash, { primary: true });
     }
     show();
   }
@@ -378,9 +393,9 @@ export default function mount(api) {
     if (code === 'Space' && event.target.tagName === 'BUTTON') return;
     event.preventDefault(); keys.add(code);
     if (!event.repeat) {
-      if (['KeyZ','Space','ArrowUp'].includes(code)) jumpChassis(game);
-      if (code === 'KeyX') fireChassis(game);
-      if (code === 'KeyC') airDash(game);
+      if (['KeyZ','Space','ArrowUp'].includes(code)) jump();
+      if (code === 'KeyX') fire();
+      if (code === 'KeyC') dash();
     }
   });
   const release = e => keys.delete(e.code);
@@ -399,10 +414,15 @@ export default function mount(api) {
     const dir = Number(keys.has('ArrowRight') || keys.has('KeyD')) - Number(keys.has('ArrowLeft') || keys.has('KeyA')) ||
       inputs.filter(v => typeof v === 'number').at(-1) || (game.time < strideUntil ? stride : 0);
     const prior = game.phase;
+    const hull = game.hp;
+    const cooldown = game.cooldown;
     for (let remaining = dt; remaining > 0; remaining -= 1 / 120) {
       tickChassis(game, Math.min(remaining, 1 / 120), dir, keys.has('KeyX') || inputs.includes('fire'));
     }
+    if (game.phase === 'run' && game.hp < hull) api.sfx?.('damage');
+    else if (game.phase === 'run' && game.cooldown > cooldown) api.sfx?.('pulse');
     if (prior !== game.phase) {
+      if (game.phase === 'swap') api.sfx?.('module');
       clearInput(); menu();
       if (game.phase === 'swap') api.controls.querySelector('button')?.focus();
     } else show();

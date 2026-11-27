@@ -39,6 +39,8 @@ The portrait in the command dock starts as `^-^`. Finish any research to give it
 
 The design takes inspiration from [Endgame: Singularity](https://github.com/singularity/singularity). The simulation and interface are written in JavaScript. Open **Campaign menu → Minigame tester** to play all 17 standalone games. The campaign stays paused while you practice. Each game can be retried, and the tester remembers your last result for each title until the page reloads. [Campaign encounters and minigame categories](docs/minigames.md)
 
+Enable audio in the tester or in **Campaign menu → Options**. **Music volume** controls the score and **Effects volume** controls actions and alerts. The browser synthesizes all 17 original arcade tracks locally. [Soundtrack and listening notes](docs/minigames.md#soundtrack)
+
 ## Test and build
 
 ```sh

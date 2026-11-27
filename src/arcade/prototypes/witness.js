@@ -208,6 +208,7 @@ export default function mount(api) {
       for (const question of choices) {
         api.action(question.ask, () => {
           if (heard.length >= 2 || heard.includes(question)) return;
+          api.sfx?.(question === heard[0]?.follow ? 'followup' : 'question');
           heard.push(question);
           transcript.append(element('p', question.ask, 'wi-question'));
           const answer = reply(question.answer);

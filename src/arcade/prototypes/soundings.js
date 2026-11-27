@@ -118,7 +118,10 @@ export default function mount(api) {
       else api.setStatus('Passage blocked by reef, chart edge or battery limit. Moving into a current costs two.');
       return;
     }
+    const arrived = terrainAt(next, next.x, next.y);
+    const newAnchorage = (arrived === 'S' || arrived === 'T') && !state.track.has(coord(next.x, next.y));
     state = next;
+    if (!state.outcome) api.sfx?.(command === 'ping' ? 'ping' : newAnchorage ? 'anchorage' : 'propeller');
     draw(command === 'ping' ? 'Sonar charts water within three squares.' : `Hull at ${coord(state.x,state.y)}.`, command === 'ping');
     if (state.outcome === 'shelf') api.finish('complete', `Shelf beacon anchored at ${coord(state.x,state.y)} with ${state.charge} battery. Shallow water enables earlier assembly.`);
     if (state.outcome === 'trench') api.finish('complete', `Trench beacon anchored at ${coord(state.x,state.y)} with ${state.charge} battery. Deep cover conceals the simulated facility.`);

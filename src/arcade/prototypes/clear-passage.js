@@ -373,6 +373,7 @@ export default function mount(api) {
   function begin() {
     if (game.phase !== 'ready') return;
     game.phase = 'flight';
+    api.sfx?.('launch');
     start.hidden = true;
     for (const b of flightControls) b.hidden = false;
     fire.focus();
@@ -382,11 +383,16 @@ export default function mount(api) {
     );
     render();
   }
+  function control(input) {
+    const shotsBefore = game.shots.length;
+    pilot(game, input);
+    if (game.shots.length > shotsBefore) api.sfx?.('laser');
+  }
   const start = api.action('Start escort', begin, { primary: true });
-  const left = api.action('Turn left (←)', () => pilot(game, 'left'));
-  const thrust = api.action('Thrust (↑)', () => pilot(game, 'thrust'));
-  const right = api.action('Turn right (→)', () => pilot(game, 'right'));
-  const fire = api.action('Fire (F)', () => pilot(game, 'fire'), { primary: true });
+  const left = api.action('Turn left (←)', () => control('left'));
+  const thrust = api.action('Thrust (↑)', () => control('thrust'));
+  const right = api.action('Turn right (→)', () => control('right'));
+  const fire = api.action('Fire (F)', () => control('fire'), { primary: true });
   const flightControls = [left, thrust, right, fire];
   for (const b of flightControls) b.hidden = true;
   const keyMap = {
@@ -402,7 +408,7 @@ export default function mount(api) {
     const input = keyMap[event.key.toLowerCase()];
     if (!input || game.phase !== 'flight') return;
     event.preventDefault();
-    pilot(game, input);
+    control(input);
   });
   function aim(event) {
     if (game.phase !== 'flight' || game.stun > 0 || event.button !== 0) return;
@@ -410,7 +416,7 @@ export default function mount(api) {
     const x = ((event.clientX - box.left) * width) / box.width,
       y = ((event.clientY - box.top) * height) / box.height;
     game.ship.angle = Math.atan2(y - game.ship.y, x - game.ship.x);
-    pilot(game, 'fire');
+    control('fire');
   }
   canvas.addEventListener('pointerdown', aim);
   api.onCleanup(() => canvas.removeEventListener('pointerdown', aim));
@@ -435,8 +441,10 @@ export default function mount(api) {
   render();
   api.frame((dt) => {
     if (game.phase !== 'flight' || document.hidden) return;
+    const oldCargo = game.cargo;
     const result = stepConvoy(game, Math.min(dt, 0.05));
     render();
+    if (game.cargo < oldCargo && !result) api.sfx?.('cargo');
     if (game.message) {
       api.setStatus(game.message);
       game.message = '';

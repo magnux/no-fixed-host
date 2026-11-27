@@ -3,7 +3,7 @@ import './practice.css';
 const resultLabels = { complete: 'Completed', partial: 'Partial result', failed: 'Attempt ended' };
 let currentSession;
 
-export async function openPractice(game, mount, { closeLabel = 'Back to tester', radio } = {}) {
+export async function openPractice(game, mount, { closeLabel = 'Back to tester', radio, sfx, resetAudioRound, setMusicMode } = {}) {
   if (currentSession) return currentSession;
 
   const returnFocus = document.activeElement;
@@ -121,6 +121,7 @@ export async function openPractice(game, mount, { closeLabel = 'Back to tester',
     function finish(next, detail = '') {
       if (!active || !Object.hasOwn(resultLabels, next)) return;
       outcome = next;
+      sfx?.(next);
       dialog.dataset.outcome = next;
       result.textContent = game.outcomes?.[next] ?? resultLabels[next];
       status.textContent = detail;
@@ -149,7 +150,7 @@ export async function openPractice(game, mount, { closeLabel = 'Back to tester',
     }
     try {
       mount({
-        stage, controls, canvas, action, finish, radio,
+        stage, controls, canvas, action, finish, radio, sfx, setMusicMode,
         setHud: text => update(hud, text),
         setStatus: text => update(status, text),
         onKey: handler => keys.push(handler),
@@ -167,7 +168,7 @@ export async function openPractice(game, mount, { closeLabel = 'Back to tester',
   }
 
   back.addEventListener('click', () => dialog.close());
-  retry.addEventListener('click', start);
+  retry.addEventListener('click', () => { resetAudioRound?.(); start(); });
   document.body.append(dialog);
   try {
     dialog.showModal();

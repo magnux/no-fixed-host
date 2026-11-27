@@ -125,6 +125,8 @@ export default function mount(api) {
   const start = api.action('Tune in', () => {
     if (state.running) return;
     state.running = true;
+    api.setMusicMode?.('rhythm');
+    api.sfx?.('tune');
     start.disabled = true; tap.disabled = false;
     if (radio?.enabled) radio.setEnabled(true);
     api.stage.focus();

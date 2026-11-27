@@ -79,7 +79,7 @@ const spanish = {
   'Enter fullscreen': 'Pantalla completa', 'Leave fullscreen': 'Salir de pantalla completa',
   'Fullscreen is unavailable here.': 'La pantalla completa no está disponible aquí.',
   'Menu language': 'Idioma de los menús', 'Menus and navigation are translated. Campaign stories and research are in English.': 'Los menús y la navegación están traducidos. Las historias y la investigación están en inglés.',
-  'Audio': 'Sonido', 'Enable audio': 'Activar sonido', 'Interface volume': 'Volumen de la interfaz', 'Music volume': 'Volumen de la música',
+  'Audio': 'Sonido', 'Enable audio': 'Activar sonido', 'Effects volume': 'Volumen de efectos', 'Music volume': 'Volumen de la música',
   'Preview sound': 'Probar sonido', 'Warnings': 'Avisos', 'Only one viable host': 'Solo queda un servidor viable',
   'Paused facility or equipment order': 'Construcción o instalación en pausa', 'CPU maintenance shortfall': 'CPU insuficiente para mantenimiento',
   'Unused research assignment': 'CPU asignada a investigación sin utilizar', 'Preferences apply to this browser.': 'Las preferencias se guardan en este navegador.',

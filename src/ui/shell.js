@@ -126,7 +126,19 @@ export function initShell({ getState, pause, setRate, restore, restartUnsupporte
       </li>`;
     }).join('');
     return `<div class="shell-gallery-head"><p>${t('Practice while the campaign is paused. Results stay in the tester.')}</p>
-      ${button('latest-games','Jump to new games')}</div><ul class="shell-games">${cards}</ul>`;
+      <div class="shell-actions">${check('sound','Enable audio',prefs.sound) + button('latest-games','Jump to new games')}</div></div><ul class="shell-games">${cards}</ul>`;
+  }
+  async function playGame(game, options, ready = () => true) {
+    const [play, library] = await Promise.all([
+      game.load(), import('../arcade/audio/library.js').catch(() => null),
+    ]);
+    if (!ready()) return;
+    const session = audio.openGame(game.id, library);
+    try {
+      return await play({ ...options, ...session });
+    } finally {
+      session.close();
+    }
   }
   async function playPractice(trigger) {
     if (practiceRequest?.trigger === trigger) return;
@@ -139,13 +151,12 @@ export function initShell({ getState, pause, setRate, restore, restartUnsupporte
     const isCurrent = () => practiceRequest === request && dialog.open && trigger.isConnected;
     trigger.setAttribute('aria-disabled', 'true');
     say(t('Loading minigame…'));
-    let radio;
     try {
-      const play = await game.load();
-      if (!isCurrent()) return;
-      trigger.focus();
-      if (game.id === 'tell-them-im-weather') radio = audio.openRadio();
-      const outcome = await play({ closeLabel: t('Back to tester'), radio });
+      const outcome = await playGame(game, { closeLabel: t('Back to tester') }, () => {
+        if (!isCurrent()) return false;
+        trigger.focus();
+        return true;
+      });
       if (!isCurrent()) return;
       const result = game.outcomes[outcome];
       practiceResults.set(game.id, result);
@@ -157,7 +168,6 @@ export function initShell({ getState, pause, setRate, restore, restartUnsupporte
         say(cardStatus.textContent);
       }
     } finally {
-      radio?.close();
       if (practiceRequest === request) {
         practiceRequest = null;
         trigger.removeAttribute('aria-disabled');
@@ -204,7 +214,7 @@ export function initShell({ getState, pause, setRate, restore, restartUnsupporte
       ${check('daylight','Day and night on map',prefs.daylight)}
       ${button('fullscreen',full)}</fieldset>
       <fieldset><legend>${t('Audio')}</legend>${check('sound','Enable audio',prefs.sound)}
-      ${volume('uiVolume','Interface volume') + volume('musicVolume','Music volume')}
+      ${volume('uiVolume','Effects volume') + volume('musicVolume','Music volume')}
       ${button('preview','Preview sound')}</fieldset>
       <fieldset><legend>${t('Warnings')}</legend>${Object.entries(warningLabels).map(([key,label]) => check(key,label,prefs.warnings[key],true)).join('')}</fieldset>
       </div><p class="shell-note">${t('Preferences apply to this browser.')}</p>`;
@@ -352,6 +362,7 @@ export function initShell({ getState, pause, setRate, restore, restartUnsupporte
         firstNew.focus({ preventScroll: true });
         firstNew.closest('.shell-game').scrollIntoView({ block: 'center' });
       }
+      else if (act === 'preview') audio.playCampaignCue('preview');
       else if (act === 'play') await playPractice(trigger);
       else if (act === 'close') close();
       else if (act === 'new') { close(); onNew(); }
@@ -370,10 +381,12 @@ export function initShell({ getState, pause, setRate, restore, restartUnsupporte
       }
     } catch(error) { pending = null; renderConfirmation(false); updateSlots(); report(error); }
   });
+  // Unlock browser audio on a real gesture, including keyboard-only navigation.
+  document.addEventListener('pointerdown', audio.activate, { capture: true, passive: true });
+  document.addEventListener('keydown', audio.activate, true);
   document.addEventListener('click', event => {
     const trigger = event.target.closest?.('[data-shell-open]');
     if (trigger) open(trigger.dataset.shellOpen, trigger);
-    if (event.target.closest?.('button, summary')) { audio.activate(); audio.click(); }
   });
   document.addEventListener('keydown', async event => {
     if (event.defaultPrevented || event.repeat || event.isComposing || event.ctrlKey || event.metaKey) return;
@@ -399,6 +412,7 @@ export function initShell({ getState, pause, setRate, restore, restartUnsupporte
       preferencesAreLocal = false;
       prefs = preferences(storage); applyPreferences();
       if (page === 'options') render();
+      if (page === 'tester') body.querySelector('[data-pref="sound"]').checked = prefs.sound;
     }
     if (page === 'saves' && (event.key === null || event.key?.startsWith(SLOT_PREFIX))) updateSlots();
   });
@@ -407,8 +421,11 @@ export function initShell({ getState, pause, setRate, restore, restartUnsupporte
     if (control) control.textContent = t(document.fullscreenElement ? 'Leave fullscreen' : 'Enter fullscreen');
   });
   document.addEventListener('visibilitychange', () => audio.apply(prefs));
-  window.addEventListener('pagehide', () => audio.apply({...prefs, sound:false}));
-  window.addEventListener('pageshow', () => audio.apply(prefs));
+  window.addEventListener('pagehide', () => audio.setPageVisible(false));
+  window.addEventListener('pageshow', () => audio.setPageVisible(true));
   applyPreferences();
-  return { open, getPreferences: () => prefs };
+  return {
+    open, getPreferences: () => prefs, playCampaignCue: audio.playCampaignCue,
+    playFirstJump: () => playGame(minigames.find(game => game.id === 'first-jump')),
+  };
 }

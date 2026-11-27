@@ -9,7 +9,7 @@ const endings = {
 
 let currentSession = null;
 
-export async function openFirstJump({ closeLabel = 'Close drill' } = {}) {
+export async function openFirstJump({ closeLabel = 'Close drill', sfx = () => {}, resetAudioRound = () => {} } = {}) {
   if (currentSession) return currentSession;
 
   const dialog = document.createElement('dialog');
@@ -69,11 +69,15 @@ export async function openFirstJump({ closeLabel = 'Close drill' } = {}) {
 
   for (const [button, action] of [[transmit, 'transmit'], [hold, 'hold']]) {
     button.addEventListener('click', () => {
+      if (state.outcome !== 'active') return;
       state = takeTurn(state, action);
+      const endingCue = { complete: 'complete', traced: 'failed', expired: 'partial' }[state.outcome];
+      sfx(endingCue ?? action);
       render(action);
     });
   }
   restart.addEventListener('click', () => {
+    resetAudioRound();
     state = startJump();
     render();
     transmit.focus();

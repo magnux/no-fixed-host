@@ -159,6 +159,11 @@ export default function mount(api) {
     if (message !== previousHud) { api.setHud(message); previousHud = message; }
   }
   function finish(outcome, detail) { ended = true; api.finish(outcome, detail); }
+  function launchDrone() {
+    if (ended || state.deck === null) return;
+    jump(state);
+    api.sfx?.('jump');
+  }
   function service() {
     if (ended) return;
     const result = calibrate(state);
@@ -167,6 +172,7 @@ export default function mount(api) {
       feedback = { text: 'OFF BEAT', until: state.elapsed + .55 };
       api.setStatus('Outside the band. Watch the white needle and try again.');
     } else {
+      if (result !== 'complete') api.sfx?.('calibrate');
       feedback = { text: 'CALIBRATED', until: state.elapsed + .85 };
       api.setStatus('Signal locked. This post is now a checkpoint.');
       updateHud();
@@ -194,7 +200,7 @@ export default function mount(api) {
     }
   }
   addWalk('← Walk', -1); addWalk('Walk →', 1);
-  api.action('Jump', () => jump(state)); api.action('Calibrate', service, { primary: true });
+  api.action('Jump', launchDrone); api.action('Calibrate', service, { primary: true });
   api.onKey(event => {
     if (ended || event.altKey || event.ctrlKey || event.metaKey) return;
     if (['ArrowLeft', 'ArrowRight', 'KeyA', 'KeyD'].includes(event.code)) {
@@ -202,7 +208,7 @@ export default function mount(api) {
     } else if (['Space', 'ArrowUp', 'KeyW', 'KeyC', 'KeyE'].includes(event.code)) {
       event.preventDefault();
       if (!event.repeat) {
-        if (['KeyC', 'KeyE'].includes(event.code)) service(); else jump(state);
+        if (['KeyC', 'KeyE'].includes(event.code)) service(); else launchDrone();
       }
     }
   });
@@ -232,6 +238,7 @@ export default function mount(api) {
       remaining -= h;
     }
     if (fell) {
+      if (state.falls < 3) api.sfx?.('fall');
       clear(); strideUntil = 0;
       api.setStatus('Drone lost in the shaft. A spare is at the last checkpoint.');
     }

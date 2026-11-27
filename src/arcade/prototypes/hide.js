@@ -92,6 +92,7 @@ export default function mount(api) {
   function choose(index) {
     if (state.target !== null) return;
     state = { ...state, target: index };
+    api.sfx?.('target');
     api.stage.focus({ preventScroll: true });
     draw('Move the mint diamond to the marked host. Avoid each eye and its dotted next position. Waiting moves all patrols.');
   }
@@ -100,6 +101,7 @@ export default function mount(api) {
     const next = stepHide(state, move.dx, move.dy);
     if (next === state) { api.setStatus('That direction is blocked. Patrols hold their positions.'); return; }
     state = next;
+    if (!state.outcome) api.sfx?.(move.name === 'Wait' ? 'wait' : 'step');
     draw(move.name === 'Wait' ? 'Signal held. Read the next patrol positions.' : 'Read the next patrol positions before moving.');
     if (state.outcome === 'complete') api.finish('complete', `${hosts[state.target].name} is hidden. You crossed the search grid in ${state.turn} moves.`);
     if (state.outcome === 'caught') api.finish('failed', `A patrol intercepted your signal at ${coord(state.pos)} on move ${state.turn}.`);

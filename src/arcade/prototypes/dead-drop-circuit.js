@@ -232,6 +232,7 @@ export default function mount(api) {
   function begin() {
     if (race.phase !== 'ready') return;
     dispatch(race);
+    api.sfx?.('ignition');
     if (document.activeElement === start) api.stage.focus({ preventScroll: true });
     start.disabled = true;
   }
@@ -284,7 +285,11 @@ export default function mount(api) {
   api.setStatus('Follow the gold pickup, quay and drop gates. Drive with arrows or WASD, or tap and drag along the road. The tram depot cuts the corner on Market Boulevard.');
   api.frame(dt => {
     const input = aim ? steerTo(race, aim) : { gas: held('gas'), brake: held('brake'), turn: Number(held('right')) - Number(held('left')) };
+    const gateBefore = race.gate;
+    const scraping = race.scrape > 0;
     stepRace(race, input, dt);
+    if (race.phase === 'racing' && race.gate !== gateBefore) api.sfx?.(race.gate === 1 ? 'pickup' : 'quay');
+    else if (!scraping && race.scrape > 0) api.sfx?.('scrape');
     paint(ctx, back, race, best, aim); hud();
     if (race.phase === 'failed') api.finish('failed', 'The handoff closed. Brake before tight bends or tap short waypoints through the depot.');
     if (['complete', 'partial'].includes(race.phase)) {

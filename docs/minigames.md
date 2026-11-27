@@ -2,6 +2,32 @@
 
 Open **Campaign menu → Minigame tester** or enter from the title screen. All 17 games are playable here. You can go straight to the genre you want to try, retry a run, or leave early. Results belong to this playtest session. The campaign clock stays paused and campaign encounters and rewards are deferred until after player feedback.
 
+## Soundtrack
+
+Tick **Enable audio** in the tester to hear each game’s score. You can adjust music and effects independently in **Options**. An ending gives the final cue room to sound. Retry starts the score from its opening, and hiding the tab pauses playback. The weather receiver also offers a local sound switch.
+
+| Game | Original track | Listen for |
+| --- | --- | --- |
+| First Jump | Carrier Pigeons | A three-beat duet between the source and relay. Holding and transmitting make different sounds. |
+| Hide | Soft Soles | A five-beat bass walk. The short wait cue leaves space to watch the patrols. |
+| Soundings | Below the Thermocline | Slow, low tones with room above them for sonar returns. |
+| Night Shift | The Third Rail Swing | A swung factory groove punctuated by the drone’s jumps and calibrations. |
+| Proof of Pattern | Seven Glass Teeth | A repeating seven-eighth-note figure behind the clicks of rotating tiles. |
+| Orbital Insertion | Earthrise in Slow Motion | A broad, slow melody with short accents for transfer, braking and cutoff. |
+| Clear Passage | Ballast and Stars | A five-beat engine rhythm, with separate cues for firing and cargo damage. |
+| Crosscheck | Carbon Paper | A swung newsroom trio with soft paper sounds for selecting evidence. |
+| Witness | The Open Receiver | A sparse duet in triple time that gives the interview room to breathe. |
+| Clearing House | Settlement Window | Syncopated mallet tones punctuate route, rush and undo decisions. |
+| Hot Swap | Two Furnaces | A fast chip-rock riff with distinct sounds for shots, dashes and module pickups. |
+| Escape Character | The Seventh Room | A slow seven-beat phrase links the rooms. Changing form and recovering the memory have their own signals. |
+| Neon Perimeter | Switchyard After Dark | A bass line grouped in threes, threes and twos. Building and overdriving a tower have different accents. |
+| Dead Drop Circuit | Last Tram to the Quay | Offbeat chords mark the ride, with a pickup sound when the parcel changes hands. |
+| Black Start | Flywheel in Three | A mechanical triple meter. Each breaker bank latches on its own pitch. |
+| Tell Them I’m Weather | The Quiet Carrier | A sparse 120 BPM accompaniment starts again quietly at tune-in. The weather and rival signals remain in the foreground. |
+| RAM Jam | Little CRT Pasture | A pastoral waltz, a modem whistle and a little greeting for each new friend. |
+
+The [score collection](../src/arcade/audio/scores.js) contains the notes and action effects. The [player](../src/arcade/audio/player.js) schedules them on the Web Audio clock. The built game includes everything needed to play them.
+
 ## Seven more games to playtest
 
 | Game | Try this on a second run |

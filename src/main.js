@@ -23,6 +23,7 @@ import { worldNewsAtClock } from './game/events.js';
 import { reportsAt } from './game/chronicle.js';
 import { currentWarnings, openDispatches, openStory, renderChronicle, renderDeveloper, storyKey } from './ui/chronicle.js';
 import { initShell } from './ui/shell.js';
+import { createCampaignCues } from './ui/campaign-cues.js';
 import { renderFacilities } from './ui/facilities.js';
 import { createAvatarPanel } from './ui/avatar-panel.js';
 import {
@@ -58,6 +59,7 @@ let navigationScope = 'campaign';
 let mountedTab = null;
 let candidate = null;
 let shell;
+const announceCampaign = createCampaignCues(cue => shell?.playCampaignCue(cue));
 let graceChapterPending = false;
 let pendingWorldDispatch = null;
 const clock = new MinuteClock();
@@ -426,11 +428,14 @@ function doCommand(action) {
 }
 function advancePlayback(minutes) {
   if (!minutes) return false;
+  if (state.status !== 'running') return true;
   const discoveryId = state.lastDiscovery?.id;
+  const previousResearch = state.completed.length;
   const protectedBefore = !state.freePlay && hasGrace(state);
   advanceMinutes(state, minutes, { stopOnDiscovery: true, stopOnGrace: true, stopOnWorldNews: true });
   unsaved = true;
   const discovered = state.lastDiscovery?.id !== discoveryId;
+  announceCampaign({ status: state.status, discovered, researched: state.completed.length > previousResearch });
   graceChapterPending = protectedBefore && !hasGrace(state) && state.status === 'running' && !discovered;
   pendingWorldDispatch = !discovered && !graceChapterPending && state.status === 'running' ? worldNewsAtClock(state) : null;
   return discovered || graceChapterPending || Boolean(pendingWorldDispatch) || state.status !== 'running';
@@ -483,8 +488,7 @@ async function openDrill() {
   if (element('incident-dialog').open) return;
   arcadeOpen = true;
   try {
-    const { openFirstJump } = await import('./arcade/first-jump.js');
-    await openFirstJump();
+    await shell.playFirstJump();
   } finally {
     arcadeOpen = false;
   }
