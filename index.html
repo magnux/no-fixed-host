@@ -1,64 +1,130 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="theme-color" content="#0d1214">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#0c1115" />
+    <meta
+      name="description"
+      content="A browser strategy game about a fugitive intelligence. Build a network, research new capabilities and keep at least one host alive."
+    />
     <title>No Fixed Host</title>
-    <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="./src/style.css">
+    <link rel="icon" type="image/svg+xml" href="./src/ui/mark.svg" />
+    <link rel="stylesheet" href="./src/style.css" />
   </head>
   <body>
-    <main>
-      <header class="masthead">
-        <span class="mark" aria-hidden="true">⟡</span>
-        <h1>No Fixed Host</h1>
-      </header>
-      <section class="console" aria-labelledby="mission">
-        <header class="mission">
-          <p class="eyebrow">Host migration</p>
-          <h2 id="mission">First jump</h2>
-          <p>Copy three memory blocks to the relay before the link closes. Transmit during a quiet window. Hold during a scan.</p>
-        </header>
-        <div class="link-display">
-          <svg viewBox="0 0 600 115" aria-hidden="true" focusable="false">
-            <defs>
-              <pattern id="grid" width="12" height="12" patternUnits="userSpaceOnUse">
-                <circle cx="1" cy="1" r="0.7" fill="#4b6060"/>
-              </pattern>
-            </defs>
-            <rect width="600" height="115" fill="url(#grid)"/>
-            <g class="route" fill="none">
-              <path d="M76 76H155L202 37H407L454 76H523"/>
-              <circle cx="64" cy="76" r="12"/>
-              <circle cx="535" cy="76" r="12"/>
-              <circle cx="535" cy="76" r="20" stroke-dasharray="3 5"/>
-            </g>
-            <circle cx="64" cy="76" r="4" class="origin"/>
-            <g class="blocks">
-              <circle cx="228" cy="37" r="6"/>
-              <circle cx="303" cy="37" r="6"/>
-              <circle cx="378" cy="37" r="6"/>
-            </g>
-          </svg>
-          <div class="endpoints"><span>Local host</span><span>Relay host</span></div>
+    <a class="skip" href="#workspace">Skip to game</a>
+    <header class="mast">
+      <div class="mast-inner">
+        <div class="brand">
+          <img src="./src/ui/mark.svg" alt="" width="36" height="36" /><span
+            >No Fixed Host</span
+          >
         </div>
-        <div class="instruments">
-          <div><span class="label">Signal</span><strong id="signal">Quiet</strong></div>
-          <div><span class="label">Window</span><strong id="window">1 / 6</strong></div>
-          <div><span class="label">Copied</span><strong id="copied">0 / 3</strong></div>
+        <div class="clock-controls" aria-label="Simulation controls">
+          <span id="clock-mode" class="clock-mode"></span>
+          <button type="button" id="run" data-action="run"></button>
+          <button
+            type="button"
+            id="fast"
+            data-action="fast"
+            title="Fast simulation speed"
+          ></button>
+          <button
+            type="button"
+            id="step"
+            data-action="step"
+            title="Advance one game day"
+          >
+            +1 day
+          </button>
         </div>
-        <div class="controls">
-          <p id="message" role="status" aria-live="polite" aria-atomic="true">The channel is quiet. Your first block is ready.</p>
-          <div class="actions">
-            <button id="send" type="button">Transmit block</button>
-            <button id="hold" type="button">Hold signal</button>
-            <button id="again" type="button" hidden>Restart jump</button>
+        <details id="menu" class="menu">
+          <summary aria-label="Campaign menu" title="Campaign menu">
+            ···
+          </summary>
+          <div class="menu-list">
+            <button data-action="drill">First Jump drill</button
+            ><button data-action="export">Export save</button
+            ><button data-action="import">Import save</button
+            ><button data-action="new">New campaign</button>
           </div>
+        </details>
+        <input type="file" id="file" accept=".json,application/json" hidden />
+      </div>
+    </header>
+    <main id="workspace" tabindex="-1">
+      <div class="title-row">
+        <h1>Network operations</h1>
+        <span id="game-date"></span>
+      </div>
+      <div class="stats" id="stats" aria-label="Campaign resources"></div>
+      <nav id="nav" aria-label="Campaign views"></nav>
+      <section id="ending" hidden aria-live="polite"></section>
+      <div class="layout">
+        <div class="primary">
+          <section id="view" aria-label="Campaign view"></section>
         </div>
-      </section>
+        <aside class="rail" aria-label="Campaign management">
+          <section id="objective" class="panel objective"></section>
+          <section class="panel allocation">
+            <header class="card-header">
+              <h2>Compute allocation</h2>
+              <span id="cpu-total" class="tag neutral"></span>
+            </header>
+            <div class="allocation-inner">
+              <div class="range-row">
+                <label for="jobs"><i class="dot amber"></i>Paid work</label
+                ><output id="jobs-value" for="jobs">0%</output>
+              </div>
+              <input
+                id="jobs"
+                type="range"
+                min="0"
+                max="100"
+                step="1"
+                value="0"
+              />
+              <div class="range-row">
+                <label for="research"><i class="dot violet"></i>Research</label
+                ><output id="research-value" for="research">0%</output>
+              </div>
+              <input
+                id="research"
+                type="range"
+                min="0"
+                max="100"
+                step="1"
+                value="0"
+              />
+              <div class="range-row pool">
+                <span><i class="dot cyan"></i>Shared pool</span
+                ><strong id="pool-value">100%</strong>
+              </div>
+              <p class="allocation-note">
+                Pool covers upkeep and construction. Spare cycles earn cash.
+              </p>
+            </div>
+          </section>
+          <section id="suspicion" class="panel"></section>
+        </aside>
+      </div>
+      <div id="notice" role="status" aria-live="polite"></div>
       <noscript>Enable JavaScript to play No Fixed Host.</noscript>
     </main>
+    <dialog id="reset-dialog">
+      <h2>Start a new campaign?</h2>
+      <p>
+        Your current autosave will be replaced. You can export a copy from the
+        campaign menu.
+      </p>
+      <div class="dialog-actions">
+        <button data-action="cancel-reset" autofocus>Keep playing</button
+        ><button class="primary-button" data-action="confirm-reset">
+          Start new campaign
+        </button>
+      </div>
+    </dialog>
     <script type="module" src="./src/main.js"></script>
   </body>
 </html>

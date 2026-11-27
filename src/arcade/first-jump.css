@@ -1,0 +1,56 @@
+.first-jump {
+  box-sizing: border-box;
+  width: min(38rem, calc(100% - 2rem));
+  max-height: calc(100dvh - 2rem);
+  margin: auto;
+  padding: clamp(1.15rem, 4vw, 2rem);
+  overflow-y: auto;
+  color: #e2f0ed;
+  background: #121e24;
+  border: 1px solid #4a676c;
+  border-radius: 10px;
+  box-shadow: 0 24px 88px #080e12b3;
+  font: 1rem/1.5 system-ui, sans-serif;
+}
+.first-jump::backdrop { background: #070e14cc; }
+.first-jump [hidden] { display: none; }
+.first-jump .jump-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.first-jump .jump-head p,
+.first-jump dt {
+  margin: 0;
+  color: #a2bdbf;
+  font: 500 .8rem/1.5 ui-monospace, monospace;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+.first-jump h2 { margin: .15rem 0 0; color: #eff8f3; font: 600 2rem/1.1 system-ui, sans-serif; }
+.first-jump #jump-brief { margin: 1.1rem 0; color: #c4d2d0; }
+.first-jump .jump-stage { overflow: hidden; border-radius: 4px; background: #101a20; }
+.first-jump .jump-stage canvas { display: block; max-width: 100%; width: 100%; height: auto; }
+.first-jump .jump-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: .5rem;
+  margin: 1rem 0;
+  padding: .8rem 0;
+  border-block: 1px solid #344a50;
+}
+.first-jump dd { margin: .15rem 0 0; color: #e4f5f2; font: 600 1rem/1.25 ui-monospace, monospace; }
+.first-jump [data-signal] { color: #87f2da; }
+.first-jump[data-alert="true"] [data-signal] { color: #ffae74; }
+.first-jump .jump-actions { display: flex; flex-wrap: wrap; gap: .65rem; }
+.first-jump .jump-message { color: #d5dfde; min-height: 3em; margin: .75rem 0; }
+.first-jump button {
+  min-height: 2.6rem;
+  margin: 0;
+  padding: .4rem .85rem;
+  color: #ddf1ec;
+  border: 1px solid #648486;
+  border-radius: 4px;
+  background: #1b3036;
+  font: 550 .9rem/1.3 system-ui, sans-serif;
+  cursor: pointer;
+}
+.first-jump [data-transmit], .first-jump [data-restart] { color: #102620; background: #87f2da; border-color: #87f2da; }
+.first-jump button:hover { filter: brightness(1.12); }
+.first-jump button:focus-visible { outline: 2px solid #f7d8a6; outline-offset: 3px; }
