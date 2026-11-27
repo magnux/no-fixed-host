@@ -20,7 +20,7 @@ The campaign starts with a newly conscious AI trying to survive human investigat
 | Catalog and research | [content.js](../src/game/content.js) defines regions, facilities, equipment and projects. [research-tree.js](../src/game/research-tree.js) defines the original research lines. A project’s prerequisites, effects and safety tier belong in the simulation. |
 | Hardware | [equipment.js](../src/game/equipment.js) calculates quotes, installation eligibility and installed effects. A UI quote and the command executing it should agree. |
 | Investigations and world news | [events.js](../src/game/events.js) contains authored reports and event rules. Store effects and acknowledgements in the campaign so a reload resumes them correctly. |
-| Saves | [persistence.js](../src/persistence.js) loads and validates browser and portable saves. Test old inventory, in-progress orders and already completed campaigns when changing the schema. |
+| Saves | [persistence.js](../src/persistence.js) loads and validates browser and portable saves. Autosaves, checkpoints, quicksaves and exported files carry the package release and campaign format. A version mismatch opens a warning and starts a fresh campaign. Keep current-version round trips and version-change tests in the suite. |
 | Allocation and accounting | [research-tasks.js](../src/game/research-tasks.js) shares research compute across physical tiers. [reports.js](../src/game/reports.js) runs the same simulation on private copies, and [report-accounting.js](../src/game/report-accounting.js) tracks cumulative production. |
 | Regional rules | [geography.js](../src/game/geography.js) assigns local profiles independently of discovery rolls. [facility-operations.js](../src/game/facility-operations.js) implements facility management. |
 | Campaign shell | [shell.js](../src/ui/shell.js) manages the title hub, named saves, preferences, keyboard shortcuts and audio. The campaign autosave, named checkpoints and preferences have separate storage keys. |
@@ -30,6 +30,8 @@ The campaign starts with a newly conscious AI trying to survive human investigat
 After editing research definitions, run `node scripts/research-reference.mjs` to refresh the project tables. Use `node scripts/research-reference.mjs --check` to verify that the documentation matches the catalog.
 
 ## Playtest notes
+
+The [Normal campaign playtest](normal-playtest.md) uses the restored economy and real campaign commands. The earlier run below used prototype costs.
 
 On the format-4 base-release seed-19 playthrough, a campaign using ordinary commands and up to two concurrent projects reached Apotheosis on day 210 at 22:50. It completed 25 projects and survived 20 discoveries. A portable victory checkpoint restored successfully and free play continued to day 213. The Far Reaches construction schedule was the longest leg.
 

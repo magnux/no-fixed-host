@@ -54,7 +54,7 @@ test('compare, discard and place research and facility orders, then reconcile th
   await button('Assign CPU').click();
   command(state, research);
   assert.equal((await readSave()).research.id, research.id);
-  assert.equal(await account('research', 0).innerText(), usd.format(0));
+  assert.equal(await account('research', 0).innerText(), usd.format(projectedResearch.cash.research));
   assert.equal(await account('opening', 0).innerText(), usd.format(state.cash));
   assert.equal(await account('closing', 0).innerText(), usd.format(projectedResearch.cash.closing));
 
@@ -73,7 +73,7 @@ test('compare, discard and place research and facility orders, then reconcile th
   await button('Place order').click();
   command(state, build);
   assert.deepEqual((await readSave()).builds, state.builds);
-  assert.equal(await account('builds', 0).innerText(), usd.format(0));
+  assert.equal(await account('builds', 0).innerText(), usd.format(buildForecast.cash.builds));
   assert.equal(await account('closing', 0).innerText(), usd.format(buildForecast.cash.closing));
 
   await page.locator('#step').click();

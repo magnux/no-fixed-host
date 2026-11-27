@@ -122,7 +122,7 @@ function mount(root) {
         stop();
         session.game = copyToSandbox(op === 'fresh' ? createGame(session.source.rng) : session.source);
         if (session.game.status === 'won') {
-          command(session.game, {type: session.game.legacyContinuityWin ? 'continue' : 'free-play'});
+          command(session.game, {type: 'free-play'});
         }
         refs.region.value = 'europe';
         if (Object.hasOwn(TECHS, 'intrusion')) refs.project.value = 'intrusion';

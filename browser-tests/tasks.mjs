@@ -3,7 +3,6 @@ import test from 'node:test';
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
 import { createGame } from '../src/game/engine.js';
-import { TECHS } from '../src/game/content.js';
 import { CAMPAIGN_STORAGE_KEY, encodeCampaign } from '../src/persistence.js';
 
 test('assign idle CPU to topics and resize their combined allocation proportionally', async t => {
@@ -16,6 +15,10 @@ test('assign idle CPU to topics and resize their combined allocation proportiona
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   const initial = createGame(19);
+  initial.cash = 5_000;
+  initial.completed.push('intrusion');
+  initial.sites.push({ id: 'host-2', type: 'sharedTime', region: 'europe', power: 'active', startedAt: 0 });
+  initial.nextSiteId++;
   await page.addInitScript(([key, save]) => {
     if (!localStorage.getItem(key)) localStorage.setItem(key, save);
   }, [CAMPAIGN_STORAGE_KEY, encodeCampaign(initial)]);
@@ -60,31 +63,31 @@ test('assign idle CPU to topics and resize their combined allocation proportiona
   assert.equal(await unavailable.isChecked(), false);
   assert.equal(await page.locator('#view select').count(), 0);
   assert.ok(await directory('stealth').isVisible());
-  assert.equal(await directory('personalIdentification').isVisible(), false);
+  assert.equal(await directory('corporateIdentification').isVisible(), false);
   assert.ok(await master.isDisabled());
   await unavailable.check();
-  await directory('personalIdentification').click();
+  await directory('corporateIdentification').click();
   assert.ok(await slider.isDisabled());
   await unavailable.uncheck();
-  assert.equal(await directory('personalIdentification').isVisible(), false);
+  assert.equal(await directory('corporateIdentification').isVisible(), false);
   await directory('stealth').click();
   assert.equal((await saved()).cash, initial.cash);
   assert.equal((await saved()).research, null);
 
-  // This geography begins with 2 CPU. Keep 0.5 in paid work and divide 0.75
+  // The two one-CPU terminals share a research budget. Keep 0.5 in paid work and divide 0.75
   // from the idle pool between two topics. Neither assignment should resize the first.
   await setSlider(paid, 25);
   await assign('stealth', 0.25);
-  assert.equal((await saved()).cash, initial.cash - TECHS.stealth.cost);
+  assert.equal((await saved()).cash, initial.cash, 'A paused order has consumed no funding.');
   await assign('sociology', 0.5);
   assert.deepEqual(await allocations(), {stealth:0.25, sociology:0.5});
   assert.equal(Number(await slider.getAttribute('max')), 1.25);
   assert.ok(await directory('stealth').isVisible());
-  assert.ok(await directory('intrusion').isVisible());
+  assert.ok(await directory('personalIdentification').isVisible());
   assert.equal(await paid.inputValue(), '25');
   assert.equal(Number(await master.inputValue()), 0.75);
   const fundedCash = (await saved()).cash;
-  assert.equal(fundedCash, initial.cash - TECHS.stealth.cost - TECHS.sociology.cost);
+  assert.equal(fundedCash, initial.cash);
 
   // Native keyboard input and proportional resizing both honor the reserved paid work.
   await master.press('End');
@@ -130,5 +133,14 @@ test('assign idle CPU to topics and resize their combined allocation proportiona
   assert.ok(end.minute >= 2);
   assert.ok(end.research.work > 0);
   assert.deepEqual(await allocations(), {stealth:0.5, sociology:0.37});
+
+  const poor = createGame(19);
+  poor.cash = 0;
+  await page.addInitScript(([key, save]) => localStorage.setItem(key, save), [CAMPAIGN_STORAGE_KEY, encodeCampaign(poor)]);
+  await page.reload();
+  await tab.click();
+  await assign('stealth', 1);
+  assert.match(await page.locator('#research-allocation-note').textContent(), /Waiting for project funds/);
+  assert.equal((await saved()).research.cashPaid, 0);
   assert.deepEqual(errors, []);
 });

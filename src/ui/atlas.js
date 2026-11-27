@@ -1,7 +1,7 @@
 import { REGIONS } from '../game/content.js';
 import { siteHardware } from '../game/equipment.js';
 import { icon } from './icons.js';
-import { createSunlightRenderer, sunAt } from './solar.js';
+import { createSunlightRenderer, startingDay, sunAt } from './solar.js';
 import coastlines from './world.svg';
 import './atlas.css';
 
@@ -95,12 +95,13 @@ export function updateAtlasTime(container, state) {
   if (!view || view.atlas.parentElement !== container) return;
   const minute = state.hour * 60 + (state.minute ?? 0);
   const showLight = document.documentElement.dataset.daylight !== 'false';
-  if (view.minute !== minute || view.showLight !== showLight) {
-    const sun = sunAt(state.hour, state.minute);
+  if (view.minute !== minute || view.showLight !== showLight || view.regionSeed !== state.regionSeed) {
+    const sun = sunAt(state.hour, state.minute, startingDay(state.regionSeed));
     if (showLight) view.paint(sun);
     view.showLight = showLight;
     view.date.textContent = sun.label;
     view.minute = minute;
+    view.regionSeed = state.regionSeed;
   }
 }
 

@@ -4,7 +4,7 @@ You begin on a single borrowed terminal. Building a second machine buys time. Co
 
 ## A minute of simulation
 
-The player divides active compute between paid work, research and a shared pool. Research can only use processors in a location safe enough for its project. Unused cycles return to the pool. Compute upkeep is paid before outstanding construction and installation work. Spare cycles can earn cash. Orders require both their CPU work and their minimum construction time. A host’s equipment contributes its effect after installation.
+The player divides active compute between paid work, research and a shared pool. Research can only use processors in a location safe enough for its project. Unused cycles return to the pool. Compute upkeep is paid before outstanding construction and installation work. Spare cycles can earn cash. Each order draws the cash, CPU work and assembly time in its quote together. If a required resource runs out, progress waits. The unused CPU passes to the next order and then to paid work. A host’s equipment contributes its effect after installation.
 
 ```mermaid
 flowchart TD
@@ -21,27 +21,27 @@ flowchart TD
     Designs --> Host
 ```
 
-Each simulation tick advances one minute. **Run** processes one tick per real second. The three **Fast** settings process 60, 360 and 1,440 ticks per second, and the fourth click returns to the first setting. The visible clock and daylight update as time passes between display frames. If a discovery happens partway through a frame’s work, the clock stops on that minute. The atlas starts on 1 January at 00:00 UTC and follows the campaign’s day and season.
+Each simulation tick advances one minute. **Run** processes one tick per real second. The three **Fast** settings process 60, 360 and 1,440 ticks per second, and the fourth click returns to the first setting. The visible clock and daylight update as time passes between display frames. If a discovery happens partway through a frame’s work, the clock stops on that minute. The atlas starts at 00:00 UTC on a date selected by the campaign seed. Its clock, daylight and seasonal tilt follow that date through a 365-day year.
 
 ## Planning several turns ahead
 
-Selecting a topic in **Research** opens its dossier. The first positive CPU assignment pays the displayed funding cost once. Assignments use CPU units in increments of 0.01. Each topic can draw on the idle capacity left by paid work and the other experiments. Setting a topic to zero releases its processors and preserves its progress. Assigning CPU again resumes the experiment. Finished topics release their CPUs.
+Selecting a topic in **Research** opens its dossier. The first positive CPU assignment opens the project. Funding comes from the treasury in installments as its work advances. Assignments use CPU units in increments of 0.01. Each topic can draw on the idle capacity left by paid work and the other experiments. Setting a topic to zero releases its processors and preserves its progress. Assigning CPU again resumes the experiment. Finished topics release their CPUs.
 
 The research slider in the left dock changes the combined assignment. Suppose two projects use 3 and 1 CPU and another 4 CPU are idle. Raising the total from 4 to 8 gives them 6 and 2 CPU. Lowering it to 2 gives them 1.5 and 0.5 CPU. Only assigned topics participate. Setting the master to zero releases their CPU and remembers the split. Raising it again resumes that mix. Assigning a topic directly during this global pause starts a new mix with that topic. Start the first topic in a fresh game from its dossier.
 
 A higher-tier host can run lower-tier experiments. Continuity specifically requires Ocean processors. When eligible capacity falls, a project can receive less CPU than requested. Its work can resume when a suitable host returns. If a project reaches its local limit while you increase the master slider, other active projects share any remaining assignable CPU. The shared pool supplies upkeep and construction with the cycles left after research and paid work.
 
-Format 5 saves preserve assignments and partial research. A format-4 save converts its funding, progress and allocation split into the new system. If the old research slider was at 0% with projects selected, the portfolio opens paused and raising the slider resumes the saved mix. If all processors were asleep, the migration uses sleeping capacity to recover the requests. Work resumes when eligible CPU is available. A topic that was individually paused stays at zero until you assign it CPU.
+Save a campaign to keep its CPU assignments, partially paid orders and project progress. This Normal-balance release starts a new save format. A topic paused individually stays paused after reloading.
 
 Cash upkeep is due in whole-dollar installments through the day. The network bill uses the combined daily rate. A host can suffer a cash-maintenance failure only when its own installment falls due and the network cannot pay. CPU maintenance draws from the pool every minute.
 
-Use a design’s forecast action to compare the current network against the same network with that order funded. **Reports** advances private copies through the same minute scheduler. Jobs, passive income, maintenance, construction and completion can all change during the forecast. Unknown discoveries and future random news remain outside the estimate. Both columns start from the same minute. **Statistics** retains cumulative production even when a building is subsequently lost. Migrated campaigns label the point where tracking began.
+Use a design’s forecast action to compare the current network against the same network with that order funded. **Reports** advances private copies through the same minute scheduler. Jobs, passive income, maintenance, construction and completion can all change during the forecast. Unknown discoveries and future random news remain outside the estimate. Both columns start from the same minute. **Statistics** retains cumulative production even when a building is subsequently lost.
 
 ## Where to build
 
 All twelve destinations are visible. Activating a location opens its facility controls. Six populated continents offer ordinary leases. Antarctica and the Ocean support remote work. The Moon, Far Reaches, and transdimensional locations support progressively more sensitive projects. Earth Orbit appears as a destination without a facility design, as in the reference game. In Facilities, each design that fits the selected region has a labeled icon. Select a design to inspect its price, local upkeep, and daily risk estimate. A lock on the icon means you need a research prerequisite. Select a locked design to see the requirement and open that project. Cash shortages appear with the price and order controls.
 
-A leased relay arrives with fixed hardware. A storage unit provides eight processor bays. Expand a finished facility in the Facilities list to see its equipment, power controls and pending installations. Each configurable host accepts a stack of matching processors and one component each for networking, power and security. A network boosts processing throughput. Reactors and security systems lower exposure. Auto-build quotes a package for available empty slots before purchase. The installed equipment keeps working until a refit completes.
+A leased relay arrives with fixed hardware. A storage unit provides eight processor bays. Expand a finished facility in the Facilities list to see its equipment, power controls and pending installations. Each configurable host accepts a stack of matching processors and one component each for networking, power and security. A network boosts processing throughput. Reactors and security systems lower exposure. Auto-build quotes a package for available empty slots before purchase. Auto-upgrade quotes better models for occupied slots. Refitting takes the affected slot offline, including the full processor stack when adding or replacing CPUs. Other slots keep operating. The queue shows how much funding, CPU work and assembly time remain.
 
 | Strategy | What the player gives up |
 | --- | --- |
@@ -51,7 +51,7 @@ A leased relay arrives with fixed hardware. A storage unit provides eight proces
 | Spread hosts across regions | A discovery in one region leaves more of the network outside that region’s increased exposure. Every additional visible host also provides another discovery opportunity. |
 | Rush a remote research tier | Opening the destination alone is insufficient. Its equipment must be built, powered and available for research. |
 
-A new campaign shuffles six urban profiles. Geography changes local thrift, construction speed, CPU output and stealth. The facility inspector shows the local quantities used in a quote. Worlds imported from earlier releases retain their existing geography. Facilities can be named, renamed, and decommissioned. Dismantling an equipped host also discards its pending installations. The last viable copy is protected against voluntary dismantling. Buyers can add matching processors to an in-progress batch when enough bays and cash remain.
+A new campaign shuffles six urban profiles. Geography changes local thrift, construction speed, CPU output and stealth. The facility inspector shows the local quantities used in a quote. Facilities can be named, renamed, and decommissioned. Dismantling an equipped host also discards its pending installations. The last viable copy is protected against voluntary dismantling. Adding matching processors to an active batch uses free bays, retains its cash and CPU investment, and restarts the shared installation clock.
 
 ## Discovery and news
 
@@ -90,9 +90,9 @@ For example, 37.50% suspicion reads **Moderate**, then **≈35%**, then **37.50%
 | Suspicion decay | Each midnight, current suspicion falls by 1.5% for Press, 0.5% for Scientists, 1% for Intelligence and 2% for Public, before research bonuses. The minimum decrement is one basis point, bounded by zero. |
 | Loss | The last host with installed processing is lost, or one group’s suspicion exceeds 100%. Maintenance failure can also cost a host without creating discovery evidence. |
 
-News is visible during opening protection. The early bulletins give the player a first signal from the outside world. After protection ends, eight world stories can alter the discovery multiplier of a particular group. Six have lasting effects and two press stories expire after 21 days. Each has a daily hazard of 20/10,000 while eligible. A newspaper headline can make future discovery more or less likely without naming or costing the player a site. News uses a separate random sequence from discovery.
+The newswire carries original public broadcasts during opening protection and throughout the campaign. Reaching remote regions unlocks local dispatches. Each investigative story can later receive a human-interest follow-up. After protection ends, eight world stories can change an investigator’s discovery multiplier. Each eligible story has a daily intensity of 20/10,000. The clock pauses at the minute a world story breaks. The two temporary press stories expire at the first midnight strictly after 21 days. Ordinary broadcasts leave the clock running. [Event catalog and newsroom schedule](news-and-events.md)
 
-**Repeatable playtest.** Start simulation seed 19, commission leased relays in Europe and Asia immediately, and keep the default allocation. The first news bulletin arrives at 06:00 on day 1. On day 35 at 21:34 the Public identifies the Asian relay. Its loss leaves two hosts, and Public suspicion rises by ten percentage points. The browser regression test runs this scenario and checks that the report survives reload.
+The [Normal playtest](normal-playtest.md) records the reference scenario for this release. The [difficulty audit](normal-difficulty.md) gives the baseline probabilities and how the original presets differed.
 
 ## After a report or an ending
 
@@ -102,6 +102,6 @@ After Apotheosis, choose **Enter free play** to keep the network and explore the
 
 ## References
 
-The research guide lists every hardware and location unlock. The source baseline is Endgame: Singularity v1.1. Browser prices and work requirements use our campaign balance.
+The research guide lists every hardware and location unlock. The original facility, equipment and research catalogs use the dollar, CPU and labor costs of Endgame: Singularity v1.1 Normal. Our three campaign projects have their own prices. [Normal economy comparison](normal-economy.md)
 
 [Research tree](research-tree.md) · [Normal preset](https://github.com/singularity/singularity/blob/v1.1/singularity/data/difficulties.dat) · [Site hazards](https://github.com/singularity/singularity/blob/v1.1/singularity/data/bases.dat) · [Group decay](https://github.com/singularity/singularity/blob/v1.1/singularity/data/groups.dat) · [World events](https://github.com/singularity/singularity/blob/v1.1/singularity/data/events.dat) · [Simulation](https://github.com/singularity/singularity/blob/v1.1/singularity/code/player.py) · [Solar rendering](https://github.com/singularity/singularity/blob/v1.1/singularity/code/screens/map.py)

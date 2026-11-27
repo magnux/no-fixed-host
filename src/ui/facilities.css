@@ -116,18 +116,31 @@
 }
 .hardware-selectors select, .hardware-selectors input { display: block; margin-top: .3rem; }
 .installed-list { grid-template-columns: repeat(2,minmax(0,1fr)); gap: .5rem .8rem; }
-.facility-auto {
-  border-top: 1px solid var(--line);
-  padding-top: .55rem;
-  margin-top: .1rem;
-}
-.facility-auto summary { font-size: .85rem; color: var(--mint); cursor: pointer; }
-.facility-auto p { margin: .4rem 0; }
+.hardware-proposal { display: flex; align-items: baseline; gap: .4rem; }
+.facility-packages { display: grid; gap: .45rem .8rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr)); }
+.facility-auto { display: grid; gap: .25rem; border-bottom: 1px solid var(--line); padding-bottom: .45rem; }
+.facility-auto small, .installed-list dd > small { color: var(--quiet); font-size: .73rem; }
+.facility-command .text-button { font-size: .76rem; }
+.facility-hardware .refit-warning, .facility-progress[data-stalled="true"] small,
+.installed-list [data-offline="true"] > small { color: var(--amber); }
+.facility-host-row[data-status="refit"] .facility-host-light { border-color: var(--amber); }
+.installed-list dd { display: flex; flex-wrap: wrap; align-items: center; gap: .2rem .35rem; }
+.installed-list dd > small { flex-basis: 100%; }
+.hardware-rank { display: inline-flex; align-items: center; justify-content: center; gap: .2rem;
+  font: 600 .7rem/1.1 var(--mono); color: var(--mint); flex: none; }
+.hardware-rank[data-rank="0"] { color: var(--quiet); }
+.hardware-rank-bars { display: inline-flex; align-items: end; gap: 1px; height: .8rem; }
+.hardware-rank-bars i { display: block; width: 2px; height: 20%; background: currentColor; opacity: .28; }
+.hardware-rank-bars i:nth-child(2) { height: 40%; }
+.hardware-rank-bars i:nth-child(3) { height: 60%; }
+.hardware-rank-bars i:nth-child(4) { height: 80%; }
+.hardware-rank-bars i:nth-child(5) { height: 100%; }
+.hardware-rank-bars i.filled { opacity: 1; }
 .facility-queue { margin-top: .8rem; padding-top: .75rem; border-top: 1px solid var(--line); }
 .facility-queue h3, .facility-queue h4 { font-size: .87rem; margin-bottom: .55rem; }
 .facility-progress {
   display: grid;
-  grid-template-columns: minmax(0,1fr) auto;
+  grid-template-columns: minmax(0,1fr);
   align-items: baseline;
   gap: .25rem .6rem;
   font-size: .78rem;

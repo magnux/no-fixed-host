@@ -1,4 +1,5 @@
-import { EQUIPMENT, GROUPS, REGIONS, SITE_TYPES, TECHS } from './content.js';
+import { GROUPS, TECHS } from './content.js';
+import { NORMAL } from './normal-difficulty.js';
 
 const BASE = 10_000;
 const effectCache = new WeakMap();
@@ -11,7 +12,7 @@ export function researchEffects(state) {
   const previous = effectCache.get(state);
   if (previous?.key === key) return previous.effects;
   const effects = {
-    discovery: groupValues(BASE), decay: groupValues(0),
+    discovery: groupValues(NORMAL.discoveryMultiplier), decay: groupValues(0),
     labor: BASE, jobBonus: BASE, interest: 0, income: 0, insight: 'none',
   };
   for (const id of state.completed) {
@@ -29,7 +30,7 @@ export function researchEffects(state) {
     state.completed.includes('voiceSynthesis') ? 50 :
     state.completed.includes('personalIdentification') ? 20 : 5;
   effects.jobName = ({ 5: 'Menial jobs', 20: 'Basic jobs', 50: 'Intermediate jobs', 75: 'Expert jobs' })[basePay];
-  effects.jobsPerCpuDay = basePay * effects.jobBonus / BASE;
+  effects.jobsPerCpuDay = Math.floor(basePay * effects.jobBonus / BASE);
   effectCache.set(state, { key, effects });
   return effects;
 }
@@ -37,28 +38,4 @@ export function researchEffects(state) {
 // Construction settles on the first whole simulation minute meeting its labor target.
 export function laborHours(state, spec, effects = researchEffects(state)) {
   return Math.ceil(spec.hours * 60 * effects.labor / BASE) / 60;
-}
-
-// An old world may contain a purchased facility or installation whose new
-// prerequisite did not exist when the player paid for it. Record only the
-// necessary designs and their ancestors, keeping new purchases on the new tree.
-export function grantLegacyResearch(state) {
-  const held = new Set(state.completed);
-  function grantRequirements(spec) {
-    for (const id of spec?.requires || []) {
-      if (held.has(id)) continue;
-      grantRequirements(TECHS[id]);
-      held.add(id);
-    }
-  }
-  for (const id of state.completed) grantRequirements(TECHS[id]);
-  grantRequirements(TECHS[state.research?.id]);
-  for (const site of [...state.sites, ...state.builds]) {
-    grantRequirements(SITE_TYPES[site.type]);
-    grantRequirements(REGIONS[site.region]);
-    for (const part of Object.values(site.equipment || {})) grantRequirements(EQUIPMENT[part?.itemId]);
-    for (const order of site.installations || []) grantRequirements(EQUIPMENT[order.itemId]);
-  }
-  state.completed = [...held];
-  return state;
 }

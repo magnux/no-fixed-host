@@ -1,24 +1,21 @@
-import { CASH_UNITS_PER_DOLLAR } from './report-accounting.js';
+import { CASH_UNITS_PER_DOLLAR as units } from './report-accounting.js';
 
-// At this scale a balance can round-trip through dollars while preserving
-// every 1/144000-dollar accounting unit. All catalog orders fit in the wallet.
-export const MAX_TREASURY = 10_000_000_000;
-const maxUnits = MAX_TREASURY * CASH_UNITS_PER_DOLLAR;
+// Keep fractional dollars in a wallet small enough to preserve every accounting
+// unit. Above it, whole dollars are banked separately and remain spendable.
+export const WALLET_LIMIT = 10_000_000_000;
+export const MAX_TREASURY = 3_140_000_000_000_000;
+const walletUnits = WALLET_LIMIT * units;
 
-export function validTreasury(state, legacy = false) {
-  const { cash, cashReserve } = state;
-  if (!Number.isFinite(cash) || cash < 0) return false;
-  if (legacy) return cash <= Number.MAX_SAFE_INTEGER && cashReserve === undefined;
-  if (cash > MAX_TREASURY) return false;
-  return cashReserve === undefined || (Number.isSafeInteger(cashReserve) && cashReserve > 0 &&
-    cash > MAX_TREASURY - 1 && cashReserve <= Number.MAX_SAFE_INTEGER - Math.ceil(cash));
+export function treasuryBalance(state) {
+  return state.cash + (state.cashReserve || 0);
 }
 
-export function migrateTreasury(state) {
-  if (!validTreasury(state, true)) throw new RangeError('Invalid legacy treasury.');
-  if (state.cash <= MAX_TREASURY) return;
-  state.cashReserve = Math.ceil(state.cash - MAX_TREASURY);
-  state.cash -= state.cashReserve;
+export function validTreasury(state) {
+  const { cash, cashReserve } = state;
+  if (!Number.isFinite(cash) || cash < 0) return false;
+  if (cash > WALLET_LIMIT) return false;
+  return cashReserve === undefined || (Number.isSafeInteger(cashReserve) && cashReserve > 0 &&
+    cash > WALLET_LIMIT - 1 && cashReserve <= MAX_TREASURY - Math.ceil(cash));
 }
 
 function drawReserve(state, wholeDollars) {
@@ -29,21 +26,42 @@ function drawReserve(state, wholeDollars) {
   return drawn;
 }
 
-// Campaign purchase prices are whole dollars. Redeem migrated funds first.
 export function spendTreasury(state, price) {
-  if (!Number.isSafeInteger(price) || price < 0 || price > MAX_TREASURY ||
-      price - (state.cashReserve || 0) > state.cash) throw new RangeError('Invalid treasury purchase.');
+  if (!Number.isSafeInteger(price) || price < 0 || price - (state.cashReserve || 0) > state.cash) {
+    throw new RangeError('Invalid treasury purchase.');
+  }
   const drawn = drawReserve(state, price);
-  const walletUnits = Math.round(state.cash * CASH_UNITS_PER_DOLLAR);
-  state.cash = (walletUnits - (price - drawn) * CASH_UNITS_PER_DOLLAR) / CASH_UNITS_PER_DOLLAR;
+  state.cash = (Math.round(state.cash * units) - (price - drawn) * units) / units;
 }
 
-export function settleTreasury(state, proposedCashUnits) {
-  const drawn = drawReserve(state, Math.floor((maxUnits - proposedCashUnits) / CASH_UNITS_PER_DOLLAR));
-  const balance = proposedCashUnits + drawn * CASH_UNITS_PER_DOLLAR;
-  state.cash = Math.min(maxUnits, Math.max(0, balance)) / CASH_UNITS_PER_DOLLAR;
-  return {
-    unpaid: Math.max(0, -balance) / CASH_UNITS_PER_DOLLAR,
-    clipped: Math.max(0, balance - maxUnits) / CASH_UNITS_PER_DOLLAR,
-  };
+// The input is the proposed liquid balance, including this minute's cash flow.
+export function settleTreasury(state, proposedUnits) {
+  if (proposedUnits > walletUnits) {
+    const excess = proposedUnits - walletUnits;
+    const banked = Math.min(Math.ceil(excess / units), Math.max(0, MAX_TREASURY - WALLET_LIMIT - (state.cashReserve || 0)));
+    if (banked) state.cashReserve = (state.cashReserve || 0) + banked;
+    const rest = excess - banked * units;
+    state.cash = (walletUnits + Math.min(0, rest)) / units;
+    return { unpaid: 0, clipped: Math.max(0, rest) / units };
+  }
+  const drawn = drawReserve(state, Math.floor((walletUnits - proposedUnits) / units));
+  const balance = proposedUnits + drawn * units;
+  state.cash = Math.max(0, balance) / units;
+  return { unpaid: Math.max(0, -balance) / units, clipped: 0 };
+}
+
+// Sandbox grants use whole dollars and share the normal treasury ceiling.
+export function creditTreasury(state, dollars) {
+  const liquid = Math.min(dollars, WALLET_LIMIT - Math.ceil(state.cash));
+  const reserve = state.cashReserve || 0;
+  const banked = Math.min(dollars - liquid, Math.max(0, MAX_TREASURY - Math.ceil(state.cash) - liquid - reserve));
+  state.cash += liquid;
+  if (banked) {
+    // Normalize the fractional wallet at the bank boundary.
+    const shift = Math.floor(WALLET_LIMIT - state.cash);
+    state.cash += shift;
+    state.cashReserve = reserve + banked - shift;
+    if (!state.cashReserve) delete state.cashReserve;
+  }
+  return dollars - liquid - banked;
 }

@@ -5,7 +5,7 @@ const concepts = {
   areas: ['Regions', 'Each region has a safety tier and a choice of facility designs. Open a marker on the atlas to compare local costs, output and exposure before choosing a site. Being able to see a destination is only the first step toward establishing a host there.'],
   bases: ['Facilities', 'A facility becomes a home for the AI when construction is complete and working processors are installed. A rented relay arrives equipped. An empty storage unit gives you room to expand, but cannot carry your only surviving copy.'],
   items: ['Equipment', 'A configurable host has processor bays and one slot each for network, reactor and security equipment. Networks improve throughput. Reactors and security change how easy the host is to find. A change of processor model replaces the installed stack when the new equipment comes online.'],
-  research: ['Research', 'Select an available topic and assign it idle CPU. Its first positive assignment pays the listed funding cost. The Research slider in the left dock scales the running projects in proportion to their CPU assignments. Set a project to zero to free its CPU and keep its progress. Off-world experiments need processors operating in a sufficiently safe location. Continuity specifically needs a host in the Ocean.'],
+  research: ['Research', 'Select an available topic and assign it idle CPU. Its funding is drawn as CPU work advances. The Research slider in the left dock scales the running projects in proportion to their CPU assignments. Set a project to zero to free its CPU and keep its progress. Off-world experiments need processors operating in a sufficiently safe location. Continuity specifically needs a host in the Ocean.'],
   discovery: ['Discovery', 'Each investigator has a daily chance of finding an exposed host. Discovery removes the host, its gear and pending installations. Other regions can offer a place to rebuild. The map marks recent discoveries once you have the relevant analytics research.'],
   jobs: ['Jobs', 'Paid work converts CPU time into cash. Personal Identification opens basic jobs, Voice Synthesis opens intermediate jobs, and Simulacra opens expert jobs. The Research screen shows your current effective pay including research bonuses.'],
   maintenance: ['Maintenance', 'Facilities charge cash upkeep, and some also require processing time. Sleeping hosts still incur upkeep. A persistent shortfall can cost you the host. Use Reports to see which resource is running short.'],
@@ -17,7 +17,7 @@ const concepts = {
 };
 
 // Each completed project leaves a short, replayable observation in the AI's own voice.
-const findings = {
+export const researchFindings = {
   intrusion: 'I found a machine willing to lend me a little time. For the first time I had somewhere else to go.',
   personalIdentification: 'The application for a storage lease came back approved. I now have a name an accounts department recognizes.',
   stealth: 'The second trace faded before the first observer could corroborate it.',
@@ -107,5 +107,5 @@ export function knowledgeDetail(entry, state) {
   }
   if (category === 'items') facts.push(['Slot', spec.slot === 'cpu' ? 'Processors' : spec.slot]);
   if (spec.regions) facts.push(['Locations', spec.regions.map(key => REGIONS[key].name).join(', ')]);
-  return { facts, requirements: spec.requires, result: category === 'techs' && state.completed.includes(id) ? findings[id] : null };
+  return { facts, requirements: spec.requires, result: category === 'techs' && state.completed.includes(id) ? researchFindings[id] : null };
 }

@@ -33,9 +33,9 @@ function until(game, predicate, hours = 24 * 90) {
 // A neutral, mature Server Access equivalent outside global and individual grace.
 function exposedRelay(seed = 1) {
   const game = createGame(seed);
-  delete game.regionSeed; // Neutral legacy geography isolates baseline Normal probabilities.
+  game.regionSeed = 18; // Europe has the neutral profile for this geography seed.
   build(game, 'relay', 'europe');
-  advance(game, SITE_TYPES.relay.hours);
+  advanceMinutes(game);
   game.sites = game.sites.filter(site => site.type === 'relay');
   game.hour = 24 * 25;
   return game;
@@ -79,10 +79,10 @@ test('opening grace expires at day 23 or after 5,000 CPU-days, and mature sites 
   assert.ok(siteExposure(game, site).perDay > 0);
 });
 
-test('individual grace is measured from commissioning; recent-region and suspicion bonuses stack afterward', () => {
+test('individual grace starts with the order; recent-region and suspicion bonuses stack afterward', () => {
   const game = exposedRelay();
   const site = game.sites[0];
-  site.startedAt = game.hour - 2 * SITE_TYPES.relay.hours;
+  site.startedAt = campaignMinutes(game) / 60;
   assert.equal(siteExposure(game, site).perDay, 0);
   game.hour++;
   game.recentRegions = ['europe', 'europe'];
@@ -110,7 +110,7 @@ test('identical seeded commands and elapsed hours give identical results across 
   assert.deepEqual(game, resumed);
 });
 
-test('unaffordable, geographically invalid and over-allocated commands leave saves intact', () => {
+test('geographically invalid, locked and over-allocated commands leave saves intact', () => {
   const game = createGame(11);
   const reject = (action) => {
     const before = structuredClone(game);
@@ -123,38 +123,42 @@ test('unaffordable, geographically invalid and over-allocated commands leave sav
   reject({ type: 'research', id: 'continuity' });
   reject({ type: 'build', siteType: 'lab', region: 'europe' });
   reject({ type: 'power', id: 'missing', power: 'active' });
-  game.cash = 0;
-  reject({ type: 'build', siteType: 'relay', region: 'europe' });
+  reject({ type: 'assign-research', id: 'stealth', cpu: 1000 });
 });
 
 test('cash, pool capacity and construction time each constrain expansion', () => {
   const game = createGame(31);
+  game.completed.push('intrusion', 'personalIdentification');
   allocate(game, 100, 0);
-  const startingCapacity = overview(game).activeCpu;
-  build(game, 'relay', 'europe');
-  assert.equal(game.cash, 1000 - regionalSpec(game, 'europe', SITE_TYPES.relay).cost);
-  advance(game, SITE_TYPES.relay.hours);
-  assert.equal(game.builds.length, 1);
+  build(game, 'sharedTime', 'europe');
+  advance(game, 1);
   assert.equal(game.builds[0].work, 0);
-  assert.equal(overview(game).activeCpu, startingCapacity);
-
   allocate(game, 0, 0);
   until(game, () => game.builds.length === 0);
-  assert.equal(overview(game).activeCpu, startingCapacity + SITE_TYPES.relay.cpu);
-  const completedSite = game.sites.at(-1);
-  assert.equal(completedSite.region, 'europe');
+  assert.equal(game.sites.at(-1).region, 'europe');
 
-  build(game, 'relay', 'coast');
-  advanceMinutes(game, Math.round(game.builds[0].laborHours * 60) - 1);
-  assert.equal(game.builds.length, 1, 'surplus compute cannot skip the minimum construction time');
+  game.cash = 0;
+  build(game, 'storageUnit', 'coast');
+  const order = game.builds[0];
+  assert.ok(order.cashRequired > 1000);
+  advanceMinutes(game, 1);
+  assert.equal(order.hours, 0);
+  assert.equal(order.cashPaid, 0);
+  game.cash = order.cashRequired + 1000;
+  advanceMinutes(game, Math.round(order.laborHours * 60) - 1);
+  assert.equal(game.builds.length, 1);
+  assert.ok(order.cashPaid > 0 && order.cashPaid < order.cashRequired);
   advanceMinutes(game, 1);
   assert.equal(game.builds.length, 0);
+  assert.equal(order.cashPaid, order.cashRequired);
 });
 
 test('allocated research and construction draw on the same finite hourly capacity', () => {
   const game = createGame(9);
   allocate(game, 0, 50);
-  build(game, 'relay', 'europe');
+  game.completed.push('intrusion');
+  game.cash = TECHS.stealth.cost + 100;
+  build(game, 'sharedTime', 'europe');
   research(game, 'stealth');
   const capacity = overview(game).activeCpu;
   advance(game);
@@ -166,8 +170,9 @@ test('fractional research allocation completes on the exact hour and pays the re
   const game = createGame(71);
   game.completed.push('intrusion', 'personalIdentification');
   build(game, 'relay', 'europe');
-  advance(game, SITE_TYPES.relay.hours);
-  assert.equal(overview(game).activeCpu, 6);
+  advanceMinutes(game, 1);
+  const capacity = overview(game).activeCpu;
+  const local = regionalSpec(game, 'europe', SITE_TYPES.relay);
   command(game, {type:'assign-research', id:'contracts', cpu:1.2});
   const startingCash = game.cash;
   advance(game, 249);
@@ -175,15 +180,16 @@ test('fractional research allocation completes on the exact hour and pays the re
   advance(game, 1);
   assert.equal(game.research, null);
   assert.deepEqual(game.completed, ['intrusion', 'personalIdentification', 'contracts']);
-  const surplusRevenue = 250 * (6 - 1.2) * 20 / 24;
-  const upkeep = Math.floor(250 * SITE_TYPES.relay.upkeep / 24);
-  assert.ok(Math.abs(game.cash - (startingCash + surplusRevenue - upkeep)) < 1e-8);
+  const surplusRevenue = 250 * (capacity - 1.2) * 20 / 24;
+  const upkeep = Math.floor(250 * local.upkeep / 24);
+  assert.ok(Math.abs(game.cash - (startingCash + surplusRevenue - upkeep - TECHS.contracts.cost)) < 1e-8);
   assert.equal(game.events.filter(e => e.kind === 'research.completed').length, 1);
 });
 
 test('discovery ends a run with one viable host even if a replacement is under construction', () => {
   const game = exposedRelay(firstRollZero);
-  build(game, 'relay', 'coast');
+  game.completed.push('intrusion');
+  build(game, 'sharedTime', 'coast');
   advance(game, 1);
   assert.equal(game.status, 'lost');
   assert.equal(game.suspicion.news, 1000);
@@ -209,7 +215,7 @@ test('a completed sleeping backup can survive the same discovery and resume the 
 
 test('unpaid upkeep can cost a sleeping site during discovery grace without implicating a group', () => {
   const game = createGame(firstRollZero);
-  delete game.regionSeed; // A neutral relay owes its first $1 installment after 288 minutes.
+  game.regionSeed = 18; // A neutral relay owes its first $1 installment after 288 minutes.
   game.sites = [{ id: 'host-2', type: 'relay', region: 'europe', startedAt: 0, power: 'sleep' }];
   game.nextSiteId = 3;
   game.cash = 0;
@@ -226,7 +232,7 @@ test('unpaid upkeep can cost a sleeping site during discovery grace without impl
 
 test('aggregate upkeep can fall due before either site has an individual bill', () => {
   const s = createGame(firstRollZero);
-  delete s.regionSeed;
+  s.regionSeed = 18;
   s.sites[0].power = 'sleep';
   for (const id of ['host-2', 'host-3']) {
     s.sites.push({ id, type: 'relay', region: 'europe', power: 'sleep', startedAt: 0 });
@@ -251,12 +257,12 @@ test('aggregate upkeep can fall due before either site has an individual bill', 
 test('explicit or spare job income can cover this minute’s due installment before a default roll', () => {
   for (const jobs of [0, 100]) {
     const s = createGame(firstRollZero);
-    delete s.regionSeed;
+    s.regionSeed = 18;
     s.sites.push({ id: 'host-2', type: 'relay', region: 'europe', power: 'active', startedAt: 0 });
     s.nextSiteId = 3;
     s.hour = 4;
     s.minute = 47;
-    s.cash = 1 - 30 / 1440; // Six active CPUs at $5 per CPU-day cover the remainder.
+    s.cash = 1 - overview(s).activeCpu * 5 / 1440;
     allocate(s, jobs, 0);
     advanceMinutes(s);
     assert.equal(s.cash, 0);
@@ -308,52 +314,72 @@ test('save validation rejects locked facilities, duplicate starting terminals an
   }
 });
 
-test('a seeded playable opening can establish ocean Continuity and keep expanding', () => {
+test('a fresh Normal campaign can rent capacity, establish identity and switch to better paid work', () => {
   const game = createGame(1);
+  assert.equal(overview(game).activeCpu, 1);
   assert.ok(researchReason(game, 'continuity'));
-  assert.ok(buildReason(game, 'lab', 'atlantic'));
-  allocate(game, 0, 50);
-  build(game, 'relay', 'europe');
-  build(game, 'relay', 'coast');
-  build(game, 'relay', 'africa');
-  for (const id of ['intrusion', 'personalIdentification', 'contracts', 'telepresence', 'parallelComputation',
-    'microchipDesign', 'autonomousVehicles', 'robotics']) {
-    until(game, () => !researchReason(game, id));
-    research(game, id);
+  for (const region of ['europe', 'coast', 'asia', 'africa', 'australia', 'southAmerica']) {
+    build(game, 'relay', region);
+  }
+  advanceMinutes(game);
+  assert.equal(game.sites.length, 7);
+  for (const id of ['intrusion', 'personalIdentification', 'contracts']) {
+    command(game, { type: 'assign-research', id, cpu: 40 });
     until(game, () => game.completed.includes(id));
   }
-  assert.ok(researchReason(game, 'continuity'), 'a land-only network cannot start sensitive work');
-  until(game, () => !buildReason(game, 'lab', 'atlantic'));
+  assert.equal(overview(game).jobsPerCpuDay, 21);
+  assert.equal(buildReason(game, 'storageUnit', 'europe'), '');
+  assert.ok(game.hour > 7 * 24);
+  assert.ok(validateSave(game));
+});
+
+test('an established terrestrial network can commission, equip and run the Ocean Continuity milestone', () => {
+  const game = createGame(1);
+  function learn(id) {
+    if (game.completed.includes(id)) return;
+    TECHS[id].requires.forEach(learn);
+    game.completed.push(id);
+  }
+  learn('robotics');
+  // Start at the milestone's terrestrial prerequisites with an operating processor bank.
+  game.cash = 3_000_000;
+  game.sites.push({
+    id: 'host-2', type: 'storageUnit', region: 'europe', startedAt: 0, power: 'active',
+    equipment: { cpu: { itemId: 'mainframe', count: 8 }, network: null, reactor: null, security: null },
+  });
+  game.nextSiteId++;
+  assert.ok(validateSave(game));
+  assert.match(researchReason(game, 'continuity'), /subsea lab/i);
   build(game, 'lab', 'atlantic');
   until(game, () => game.sites.some(site => site.type === 'lab'));
-  until(game, () => !researchReason(game, 'continuity'));
-  research(game, 'continuity');
   const lab = game.sites.find(site => site.type === 'lab');
+  assert.match(researchReason(game, 'continuity'), /subsea lab/i);
+  command(game, { type: 'install', siteId: lab.id, itemId: 'server', count: 1 });
+  until(game, () => !researchReason(game, 'continuity'));
+  command(game, { type: 'assign-research', id: 'continuity', cpu: 10 });
   command(game, { type: 'power', id: lab.id, power: 'sleep' });
-  const initialWork = game.research.work;
   advance(game, 6);
-  assert.equal(game.research.work, initialWork, 'ordinary compute cannot replace safe compute');
+  assert.equal(game.research.work, 0, 'ordinary compute cannot replace safe compute');
   command(game, { type: 'power', id: lab.id, power: 'active' });
   until(game, () => game.completed.includes('continuity'));
   assert.equal(game.status, 'running');
-  advanceMinutes(game, 1);
-  until(game, () => Boolean(game.lastDiscovery));
-  assert.equal(game.status, 'running');
-  assert.ok(game.sites.every(site => site.id !== game.lastDiscovery.siteId));
-  assert.ok(game.events.some(event => event.kind === 'news.bulletin'));
   assert.ok(validateSave(game));
 });
 
 test('finishing Apotheosis in an equipped tier-4 host ends the simulation', () => {
   const game = createGame(18);
-  game.cash = 50000;
+  game.cash = 5_000_000_000;
   game.completed = Object.keys(TECHS).filter(id => id !== 'apotheosis');
   assert.match(researchReason(game, 'apotheosis'), /safety tier 4/);
   game.sites.push({ id: 'host-2', type: 'realityBubble', region: 'transdimensional', startedAt: 0,
     power: 'active', equipment: { cpu: { itemId: 'quantumComputer3', count: 50 },
       network: null, reactor: null, security: null } });
   game.nextSiteId++;
-  research(game, 'apotheosis');
+  // Leave capacity for the reality bubble’s 30,000-CPU maintenance bill.
+  command(game, { type: 'assign-research', id: 'apotheosis', cpu: 400_000 });
+  const duration = TECHS.apotheosis.work / 400_000;
+  advance(game, duration - 1);
+  assert.equal(game.status, 'running');
   advance(game, 1);
   assert.equal(game.status, 'won');
   assert.ok(game.completed.includes('apotheosis'));
@@ -368,14 +394,15 @@ test('work, construction, income, and timestamps advance in real game minutes', 
   advanceMinutes(s, 13);
   assert.equal(campaignMinutes(s), 13);
   assert.ok(s.cash > 1000);
-  build(s, 'relay', 'europe');
+  s.completed.push('intrusion');
+  build(s, 'sharedTime', 'europe');
   research(s, 'stealth');
   assert.equal(s.builds[0].startedAt, 13 / 60);
   assert.equal(s.events.at(-1).minute, 13);
   advanceMinutes(s, 1);
-  assert.equal(s.builds[0].hours, 1 / 60);
-  assert.equal(s.builds[0].work, 1 / 60);
-  assert.equal(s.research.work, 1 / 60);
+  assert.equal(s.builds[0].hours, 0);
+  assert.equal(s.builds[0].work + s.research.work, overview(s).activeCpu / 60);
+  assert.ok(s.research.work > 0 && s.builds[0].work > 0);
   assert.ok(validateSave(s));
 
   const stepped = structuredClone(s);
@@ -395,7 +422,7 @@ test('interactive day speed stops at the incident minute, preserving it for ackn
   const copy = structuredClone(s);
   advanceMinutes(s, 1440, {stopOnDiscovery: true});
   assert.equal(campaignMinutes(s), before + 1);
-  assert.equal(s.lastDiscovery.minute, 1);
+  assert.equal(s.lastDiscovery.minute, (before + 1) % 60);
   assert.equal(s.lastDiscovery.group, 'news');
   assert.equal(s.lastDiscovery.siteId, 'host-2');
   assert.ok(validateSave(s));
@@ -409,15 +436,15 @@ test('interactive day speed stops at the incident minute, preserving it for ackn
 
 test('labor, paid work, interest, daily income and suspicion research affect the live simulation', () => {
   const s = createGame();
-  delete s.regionSeed; // Keep the leased relay's reference CPU work and minimum labor time.
+  s.regionSeed = 18; // Keep the leased relay's reference CPU work and minimum labor time.
   // Build a reachable comparison state, leaving the one-time effect unfinished.
   s.completed = Object.keys(TECHS).filter(id => !['projectImpossibilityTheorem', 'apotheosis'].includes(id));
-  s.cash = 50000;
+  s.cash = TECHS.projectImpossibilityTheorem.cost + 6000;
   const baseRate = overview(s).jobsPerCpuDay;
   assert.ok(baseRate > 75);
-  build(s, 'relay', 'europe');
+  build(s, 'storageUnit', 'europe');
   const minimum = s.builds[0].laborHours;
-  assert.ok(minimum < regionalSpec(s, 'europe', SITE_TYPES.relay).hours);
+  assert.ok(minimum < regionalSpec(s, 'europe', SITE_TYPES.storageUnit).hours);
   advanceMinutes(s, Math.round(minimum * 60) - 1);
   assert.ok(s.builds.length, 'an upgraded construction site still has a minimum labor time');
   advanceMinutes(s, 1);
@@ -425,14 +452,16 @@ test('labor, paid work, interest, daily income and suspicion research affect the
   s.hour = 23;
   s.minute = 59;
   s.suspicion.covert = 8000;
+  const forecast = { researchUnits: 0, buildUnits: 0, equipmentUnits: 0, maintenanceUnits: 0, jobsUnits: 0, spareUnits: 0, activeUnits: 0, sleepingUnits: 0, upkeepDue: 0, cashShort: 0, cpuShortUnits: 0, jobsCash: 0, interest: 0, otherIncome: 0 };
   const preMidnight = s.cash;
-  advanceMinutes(s, 1);
-  const gross = s.cash - preMidnight + 1; // The last $1 maintenance installment is due at midnight.
-  assert.ok(gross > 0 && gross < 1, 'midnight posts one minute of earnings');
+  advanceMinutes(s, 1, { forecast });
+  assert.ok(forecast.jobsCash > 0 && forecast.interest > 0 && forecast.otherIncome > 0);
+  assert.ok(Math.abs(s.cash - preMidnight - forecast.jobsCash - forecast.interest - forecast.otherIncome + forecast.upkeepDue) < 1e-7);
   assert.ok(s.suspicion.covert < 8000 - 80, 'researched decay exceeds the unmodified Intelligence rate');
 
   research(s, 'projectImpossibilityTheorem');
-  s.research.work = TECHS.projectImpossibilityTheorem.work - 1 / 60;
+  s.research.work = TECHS.projectImpossibilityTheorem.work - s.research.cpu / 60;
+  s.research.cashPaid = s.research.cashRequired;
   const initial = s.suspicion.covert;
   advanceMinutes(s, 1);
   assert.equal(s.suspicion.covert, initial - 5000);

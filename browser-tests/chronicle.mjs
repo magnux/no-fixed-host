@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
-import { command, createGame } from '../src/game/engine.js';
+import { advanceMinutes, command, createGame } from '../src/game/engine.js';
 import { TECHS } from '../src/game/content.js';
 import { CAMPAIGN_STORAGE_KEY, encodeCampaign } from '../src/persistence.js';
 
@@ -57,6 +57,18 @@ test('the journal combines filters, reopens grouped reports, pauses or resumes, 
   assert.match(await reader.innerText(), /second home/);
   await reader.getByRole('button',{name:'Continue simulation'}).click();
   assert.notEqual(await page.locator('#clock-mode').innerText(),'Paused');
+});
+
+test('completed research can be reread with its finding in the dispatch journal', async t => {
+  const state = createGame(183);
+  command(state, {type:'assign-research', id:'intrusion', cpu:1});
+  advanceMinutes(state, 60 * TECHS.intrusion.work);
+  assert.ok(state.completed.includes('intrusion'));
+  const page = await openPage(t, state);
+  await page.getByRole('button', {name:'Activity', exact:true}).click();
+  await page.locator('.chronicle-entry').filter({hasText:/Intrusion complete/i}).click();
+  const dispatch = page.getByRole('dialog', {name:'Dispatches'});
+  assert.match(await dispatch.innerText(), /machine willing to lend me a little time/);
 });
 
 test('developer controls operate on a disposable sandbox copy and use real world event effects', async t => {

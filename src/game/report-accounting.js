@@ -2,10 +2,8 @@
 // sub-dollar remainder separate preserves small jobs over long campaigns.
 export const CASH_UNITS_PER_DOLLAR = 144_000;
 
-export function initializeStatistics(state, migrated = false) {
+export function initializeStatistics(state) {
   state.statistics = {
-    trackedFromMinute: migrated ? state.hour * 60 + (state.minute ?? 0) : 0,
-    partial: migrated && (state.hour > 0 || state.minute > 0 || state.nextEventId > 2),
     earnedDollars: 0,
     earnedRemainder: 0,
     projectsCompleted: 0,
@@ -17,8 +15,7 @@ export function initializeStatistics(state, migrated = false) {
 export function validStatistics(state) {
   const stats = state.statistics;
   const whole = n => Number.isSafeInteger(n) && n >= 0;
-  return Boolean(stats && typeof stats.partial === 'boolean' &&
-    whole(stats.trackedFromMinute) && stats.trackedFromMinute <= state.hour * 60 + state.minute &&
+  return Boolean(stats &&
     Number.isFinite(stats.earnedDollars) && Number.isInteger(stats.earnedDollars) && stats.earnedDollars >= 0 &&
     whole(stats.earnedRemainder) && stats.earnedRemainder < CASH_UNITS_PER_DOLLAR &&
     whole(stats.projectsCompleted) && whole(stats.facilitiesBuilt) && whole(stats.itemsInstalled));

@@ -1,6 +1,5 @@
-import { EQUIPMENT, SITE_TYPES, TECHS } from './content.js';
-import { overview, researchAllocation, researchProjects, siteHardware } from './engine.js';
-import { regionalSpec } from './geography.js';
+import { EQUIPMENT, SITE_TYPES } from './content.js';
+import { previewWork, researchProjects, siteHardware } from './engine.js';
 
 // A report belongs to one filter. The full original record stays in the save.
 export const JOURNAL_CATEGORIES = {
@@ -75,39 +74,30 @@ export function storyKey(event) {
 }
 
 const warnings = {
-  spareCpu: { title: 'A research assignment has idle CPU', text: 'One or more projects cannot use all their assigned CPU. Check the project’s remaining work and eligible hosts. Spare cycles return to the pool.', tab: 'research' },
+  spareCpu: { title: 'A research assignment has idle CPU', text: 'Check the project’s funds, remaining work and eligible hosts. Unused research CPU returns to the pool.', tab: 'research' },
   lastHost: { title: 'Only one viable host', text: 'This machine holds the last surviving copy. Finish another host with processors before risking it.', tab: 'facilities' },
-  stalledBuild: { title: 'Construction has no compute', text: 'An order still needs CPU work, and the pool has no capacity after upkeep. Release some paid-work or research allocation.', tab: 'facilities' },
+  stalledBuild: { title: 'Facility or equipment order paused', tab: 'facilities' },
   maintenance: { title: 'CPU upkeep is underfunded', text: 'The pool cannot cover CPU upkeep. A facility may fail. Reduce allocations or wake another equipped host.', tab: 'reports' },
 };
 
-export function campaignWarnings(state, prefs = {}, metrics) {
+export function currentWarnings(state, prefs = {}) {
   if (state.status !== 'running') return [];
-  const assignedCpu = state.researchTarget ?? researchProjects(state).reduce((sum, project) => sum + project.cpu, 0);
-  const reservedJobs = metrics.activeCpu * state.allocations.jobs / 100;
-  const poolUnits = Math.round(100 * (metrics.activeCpu - reservedJobs - metrics.researchCpu));
-  const upkeepUnits = Math.round(100 * metrics.cpuUpkeep);
+  const work = previewWork(state);
+  const assigned = state.researchTarget ?? researchProjects(state).reduce((sum, project) => sum + project.cpu, 0);
+  const waiting = [...work.orders].filter(([, status]) => status.stalled);
   const flags = {
-    spareCpu: Math.round(100 * (assignedCpu - metrics.researchCpu)) > 0,
-    lastHost: !state.freePlay && metrics.viable === 1,
-    stalledBuild: metrics.pendingWork && poolUnits <= upkeepUnits,
-    maintenance: !state.freePlay && poolUnits < upkeepUnits,
+    spareCpu: Math.round(100 * (assigned - work.researchCpu)) > 0,
+    lastHost: !state.freePlay && state.sites.filter(site => siteHardware(state, site).rawCpu > 0).length === 1,
+    stalledBuild: waiting.length > 0,
+    maintenance: !state.freePlay && work.maintenanceShort > 0,
   };
   return Object.entries(warnings)
     .filter(([id]) => flags[id] && prefs[id] !== false)
-    .map(([id, warning]) => ({ id, ...warning }));
-}
-
-export function currentWarnings(state, settings = {}) {
-  const economy = overview(state);
-  const allocations = researchAllocation(state, economy);
-  const researchCpu = researchProjects(state).reduce((sum, project) => {
-    const remaining = (TECHS[project.id].work - project.work) * 60;
-    return sum + Math.min(remaining, allocations.byProject.get(project.id));
-  }, 0);
-  const pendingWork = state.builds.some(project => project.work < regionalSpec(state, project.region, SITE_TYPES[project.type]).work) ||
-    state.sites.some(site => site.installations?.some(order => order.work < regionalSpec(state, site.region, EQUIPMENT[order.itemId]).work * order.count));
-  return campaignWarnings(state, settings, {
-    ...economy, researchCpu, pendingWork, viable: state.sites.filter(site => siteHardware(state, site).rawCpu > 0).length,
-  });
+    .map(([id, warning]) => {
+      if (id !== 'stalledBuild') return { id, ...warning };
+      const [order, status] = waiting[0];
+      const name = order.itemId ? EQUIPMENT[order.itemId].name : order.name || SITE_TYPES[order.type].name;
+      const extra = waiting.length > 1 ? ' Other paused orders: ' + (waiting.length - 1) + '.' : '';
+      return { id, ...warning, text: name + ' — ' + status.reason + '.' + extra };
+    });
 }

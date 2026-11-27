@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   createNewsState, groupDanger, newsDiscoveryBonus, reportDiscovery,
-  updateWorldNews, validLastDiscovery, validNewsState, WORLD_NEWS,
+  storyExpiryMinute, updateWorldNews, validLastDiscovery, validNewsState, WORLD_NEWS,
 } from '../src/game/events.js';
 
 import { advanceMinutes, createGame, siteExposure } from '../src/game/engine.js';
@@ -18,8 +18,9 @@ function log(state, kind, text, detail) {
   return entry;
 }
 function runNews(state, from, until, grace = false) {
-  for (let minute = from; minute <= until; minute += 60) {
-    state.hour = minute / 60;
+  for (let minute = from; minute <= until; minute++) {
+    state.hour = Math.floor(minute / 60);
+    state.minute = minute % 60;
     updateWorldNews(state, minute, grace, log);
   }
 }
@@ -28,7 +29,9 @@ test('quiet-period bulletins appear early without changing risk or consuming eit
   const state = campaign();
   const startingRng = state.news.rng;
   runNews(state, 60, 23 * DAY - 60, true);
-  assert.deepEqual(state.events.map(e => [e.hour, e.kind]), [[6, 'news.bulletin'], [48, 'news.bulletin']]);
+  assert.deepEqual(state.events.map(e => e.hour), [6, 48, 132, 228, 324, 420, 516]);
+  assert.ok(state.events.every(e => e.kind === 'news.bulletin' && e.desk));
+  assert.equal(new Set(state.events.map(e => e.headline)).size, state.events.length);
   assert.equal(state.news.rng, startingRng);
   assert.equal(state.rng, 21);
   assert.deepEqual(state.news.stories, {});
@@ -38,7 +41,7 @@ test('eight reference dispatches change a specific group; six appear once and bo
   assert.equal(Object.keys(WORLD_NEWS).length, 8);
   assert.deepEqual(Object.values(WORLD_NEWS).map(s => s.days || 0).sort((a, b) => a-b), [0,0,0,0,0,0,21,21]);
   const state = campaign(815);
-  runNews(state, 23 * DAY, 7300 * DAY);
+  runNews(state, 23 * DAY, 4500 * DAY);
   const world = state.events.filter(e => e.kind === 'news.world');
   for (const [id, story] of Object.entries(WORLD_NEWS)) {
     const reports = world.filter(e => e.storyId === id);
@@ -47,7 +50,11 @@ test('eight reference dispatches change a specific group; six appear once and bo
     else {
       assert.ok(reports.length > 1, id);
       const expiry = state.events.filter(e => e.kind === 'news.expired' && e.storyId === id);
-      for (const [i, ended] of expiry.entries()) assert.equal(ended.hour - reports[i].hour, 21 * 24);
+      for (const [i, ended] of expiry.entries()) {
+        const started = reports[i].hour * 60 + reports[i].minute;
+        assert.equal(ended.hour * 60 + ended.minute, storyExpiryMinute(id, started));
+        assert.ok(ended.hour * 60 - started > 21 * DAY && ended.hour * 60 - started <= 22 * DAY);
+      }
     }
   }
   assert.equal(state.rng, 815, 'world news must never draw from the site discovery stream');
@@ -65,7 +72,7 @@ test('saved news timing, uniqueness and modifiers survive resuming the timeline'
   runNews(a, DAY, 420 * DAY);
   runNews(b, DAY, 200 * DAY);
   const restored = JSON.parse(JSON.stringify(b));
-  runNews(restored, 200 * DAY + 60, 420 * DAY);
+  runNews(restored, 200 * DAY + 1, 420 * DAY);
   assert.deepEqual(a, restored);
   assert.ok(validNewsState(restored.news, 420 * DAY));
   assert.equal(validNewsState({ rng: 1, stories: { counterfeit: 0 } }, 10), false);
@@ -97,13 +104,75 @@ test('investigator danger uses forecast growth and proximity to the suspicion th
 });
 
 test('a naturally drawn agency story changes only intelligence discovery in the playable simulation', () => {
-  const state = createGame(1377);
+  const state = createGame(502619);
   advanceMinutes(state, 23 * DAY - 1);
   assert.equal(state.events.some(e => e.kind === 'news.world'), false);
   advanceMinutes(state, 1);
   const event = state.events.find(e => e.kind === 'news.world');
   assert.equal(event.storyId, 'observatory');
   const resumed = decodeCampaign(encodeCampaign(state));
+  const before = structuredClone(resumed);
+  delete before.news.stories.observatory;
+  const base = siteExposure(before, before.sites[0]).rates;
   const { rates } = siteExposure(resumed, resumed.sites[0]);
-  assert.deepEqual(rates, { news: 0.0075, science: 0, covert: 0.0055, public: 0.0025 });
+  assert.deepEqual(rates, { ...base, covert: Math.floor(base.covert * 10_000 * 1.1) / 10_000 });
+  assert.ok(rates.covert > base.covert);
+});
+
+test('temporary coverage lasts through its anniversary, expires after the midnight roll and becomes eligible next minute', () => {
+  const s = campaign();
+  const after = 22 * DAY;
+  s.news.stories = Object.fromEntries(Object.keys(WORLD_NEWS).map(id => [id, 0]));
+  runNews(s, 21 * DAY, after - 1);
+  assert.ok(Object.hasOwn(s.news.stories, 'frontPage'));
+  const initialRng = s.news.rng;
+  runNews(s, after, after);
+  assert.equal(s.news.rng, initialRng, 'the midnight event roll still sees both press cycles active');
+  assert.equal(s.events.filter(e => e.kind === 'news.expired').length, 2);
+  assert.equal(Object.keys(s.news.stories).length, 6);
+  runNews(s, after + 1, after + 1);
+  assert.notEqual(s.news.rng, initialRng);
+});
+
+test('field reports await a regional host and publish once across rebuilding and reloading', () => {
+  const s = campaign();
+  s.sites = [];
+  runNews(s, 1, 18 * 60, true);
+  assert.ok(!s.news.regional);
+  s.sites.push({ region: 'atlantic' }, { region: 'moon' });
+  runNews(s, 18 * 60 + 1, 3 * DAY, true);
+  const resumed = structuredClone(s);
+  runNews(resumed, 3 * DAY + 1, 6 * DAY, true);
+  assert.deepEqual(resumed.events.filter(e => e.storyId?.startsWith('field-')).map(e => e.storyId), ['field-atlantic', 'field-moon']);
+  assert.ok(validNewsState(resumed.news, 6 * DAY));
+  assert.equal(validNewsState({ ...resumed.news, regional: ['bogus'] }, 6 * DAY), false);
+  assert.equal(validNewsState({ ...resumed.news, regional: ['moon', 'moon'] }, 6 * DAY), false);
+});
+
+test('the late network brief uses this campaign’s recent operations and stays out of random story modifiers', () => {
+  const s = campaign();
+  s.hour = 68 * 24;
+  s.sites = [{ region: 'europe' }, { region: 'europe' }];
+  log(s, 'research.completed', 'Sociology complete.');
+  runNews(s, 69 * DAY, 69 * DAY + DAY / 2, true);
+  const brief = s.events.at(-1);
+  assert.equal(brief.kind, 'news.digest');
+  assert.match(brief.text, /Sociology complete.*2 hosts in 1 region/);
+  assert.deepEqual(s.news.stories, {});
+});
+
+test('each active world story gets one later editorial follow-up without reapplying its effect', () => {
+  const s = campaign(31);
+  const rng = s.news.rng;
+  s.news.stories = Object.fromEntries(Object.keys(WORLD_NEWS).map(id => [id, 0]));
+  runNews(s, 1, 10 * DAY, true);
+  assert.deepEqual(s.events.filter(e => e.storyId?.startsWith('follow-')).map(e => e.storyId),
+    Object.keys(WORLD_NEWS).map(id => 'follow-' + id));
+  assert.deepEqual(Object.keys(s.news.stories), Object.keys(WORLD_NEWS));
+  assert.equal(s.news.rng, rng);
+  const resume = structuredClone(s);
+  runNews(resume, 10 * DAY + 1, 13 * DAY, true);
+  assert.equal(resume.news.followups.length, 8);
+  assert.ok(validNewsState(resume.news, 13 * DAY));
+  assert.equal(validNewsState({ ...resume.news, followups: ['fake'] }, 13 * DAY), false);
 });

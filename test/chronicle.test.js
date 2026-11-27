@@ -1,10 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { advanceMinutes, command, createGame, log, overview, siteExposure, validateSave } from '../src/game/engine.js';
-import { campaignWarnings, CHAPTERS, currentWarnings, eventCategory, reportsAt, storyKey } from '../src/game/chronicle.js';
+import { CHAPTERS, currentWarnings, eventCategory, reportsAt, storyKey } from '../src/game/chronicle.js';
 import { copyToSandbox } from '../src/game/devtools.js';
 import { EQUIPMENT, REGIONS, SITE_TYPES, TECHS } from '../src/game/content.js';
 import { newsDiscoveryBonus } from '../src/game/events.js';
+import { MAX_TREASURY, WALLET_LIMIT } from '../src/game/treasury.js';
 import { regionalSpec } from '../src/game/geography.js';
 import { decodeCampaign, encodeCampaign } from '../src/persistence.js';
 
@@ -60,12 +61,40 @@ test('warning preferences distinguish unused assignments from CPU deliberately l
   command(state, {type:'assign-research', id:'intrusion', cpu:0});
   assert.deepEqual(warningIds(currentWarnings(state)), ['lastHost']);
   command(state, {type:'allocate', jobs:100, research:0});
-  const metrics = {activeCpu:2, researchCpu:0, cpuUpkeep:1, viable:2, pendingWork:true};
-  assert.deepEqual(warningIds(campaignWarnings(state, {}, metrics)), ['stalledBuild', 'maintenance']);
-  assert.deepEqual(warningIds(campaignWarnings(state, {maintenance:false}, metrics)), ['stalledBuild']);
-  assert.deepEqual(warningIds(campaignWarnings(state, {stalledBuild:false}, metrics)), ['maintenance']);
+  state.completed.push('intrusion');
+  state.sites.push({ id: 'host-2', type: 'capsule', region: 'antarctic', power: 'sleep', startedAt: 0 });
+  state.nextSiteId = 3;
+  command(state, { type: 'build', siteType: 'sharedTime', region: 'europe' });
+  assert.deepEqual(warningIds(currentWarnings(state)), ['stalledBuild', 'maintenance']);
+  assert.deepEqual(warningIds(currentWarnings(state, {maintenance:false})), ['stalledBuild']);
+  assert.deepEqual(warningIds(currentWarnings(state, {stalledBuild:false})), ['maintenance']);
   state.status = 'lost';
-  assert.deepEqual(campaignWarnings(state, {}, metrics), []);
+  assert.deepEqual(currentWarnings(state), []);
+});
+
+test('warnings name the stalled order and distinguish cash, queue contention and labor-only installation', () => {
+  const state = createGame(12);
+  state.completed = ['intrusion', 'personalIdentification'];
+  const build = type => command(state, { type: 'build', siteType: type, region: 'coast' });
+  const stalled = () => currentWarnings(state).find(warning => warning.id === 'stalledBuild');
+  build('sharedTime');
+  assert.equal(stalled(), undefined);
+  build('sharedTime');
+  assert.match(stalled().text, /earlier facility orders/);
+  for (const order of [...state.builds]) command(state, { type: 'cancel-build', id: order.id });
+  state.cash = 0;
+  build('relay');
+  assert.match(stalled().text, /funds/);
+  state.cash = 500;
+  assert.equal(stalled(), undefined);
+  command(state, { type: 'cancel-build', id: state.builds[0].id });
+  state.sites.push({ id: 'host-5', type: 'storageUnit', region: 'coast', power: 'active', startedAt: 0 });
+  state.nextSiteId = 6;
+  command(state, { type: 'install', siteId: 'host-5', itemId: 'pc', count: 1 });
+  command(state, { type: 'allocate', jobs: 100 });
+  assert.equal(stalled(), undefined, 'a labor-only PC installation can run with all CPU allocated to jobs');
+  state.cash = 0;
+  assert.match(stalled().text, /PC.*funds/);
 });
 
 test('sandbox cheats require an isolated campaign, preserve RNG, update real event effects, and survive save validation', () => {
@@ -77,7 +106,8 @@ test('sandbox cheats require an isolated campaign, preserve RNG, update real eve
   assert.equal(state.cash, 3000);
   assert.throws(() => dev(state, 'funds', {amount:-2}), /between/);
   const rich = copyToSandbox(createGame());
-  rich.cash = 10_000_000_000;
+  rich.cash = WALLET_LIMIT;
+  rich.cashReserve = MAX_TREASURY - WALLET_LIMIT;
   assert.throws(() => dev(rich, 'funds', {amount:1}), /treasury limit/);
   dev(state, 'trigger', {storyId:'frontPage'});
   assert.equal(newsDiscoveryBonus(state, 'news'), -1000);
@@ -101,15 +131,16 @@ test('sandbox cheats require an isolated campaign, preserve RNG, update real eve
 
 test('sandbox completion honors each regional work target, saved labor estimate and installed hardware', () => {
   const state = copyToSandbox(createGame(65));
-  const region = Object.keys(REGIONS).find(id => SITE_TYPES.relay.regions.includes(id) && regionalSpec(state, id, SITE_TYPES.relay).work > SITE_TYPES.relay.work);
+  const region = Object.keys(REGIONS).find(id => SITE_TYPES.sharedTime.regions.includes(id) && regionalSpec(state, id, SITE_TYPES.sharedTime).work > SITE_TYPES.sharedTime.work);
   assert.ok(region, 'seed must exercise a nonstandard target');
   dev(state, 'funds', {amount:50000});
   command(state, {type:'assign-research', id:'intrusion', cpu:1});
-  command(state, {type:'build', siteType:'relay', region});
   dev(state, 'research');
+  advanceMinutes(state, 1);
+  command(state, {type:'build', siteType:'sharedTime', region});
   dev(state, 'construction');
   assert.ok(validateSave(state));
-  assert.equal(state.builds[0].work, regionalSpec(state, region, SITE_TYPES.relay).work);
+  assert.equal(state.builds[0].work, regionalSpec(state, region, SITE_TYPES.sharedTime).work);
   advanceMinutes(state, 1);
   assert.ok(state.completed.includes('intrusion'));
   command(state, {type:'assign-research', id:'personalIdentification', cpu:1});

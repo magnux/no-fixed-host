@@ -1,4 +1,4 @@
-// The reference game's 365-day declination model, with a reproducible Jan 1 UTC epoch.
+// The reference game's 365-day declination model and midnight UTC start.
 const RAD = Math.PI / 180;
 const DAYS = 365;
 const dateFormat = new Intl.DateTimeFormat('en-GB', {
@@ -6,8 +6,15 @@ const dateFormat = new Intl.DateTimeFormat('en-GB', {
 });
 const dates = Array.from({ length: DAYS }, (_, day) => dateFormat.format(Date.UTC(2001, 0, 1 + day)));
 
-export function sunAt(hour, minute = 0) {
-  const day = Math.floor(hour / 24) % DAYS;
+export function startingDay(seed) {
+  // An independent integer hash selects the calendar without advancing
+  // the campaign's discovery or world-news generators. v1.1 draws 0..365.
+  const calendar = Math.imul(seed ^ 0x91e10da5, 0x9e3779b1) >>> 0;
+  return Math.floor((DAYS + 1) * calendar / 0x100000000) % DAYS;
+}
+
+export function sunAt(hour, minute = 0, firstDay = 0) {
+  const day = (firstDay + Math.floor(hour / 24)) % DAYS;
   const utc = hour % 24;
   return {
     longitude: 180 - (utc + minute / 60) * 15,

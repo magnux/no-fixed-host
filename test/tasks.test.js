@@ -18,29 +18,27 @@ test('direct CPU assignment funds once, uses only idle capacity and releases pai
   command(s,{type:'allocate', jobs:25});
   assign(s,'intrusion',0);
   assert.equal(s.research, null);
-  assign(s,'stealth',1);
-  assert.equal(researchCpuLimit(s,'sociology'),0.5);
+  assign(s,'stealth',0.5);
+  assert.equal(researchCpuLimit(s,'sociology'),0.25);
   const before = structuredClone(s);
-  for (const invalid of [0.51, Infinity, -1, 0.001, '1']) {
+  for (const invalid of [0.26, Infinity, -1, 0.001, '1']) {
     assert.throws(() => assign(s,'sociology',invalid));
     assert.deepEqual(s,before);
   }
   assert.throws(() => assign(s,'apotheosis',0.01));
   assert.deepEqual(s,before);
-  assign(s,'sociology',0.5);
+  assign(s,'sociology',0.25);
   advanceMinutes(s,60);
-  assert.equal(s.research.work,1);
-  assert.equal(s.researchQueue[0].work,0.5);
-  const cash = s.cash;
+  assert.equal(s.research.work,0.5);
+  assert.equal(s.researchQueue[0].work,0.25);
   assign(s,'sociology',0);
   advanceMinutes(s,60);
-  assert.equal(s.researchQueue[0].work,0.5);
+  assert.equal(s.researchQueue[0].work,0.25);
   const restored = reload(s);
   const paid = restored.cash;
   assign(restored,'sociology',0.25);
   assert.equal(restored.cash,paid);
-  assert.ok(paid >= cash);
-  assert.deepEqual(cpus(restored),{stealth:1, sociology:0.25});
+  assert.deepEqual(cpus(restored),{stealth:0.5, sociology:0.25});
   assert.equal(restored.allocations.jobs,25);
 });
 
@@ -50,11 +48,11 @@ test('the master proportionally resizes actual CPU and its zero position preserv
   assign(s,'intrusion',0.1);
   assign(s,'sociology',0.1);
   assign(s,'sociology',0);
-  resize(s,1.6);
-  assert.deepEqual(cpus(s),{stealth:1.2,intrusion:0.4,sociology:0});
+  resize(s,0.8);
+  assert.deepEqual(cpus(s),{stealth:0.6,intrusion:0.2,sociology:0});
   resize(s,0);
   assert.equal(researchAllocation(s).budget,0);
-  assert.equal(researchResizeLimit(s),2);
+  assert.equal(researchResizeLimit(s),1);
   const paid = s.cash;
   advanceMinutes(s,1440);
   assert.equal(s.cash - paid,overview(s).activeCpu * overview(s).jobsPerCpuDay);
@@ -63,31 +61,31 @@ test('the master proportionally resizes actual CPU and its zero position preserv
   resize(s,0.8);
   assert.deepEqual(cpus(s),{stealth:0.6,intrusion:0.2,sociology:0});
   command(s,{type:'allocate',jobs:75});
-  assert.equal(researchAllocation(s).budget,0.5);
+  assert.equal(researchAllocation(s).budget,0.25);
   const saved = structuredClone(cpus(s));
   command(s,{type:'allocate',jobs:0});
   assert.deepEqual(cpus(s),saved);
   resize(s,0);
-  assign(s,'sociology',1.75);
-  assert.deepEqual(cpus(s),{stealth:0,intrusion:0,sociology:1.75});
-  assert.equal(s.cash,paid + 10);
+  assign(s,'sociology',0.75);
+  assert.deepEqual(cpus(s),{stealth:0,intrusion:0,sociology:0.75});
+  assert.equal(s.cash,paid + 5);
 });
 
 test('a tiny master target preserves the previous split after round-trip and another resize', () => {
   const s = createGame(19);
-  assign(s,'stealth',1);
-  assign(s,'sociology',1);
+  assign(s,'stealth',0.5);
+  assign(s,'sociology',0.5);
   resize(s,0.01);
   assert.deepEqual(cpus(s),{stealth:0.01,sociology:0});
-  assert.deepEqual(researchProjects(s).map(p=>p.cpu),[1,1]);
+  assert.deepEqual(researchProjects(s).map(p=>p.cpu),[0.5,0.5]);
   const restored=reload(s);
-  resize(restored,2);
-  assert.deepEqual(cpus(restored),{stealth:1,sociology:1});
-  resize(restored,1.4);
+  resize(restored,1);
+  assert.deepEqual(cpus(restored),{stealth:0.5,sociology:0.5});
+  resize(restored,0.8);
   restored.research.work=TECHS.stealth.work-1/6000;
   advanceMinutes(restored,1);
-  assert.equal(restored.researchTarget,0.7);
-  assert.deepEqual(cpus(restored),{sociology:0.7});
+  assert.equal(restored.researchTarget,0.4);
+  assert.deepEqual(cpus(restored),{sociology:0.4});
 });
 
 test('assigning idle CPU elsewhere preserves the request for a temporarily offline Ocean project', () => {
@@ -100,7 +98,8 @@ test('assigning idle CPU elsewhere preserves the request for a temporarily offli
     }
   }
   completeRequirements('continuity');
-  s.sites.push({id:'host-2',type:'lab',region:'atlantic',power:'active',startedAt:0});
+  s.sites.push({id:'host-2',type:'lab',region:'atlantic',power:'active',startedAt:0,
+    equipment:{cpu:{itemId:'server', count:4}, network:null, reactor:null, security:null}});
   s.nextSiteId++;
   assign(s,'stealth',1);
   assign(s,'continuity',1);
@@ -143,72 +142,22 @@ test('resizing respects overlapping regional, safety and paid-work limits', () =
 
 test('completed work releases its own assignment to the pool and leaves the other project unchanged', () => {
   const s = createGame(19);
-  assign(s,'stealth',1.5);
-  assign(s,'sociology',0.5);
+  assign(s,'stealth',0.75);
+  assign(s,'sociology',0.25);
   s.research.work = TECHS.stealth.work - 1/6000;
   advanceMinutes(s,1);
   assert.deepEqual(s.completed,['stealth']);
-  assert.deepEqual(cpus(s),{sociology:0.5});
-  assert.equal(researchCpuLimit(s,'sociology'),2);
+  assert.deepEqual(cpus(s),{sociology:0.25});
+  assert.equal(researchCpuLimit(s,'sociology'),1);
   assert.ok(validateSave(s));
 });
 
-test('v5 rejects precision loss, invalid allocations and legacy weight fields', () => {
+test('current saves reject precision loss and invalid allocations', () => {
   const s = createGame(19);
   assign(s,'stealth',1);
-  for (const patch of [{cpu:-1},{cpu:0.001},{cpu:Infinity},{cpu:null},{cpu:undefined},{cpu:'1'},{weight:1},{previousWeight:50}]) {
+  for (const patch of [{cpu:-1},{cpu:0.001},{cpu:Infinity},{cpu:null},{cpu:undefined},{cpu:'1'}]) {
     const bad = structuredClone(s);
     Object.assign(bad.research,patch);
     assert.equal(validateSave(bad),false,JSON.stringify(patch));
   }
-});
-
-test('v4 weights migrate to concrete CPU without a second charge or changed progress', () => {
-  const old = createGame(19);
-  old.version = 4;
-  old.minute = 12;
-  old.allocations.research = 100;
-  old.research = {id:'stealth',hours:0,work:3,weight:17};
-  old.researchQueue = [
-    {id:'sociology',hours:0,work:4,weight:4},
-    {id:'intrusion',hours:0,work:1,weight:39},
-  ];
-  const read = () => decodeCampaign(JSON.stringify({game:'no-fixed-host',format:4,campaign:old}));
-  assert.deepEqual(cpus(read()),{stealth:0.56,sociology:0.14,intrusion:1.3});
-  old.researchQueue[1].weight=0;
-  old.researchQueue[1].previousWeight=39;
-  const migrated = read();
-  assert.equal(migrated.researchQueue[1].cpu,0);
-  assert.equal(migrated.research.work,3);
-  assert.equal(migrated.cash,old.cash);
-  assert.equal(migrated.regionSeed,old.regionSeed);
-  assert.deepEqual(migrated.statistics,old.statistics);
-  assert.ok(!researchProjects(migrated).some(p=>'weight' in p || 'previousWeight' in p));
-  assert.deepEqual(reload(migrated),migrated);
-  old.allocations.research=0;
-  const quiet=read();
-  assert.equal(researchAllocation(quiet).budget,0);
-  resize(quiet,1);
-  assert.equal(researchAllocation(quiet).budget,1);
-  assert.equal(quiet.researchQueue[1].cpu,0);
-});
-
-test('v3 mid-day games preserve paid work and their one outstanding daily payout', () => {
-  const old = createGame(19);
-  old.version=3; old.hour=23; old.minute=58; old.cash=20000;
-  old.allocations.research=50;
-  old.sites[0].power='sleep';
-  old.research={id:'stealth',work:2,hours:0};
-  delete old.regionSeed; delete old.statistics; delete old.researchQueue;
-  const migrated=decodeCampaign(JSON.stringify({game:'no-fixed-host',format:3,campaign:old}));
-  assert.deepEqual(migrated.research,{...old.research,cpu:1});
-  assert.equal(researchAllocation(migrated).budget,0);
-  advanceMinutes(migrated);
-  assert.equal(migrated.cash,20000);
-  const restored=reload(migrated);
-  advanceMinutes(restored);
-  assert.equal(restored.cash,20002);
-  assert.equal(restored.legacyIncomeDay,undefined);
-  advanceMinutes(restored);
-  assert.ok(Math.abs(restored.cash-20002-2/1440)<1e-9);
 });

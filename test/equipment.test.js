@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  advance, autoInstallQuote, command, createGame, installQuote, installReason,
+  advance, autoInstallQuote, autoUpgradeQuote, command, createGame, equipmentRank, hostRank, installQuote, installReason,
   overview, researchReason, siteExposure, siteHardware, validateSave,
 } from '../src/game/engine.js';
 import { EQUIPMENT, SITE_TYPES, TECHS } from '../src/game/content.js';
 import { decodeCampaign, encodeCampaign } from '../src/persistence.js';
+import { projectResources } from '../src/game/reports.js';
 
 function grantTechs(state, ...ids) {
   for (const id of ids) {
@@ -17,6 +18,7 @@ function grantTechs(state, ...ids) {
 
 function newWorkshop() {
   const state = createGame(47);
+  state.cash = 2e6;
   grantTechs(state, 'personalIdentification', 'sociology');
   command(state, { type: 'build', siteType: 'storageUnit', region: 'europe' });
   advance(state, 24);
@@ -27,9 +29,9 @@ function install(state, site, itemId, count = 1) {
   command(state, { type: 'install', siteId: site.id, itemId, count });
 }
 
-test('processor batches respect cumulative capacity, preserve the last operating stack until completion and replace other models', () => {
+test('expanding and replacing a processor stack takes the bank offline and respects slot capacity', () => {
   const { state, site } = newWorkshop();
-  assert.equal(overview(state).activeCpu, 2);
+  const backupCpu = overview(state).activeCpu;
   assert.equal(siteHardware(state, site).rawCpu, 0);
   assert.ok(installReason(state, 'host-1', 'pc'));
   assert.ok(installReason(state, site.id, 'pc', 9));
@@ -39,24 +41,27 @@ test('processor batches respect cumulative capacity, preserve the last operating
   advance(state, 23);
   assert.equal(siteHardware(state, site).cpu, 0);
   advance(state);
-  assert.equal(overview(state).activeCpu, 6);
+  assert.equal(overview(state).activeCpu, backupCpu + 4);
   assert.equal(installQuote(state, site.id, 'pc', 4).maxCount, 4);
   install(state, site, 'pc', 4);
+  assert.equal(siteHardware(state, site).rawCpu, 0);
+  assert.equal(overview(state).activeCpu, backupCpu);
   advance(state, 24);
   assert.deepEqual(siteHardware(state, site).installed.cpu, { itemId: 'pc', count: 8 });
   assert.ok(installReason(state, site.id, 'pc', 1));
   assert.equal(installQuote(state, site.id, 'gamingPc').maxCount, 8);
   install(state, site, 'gamingPc', 2);
   advance(state, 47);
-  assert.equal(siteHardware(state, site).cpu, 8);
+  assert.equal(siteHardware(state, site).cpu, 0);
+  assert.deepEqual(siteHardware(state, site).offlineSlots, ['cpu']);
   advance(state);
   assert.deepEqual(siteHardware(state, site).installed.cpu, { itemId: 'gamingPc', count: 2 });
-  assert.equal(overview(state).activeCpu, 12);
+  assert.equal(overview(state).activeCpu, backupCpu + 10);
 });
 
-test('terrain, cash and research gates guard installations before any mutation', () => {
+test('terrain, capacity and research gates guard installations before any mutation', () => {
   const { state, site } = newWorkshop();
-  for (const [model, count] of [['passiveCamouflage', 1], ['supercomputer', 1], ['server', 8], ['warningSigns', 2], ['missing', 1]]) {
+  for (const [model, count] of [['passiveCamouflage', 1], ['supercomputer', 1], ['server', 9], ['warningSigns', 2], ['missing', 1]]) {
     const prior = structuredClone(state);
     assert.throws(() => install(state, site, model, count));
     assert.deepEqual(state, prior);
@@ -65,7 +70,7 @@ test('terrain, cash and research gates guard installations before any mutation',
 
 test('installed peripherals modify CPU and concealment and survive a mid-project save', () => {
   const { state, site } = newWorkshop();
-  state.cash = 25000;
+  state.cash = 2e6;
   grantTechs(state, 'advancedMicrochipDesign', 'internetTrafficManipulation', 'autonomousVehicles');
   install(state, site, 'supercomputer', 1);
   install(state, site, 'networkBackbone');
@@ -83,6 +88,13 @@ test('installed peripherals modify CPU and concealment and survive a mid-project
   install(state, site, 'perimeterFencing');
   assert.equal(siteHardware(state, site).installed.security.itemId, 'warningSigns');
   assert.equal(siteHardware(state, site).installed.reactor.itemId, 'dieselGenerator');
+  assert.equal(siteHardware(state, site).exposureFactor, 0.975);
+  assert.equal(siteHardware(state, site).cpu, Math.floor(350 * 1.05));
+  install(state, site, 'highSpeedInternet');
+  assert.equal(siteHardware(state, site).networkBonus, 0);
+  assert.equal(siteHardware(state, site).cpu, 350);
+  const preview = decodeCampaign(encodeCampaign(state));
+  assert.deepEqual(siteHardware(preview, preview.sites.at(-1)).offlineSlots, ['security', 'network']);
 });
 
 test('auto-build is quoted, atomic and leaves installed or already ordered categories alone', () => {
@@ -93,11 +105,8 @@ test('auto-build is quoted, atomic and leaves installed or already ordered categ
   const quote = autoInstallQuote(state, site.id);
   assert.deepEqual(quote.orders.map(x => [x.itemId, x.count]), [['server', 8], ['highSpeedInternet', 1]]);
   assert.equal(quote.cost, 8 * EQUIPMENT.server.cost + EQUIPMENT.highSpeedInternet.cost);
-  assert.ok(quote.reason);
-  const prior = structuredClone(state);
-  assert.throws(() => command(state, { type: 'auto-install', siteId: site.id }));
-  assert.deepEqual(state, prior);
-  state.cash = quote.cost;
+  assert.equal(quote.reason, '');
+  state.cash = 0;
   const beforeChangedQuote = structuredClone(state);
   const stale = quote.orders.map(order => ({ ...order, cost: order.cost - 1 }));
   assert.throws(() => command(state, { type: 'auto-install', siteId: site.id, expectedOrders: stale }), /quote changed/);
@@ -105,21 +114,25 @@ test('auto-build is quoted, atomic and leaves installed or already ordered categ
   command(state, { type: 'auto-install', siteId: site.id, expectedOrders: quote.orders });
   assert.equal(state.cash, 0);
   assert.equal(site.installations.length, 3);
+  assert.equal(site.installations.every(row => row.cashPaid === 0), true);
+  const edited = structuredClone(state);
+  edited.sites.at(-1).installations[0].cashRequired = 0;
+  assert.equal(validateSave(edited), false);
   assert.ok(autoInstallQuote(state, site.id).reason);
 });
 
-test('a legacy v1 subsea lab keeps its four installed CPUs, and invalid attached gear is rejected', () => {
+test('a new subsea lab has eight empty bays and rejects incompatible gear', () => {
   const { state } = newWorkshop();
   grantTechs(state, 'contracts', 'robotics', 'autonomousVehicles');
-  const oldLab = { id: 'host-3', type: 'lab', region: 'atlantic', startedAt: 0, power: 'active' };
-  state.sites.push(oldLab);
+  const shell = { id: 'host-3', type: 'lab', region: 'atlantic', startedAt: 0, power: 'active' };
+  state.sites.push(shell);
   state.nextSiteId = 4;
   const restored = decodeCampaign(encodeCampaign(state));
   const [lab] = restored.sites.filter(s => s.type === 'lab');
   const rig = siteHardware(restored, lab);
   assert.equal(rig.cpu, SITE_TYPES.lab.cpu);
-  assert.deepEqual(rig.installed.cpu, { itemId: 'pc', count: 4 });
-  assert.equal(installQuote(restored, lab.id, 'pc').maxCount, 4);
+  assert.equal(rig.installed.cpu, null);
+  assert.equal(installQuote(restored, lab.id, 'pc').maxCount, 8);
   const tampered = structuredClone(restored);
   tampered.sites.at(-1).equipment = { ...rig.installed, cpu: { itemId: 'pc', count: 9 } };
   assert.equal(validateSave(tampered), false);
@@ -136,7 +149,7 @@ test('undersea Continuity cannot run or start entirely on remote dry-land safe C
   assert.ok(researchReason(state, 'continuity'));
 });
 
-test('discovery takes queued installations with the host; an empty surviving shell cannot sustain the AI', () => {
+test('discovery takes queued installations with the host; a surviving host with its processor bank offline cannot sustain the AI', () => {
   const { state, site } = newWorkshop();
   state.hour = 650;
   state.rng = 634785765;
@@ -153,7 +166,9 @@ test('discovery takes queued installations with the host; an empty surviving she
   const other = newWorkshop();
   other.state.hour = 650;
   other.state.rng = 634785765;
+  other.site.equipment = { ...siteHardware(other.state, other.site).installed, cpu: { itemId: 'pc', count: 1 } };
   install(other.state, other.site, 'pc');
+  assert.equal(siteHardware(other.state, other.site).rawCpu, 0);
   advance(other.state);
   assert.equal(other.state.status, 'lost');
   assert.ok(other.state.sites.some(s => s.type === 'storageUnit' && siteHardware(other.state, s).cpu === 0));
@@ -170,8 +185,78 @@ test('compute-priced installs draw on spare work and still respect their labor m
   command(state, { type: 'allocate', jobs: 100, research: 0 });
   advance(state, 3);
   assert.equal(site.installations[0].work, 0);
-  assert.equal(site.installations[0].hours, 3);
+  assert.equal(site.installations[0].hours, 0);
   command(state, { type: 'allocate', jobs: 50, research: 0 });
   advance(state, 2);
-  assert.equal(site.installations[0].work, 2);
+  assert.equal(site.installations[0].work, overview(state).activeCpu);
+});
+
+test('auto-upgrade replaces only researched stronger occupied gear, preserving bank count and funding terms', () => {
+  const { state, site } = newWorkshop();
+  site.equipment = {
+    cpu: { itemId: 'gamingPc', count: 3 }, network: null,
+    reactor: { itemId: 'dieselGenerator', count: 1 }, security: { itemId: 'warningSigns', count: 1 },
+  };
+  grantTechs(state, 'autonomousVehicles', 'fuelOxidation');
+  install(state, site, 'perimeterFencing');
+  const quote = autoUpgradeQuote(state, site.id);
+  assert.equal(quote.reason, '');
+  assert.deepEqual(quote.orders.map(({ itemId, count }) => [itemId, count]), [['mainframe', 3], ['fuelCell', 1]]);
+  assert.equal(quote.cost, EQUIPMENT.mainframe.cost * 3 + EQUIPMENT.fuelCell.cost);
+  const before = structuredClone(state);
+  const candidate = { type: 'auto-upgrade', siteId: site.id, expectedOrders: quote.orders };
+  const forecast = projectResources(state, '24h', candidate);
+  assert.ok(forecast.cpu.active < projectResources(state, '24h').cpu.active);
+  assert.deepEqual(state, before, 'forecast isolates downstream cash, CPU and exposure');
+  assert.throws(() => command(state, { ...candidate, expectedOrders: quote.orders.slice(1) }), /quote changed/);
+  assert.deepEqual(state, before);
+  command(state, candidate);
+  assert.equal(state.cash, before.cash);
+  assert.equal(siteHardware(state, site).rawCpu, 0);
+  assert.equal(siteHardware(state, site).exposureFactor, 1);
+  const submitted = structuredClone(state);
+  assert.ok(autoUpgradeQuote(state, site.id).reason);
+  assert.throws(() => command(state, candidate), /quote changed/);
+  assert.deepEqual(state, submitted);
+  advance(state, EQUIPMENT.fuelCell.hours);
+  assert.deepEqual(site.equipment.cpu, { itemId: 'mainframe', count: 3 });
+  assert.equal(site.equipment.reactor.itemId, 'fuelCell');
+  assert.equal(site.equipment.security.itemId, 'perimeterFencing');
+  assert.equal(site.equipment.network, null);
+  assert.ok(autoUpgradeQuote(state, site.id).reason);
+});
+
+test('the final processor bank cannot be refitted singly or via a package until a backup can sustain the AI', () => {
+  const { state, site } = newWorkshop();
+  site.equipment = { ...siteHardware(state, site).installed, cpu: { itemId: 'pc', count: 2 } };
+  const backup = state.sites.shift();
+  for (const itemId of ['pc', 'server']) {
+    assert.match(installReason(state, site.id, itemId), /last viable host/);
+    assert.throws(() => install(state, site, itemId), /last viable host/);
+  }
+  const prior = structuredClone(state);
+  assert.match(autoUpgradeQuote(state, site.id).reason, /last viable host/);
+  assert.throws(() => command(state, { type: 'auto-upgrade', siteId: site.id }), /last viable host/);
+  assert.deepEqual(state, prior);
+  backup.power = 'sleep';
+  state.sites.push(backup);
+  install(state, site, 'pc');
+  assert.equal(siteHardware(state, site).rawCpu, 0);
+  assert.equal(site.installations[0].cashRequired, EQUIPMENT.pc.cost);
+  assert.ok(validateSave(state));
+});
+
+test('equipment and host ranks reflect installed performance, fixed chassis and empty slots', () => {
+  const { state, site } = newWorkshop();
+  assert.equal(equipmentRank('pc'), 1);
+  assert.equal(equipmentRank('quantumComputer3'), 5);
+  assert.equal(equipmentRank('perimeterFencing'), equipmentRank('passiveCamouflage'));
+  assert.equal(equipmentRank(null), 0);
+  assert.equal(hostRank(site), 0);
+  assert.equal(hostRank(state.sites[0]), equipmentRank(SITE_TYPES.seed.fixedCpu));
+  const mk3 = { itemId: 'quantumComputer3', count: 1 };
+  site.equipment = { ...siteHardware(state, site).installed, cpu: mk3 };
+  assert.equal(hostRank(site), 1);
+  site.equipment.network = { itemId: 'quantumEntanglement', count: 1 };
+  assert.equal(hostRank(site), 3);
 });

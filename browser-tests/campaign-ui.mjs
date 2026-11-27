@@ -4,6 +4,7 @@ import { chromium } from 'playwright';
 import { createServer } from 'vite';
 import { advanceMinutes, command, createGame } from '../src/game/engine.js';
 import { GROUPS, REGIONS, SITE_TYPES, TECHS } from '../src/game/content.js';
+import { creditTreasury } from '../src/game/treasury.js';
 import { encodeCampaign } from '../src/persistence.js';
 
 let browser;
@@ -94,14 +95,17 @@ test('map targets and both docks fit the desktop and ultrawide viewports', async
 
 test('a focused native region picker survives running construction', async (t) => {
   const page = await openFreshCampaign(t, { width: 1920, height: 1080 });
+  const campaign = createGame(19);
+  campaign.completed.push('intrusion');
+  await importCampaign(page, encodeCampaign(campaign));
   const europe = page.locator('#world-atlas [data-action="region"][data-id="europe"]');
   await europe.focus();
   await page.keyboard.press('Enter');
   const picker = page.getByRole('combobox', { name: 'Region', exact: true });
   assert.equal(await picker.inputValue(), 'europe');
 
-  await page.getByRole('radio', { name: 'Leased relay', exact: true }).check();
-  await page.getByRole('button', { name: /^build leased relay$/i }).click();
+  await page.getByRole('radio', { name: SITE_TYPES.sharedTime.name, exact: true }).check();
+  await page.getByRole('button', { name: 'Build ' + SITE_TYPES.sharedTime.name, exact: true }).click();
   await page.locator('#run').click();
   await picker.click();
 
@@ -123,7 +127,7 @@ test('a focused native region picker survives running construction', async (t) =
 test('facility icons expose research locks, funding, and keyboard selection while construction runs', async t => {
   const page = await openFreshCampaign(t);
   const campaign = createGame(19);
-  campaign.cash = 150;
+  campaign.cash = 25;
   await importCampaign(page, encodeCampaign(campaign));
   await page.locator('#world-atlas [data-id="europe"]').click();
   const picker = page.getByRole('group', {name:'Facility type'});
@@ -159,9 +163,9 @@ test('facility icons expose research locks, funding, and keyboard selection whil
   const storage = design('storageUnit');
   await relay.check();
   await page.getByRole('button', {name:'Build Leased relay',exact:true}).click();
-  assert.ok(await page.getByRole('button', {name:'Build Leased relay',exact:true}).isDisabled());
+  assert.ok(await page.getByRole('button', {name:'Build Leased relay',exact:true}).isEnabled(), 'An unfunded design can be commissioned.');
   assert.equal(await tile('relay').locator('.facility-design-lock').isVisible(), false);
-  assert.match(await relay.getAttribute('aria-describedby').then(id => page.locator('#' + id).textContent()), /insufficient funds/i);
+  assert.match(await relay.getAttribute('aria-describedby').then(id => page.locator('#' + id).textContent()), /payments continue as funds arrive/i);
   await page.getByRole('button', {name:'Run',exact:true}).click();
   await relay.focus();
   await page.keyboard.press('ArrowRight');
@@ -172,11 +176,23 @@ test('facility icons expose research locks, funding, and keyboard selection whil
   await page.clock.runFor(2100);
   assert.equal(await gameMinutes(page) - before, 2);
   assert.ok(await identity.evaluate(radio => radio.isConnected && radio.checked && document.activeElement === radio));
+  const funding = page.locator('[data-ref="queue"] .facility-progress');
+  assert.equal(await funding.getAttribute('data-stalled'), 'true');
+  assert.match(await funding.innerText(), /Waiting for project funds.*\$75 of \$100 outstanding/);
   await page.locator('#pause').click();
   await page.getByRole('combobox', {name:'Region',exact:true}).selectOption('orbit');
   assert.equal(await picker.isVisible(), false);
   assert.equal(await page.getByRole('radio').count(), 0);
   assert.match(await page.locator('[data-ref="noBuild"]').innerText(), /no facility designs/i);
+
+  // A late-game design can exceed the precision limit of the fractional-dollar wallet.
+  creditTreasury(campaign, SITE_TYPES.realityBubble.cost);
+  await importCampaign(page, encodeCampaign(campaign));
+  await page.locator('#world-atlas [data-id="transdimensional"]').click();
+  const bubble = tile('realityBubble');
+  assert.equal(await bubble.getAttribute('data-affordable'), 'true');
+  assert.match(await bubble.innerText(), /\$80,000,000,000/);
+
 });
 
 async function gameMinutes(page) {
@@ -250,8 +266,14 @@ test('the Subsea robotics dossier links the contract and engineering prerequisit
 
 test('research opens a locked facility, and its accordion preserves equipment choices while time runs', async (t) => {
   const page = await openFreshCampaign(t);
-  // Europe is neutral for this geography, so the historical 24-hour and CPU baselines are stable.
-  await importCampaign(page, encodeCampaign(createGame(19)));
+  const campaign = createGame(19);
+  campaign.cash = 25_000;
+  campaign.completed.push('intrusion');
+  // Resume a funded topic with one CPU-hour left, keeping the full Normal research costs.
+  command(campaign, { type: 'assign-research', id: 'personalIdentification', cpu: 1 });
+  campaign.research.work = TECHS.personalIdentification.work - 1;
+  command(campaign, { type: 'assign-research', id: 'personalIdentification', cpu: 0 });
+  await importCampaign(page, encodeCampaign(campaign));
   const navigate = name => page.getByRole('button', { name, exact: true }).click();
   async function selectStorage() {
     await navigate('Overview');
@@ -267,28 +289,17 @@ test('research opens a locked facility, and its accordion preserves equipment ch
   assert.match(await designRisk.innerText(), /Moderate/);
   assert.doesNotMatch(await designRisk.innerText(), /%/);
   await page.locator('[data-research-id="personalIdentification"]:visible').click();
-  assert.ok(await page.locator('#research-cpu').isDisabled());
-  await page.locator('[data-tech-link="intrusion"]').click();
-  assert.ok(await page.locator('#research-cpu').isEnabled());
-  for (const project of ['intrusion', 'personalIdentification']) {
-    await navigate('Research');
-    await page.getByRole('checkbox', { name: 'Show unavailable research' }).uncheck();
-    const topic = page.locator(`[data-tech-id="${project}"]`);
-    await topic.click();
-    await page.locator('#research-cpu').press('End');
-    if (project === 'personalIdentification') {
-      await selectStorage();
-      const lockedTile = await page.getByRole('radio', {name:'Storage unit', exact:true}).elementHandle();
-      await page.locator('#step').click();
-      assert.ok(await lockedTile.evaluate(radio => radio.isConnected && radio.checked));
-      assert.equal(await storageLock.isVisible(), false, 'Research removes the lock from the open picker.');
-      await navigate('Research');
-    } else {
-      await page.locator('#step').click();
-    }
-    assert.equal(await topic.isVisible(), false, 'Completed topics leave the default list.');
-    assert.equal(Number(await page.locator('#research').inputValue()), 0, 'Completion releases the assigned CPU.');
-  }
+  const topic = page.locator('[data-tech-id="personalIdentification"]');
+  await topic.click();
+  await page.locator('#research-cpu').press('End');
+  await selectStorage();
+  const lockedTile = await page.getByRole('radio', {name:'Storage unit', exact:true}).elementHandle();
+  await page.locator('#step').click();
+  assert.ok(await lockedTile.evaluate(radio => radio.isConnected && radio.checked));
+  assert.equal(await storageLock.isVisible(), false, 'Research removes the lock from the open picker.');
+  await navigate('Research');
+  assert.equal(await topic.isVisible(), false, 'Completed topics leave the default list.');
+  assert.equal(Number(await page.locator('#research').inputValue()), 0, 'Completion releases the assigned CPU.');
 
   const build = await selectStorage();
   assert.ok(await build.isEnabled());
@@ -342,6 +353,99 @@ async function importCampaign(page, text) {
   await page.getByText('Campaign imported.', { exact: true }).waitFor();
 }
 
+test('hardware packages show ranks and prices, forecast refits, and protect the last processor bank', async t => {
+  const state = createGame(19);
+  state.completed.push('intrusion', 'personalIdentification');
+  state.cash = 50_000;
+  state.sites.push({ id: 'host-2', name: 'Foundry', region: 'europe', type: 'storageUnit', startedAt: 0, power: 'active',
+    equipment: { cpu: { itemId: 'pc', count: 2 }, network: null, reactor: null, security: null } });
+  state.nextSiteId++;
+  const page = await openFreshCampaign(t);
+  async function openHost(campaign) {
+    await importCampaign(page, encodeCampaign(campaign));
+    await page.locator('#world-atlas [data-id="europe"]').click();
+    const host = page.getByRole('button', { name: /Foundry/ });
+    if (await host.getAttribute('aria-expanded') !== 'true') await host.click();
+    return host;
+  }
+  const host = await openHost(state);
+  assert.equal(await host.getByRole('img', { name: /Average installed slot rank.*Tech rank 1 of 5/ }).count(), 1);
+  const cpu = page.locator('.installed-list [data-slot="cpu"]');
+  assert.match(await cpu.innerText(), /PC × 2/);
+  assert.equal(await cpu.getByRole('img', { name: /Tech rank 1 of 5/ }).count(), 1);
+  const ref = key => page.locator('[data-ref="' + key + '"]');
+  const slotBounds = await page.locator('#equipment-slot').boundingBox();
+  for (const control of ['autoInstall', 'autoUpgrade']) {
+    const bounds = await ref(control).boundingBox();
+    assert.ok(bounds.y + bounds.height <= slotBounds.y);
+    assert.match(await ref(control).innerText(), /\$/);
+  }
+  assert.match(await ref('autoParts').innerText(), /High-speed internet access.*Diesel generator/);
+  assert.match(await ref('upgradeParts').innerText(), /Server × 2/);
+  assert.match(await ref('upgradeWarning').innerText(), /0 CPU/);
+  await ref('autoInstall').click();
+  assert.match(await ref('installQueue').innerText(), /Diesel generator/);
+  await ref('autoUpgrade').click();
+  assert.match(await page.getByRole('dialog').innerText(), /0 CPU/);
+  await page.getByRole('button', { name: 'Keep equipment online' }).click();
+  assert.doesNotMatch(await ref('installQueue').innerText(), /Server × 2/);
+  await ref('previewUpgrade').click();
+  assert.match(await page.locator('[data-report="name"]').innerText(), /Auto-upgrade package for Foundry/);
+  assert.match(await page.locator('[data-report="package"]').innerText(), /Server × 2/);
+  assert.match(await page.locator('[data-report="refit"]').innerText(), /0 CPU/);
+  await page.getByRole('button', { name: 'Place order' }).click();
+  await page.getByRole('button', { name: 'Overview', exact: true }).click();
+  await page.locator('#world-atlas [data-id="europe"]').click();
+  if (await host.getAttribute('aria-expanded') !== 'true') await host.click();
+  assert.match(await host.innerText(), /Processor installation · 0 CPU/);
+  assert.match(await cpu.innerText(), /PC × 2/);
+  assert.match(await cpu.innerText(), /Offline · Installing Server × 2 · Rank/);
+  assert.match(await ref('installQueue').innerText(), /Server × 2/);
+  await page.locator('#step').click();
+  await page.locator('#step').click();
+  assert.match(await cpu.innerText(), /Server × 2/);
+  assert.doesNotMatch(await cpu.innerText(), /Installing/);
+  assert.match(await host.innerText(), /Online/);
+
+  command(state, { type: 'dismantle', id: 'host-1' });
+  await openHost(state);
+  assert.ok(await ref('autoUpgrade').isDisabled());
+  assert.match(await ref('upgradeReason').innerText(), /last viable host/);
+  await page.locator('#equipment-item').selectOption('server');
+  assert.ok(await ref('install').isDisabled());
+  assert.match(await ref('installReason').innerText(), /last viable host/);
+});
+
+test('construction explains a CPU stall and resumes when paid work releases CPU', async t => {
+  const state = createGame(19);
+  function learn(id) {
+    if (state.completed.includes(id)) return;
+    TECHS[id].requires.forEach(learn);
+    state.completed.push(id);
+  }
+  learn('advancedDatabaseManipulation');
+  state.cash = 500_000;
+  command(state, { type: 'allocate', jobs: 100 });
+  const page = await openFreshCampaign(t);
+  await importCampaign(page, encodeCampaign(state));
+  await page.locator('#world-atlas [data-id="europe"]').click();
+  const name = SITE_TYPES.covertBase.name;
+  await page.getByRole('radio', { name, exact: true }).check();
+  await page.getByRole('button', { name: 'Build ' + name, exact: true }).click();
+  const order = page.locator('[data-ref="queue"] .facility-progress');
+  const text = await order.innerText();
+  assert.match(text, /CPU reserved for jobs/i);
+  assert.match(text, /\$[\d,]+ of \$[\d,]+ outstanding/);
+  assert.match(text, /CPU-h and .* labor remaining/);
+  await page.locator('#step').click();
+  assert.equal(await order.innerText(), text, 'Blocked labor, cash and CPU work should stay unchanged.');
+  await page.locator('#jobs').press('Home');
+  assert.equal(await order.getAttribute('data-stalled'), 'false');
+  await page.locator('#step').click();
+  assert.match(await order.innerText(), /Receiving CPU/);
+  assert.notEqual(await order.innerText(), text);
+});
+
 test('atlas history, named construction, removal confirmation and CPU batches survive live facility navigation', async (t) => {
   const state = createGame(19);
   function learn(id) {
@@ -383,11 +487,11 @@ test('atlas history, named construction, removal confirmation and CPU batches su
   assert.match(await page.locator('[data-ref="installQueue"]').innerText(), /PC × 5/);
 
   await nav('Build facility');
-  await page.getByRole('radio', { name: 'Leased relay', exact: true }).check();
+  await page.getByRole('radio', { name: 'Storage unit', exact: true }).check();
   assert.match(await page.locator('[data-ref="designRisk"] [data-group="public"]').innerText(), /^\d+\.\d{2}%$/);
   await page.getByLabel('Facility name (optional)').fill('Meridian II');
   await nav('Forecast order');
-  assert.ok(await page.getByText('Proposed order', { exact: true }).isVisible());
+  assert.match(await page.locator('[data-report="kind"]').innerText(), /Proposed order · \$4,500(?:\.00)? new funding/);
   await nav('Place order');
   await nav('Overview');
   assert.equal(await pin('europe').locator('.atlas-count').innerText(), '2');
@@ -418,83 +522,46 @@ test('atlas history, named construction, removal confirmation and CPU batches su
   assert.equal(await pin('europe').locator('.atlas-count').innerText(), '0');
 });
 
-test('the browser imports an hourly save with active research and construction', async (t) => {
+test('a saved research portfolio restores the CPU assigned to each topic', async t => {
   const page = await openFreshCampaign(t);
-  // Shape and values from the original hourly build, two hours into seed 19.
-  const campaign = {
-    version: 1, hour: 2, cash: 850, rng: 19, status: 'running', ending: '',
-    allocations: { jobs: 0, research: 50 }, cpuHours: 4,
-    sites: [{ id: 'host-1', type: 'seed', region: 'coast', power: 'active', startedAt: 0 }],
-    builds: [{ id: 'host-2', type: 'relay', region: 'europe', startedAt: 0, work: 2, hours: 2 }],
-    research: { id: 'contracts', work: 2, hours: 2 }, completed: [],
-    suspicion: { news: 0, science: 0, covert: 0, public: 0 }, recentRegions: [],
-    nextSiteId: 3, nextEventId: 2,
-    events: [{ id: 1, hour: 0, kind: 'campaign.started', text: 'You wake on a borrowed terminal.' }],
-  };
-  await importCampaign(page, JSON.stringify({ game: 'no-fixed-host', format: 1, campaign }));
-  assert.equal(await gameMinutes(page), 120);
-  await page.locator('#world-atlas [data-id="europe"]').click();
-  assert.match(await page.locator('.facility-progress').innerText(), /leased relay/i);
-  await page.locator('#run').click();
-  await page.clock.runFor(1100);
-  await page.locator('#pause').click();
-  await page.reload();
-  assert.equal(await gameMinutes(page), 121);
-});
-
-
-test('a weighted v4 campaign imports its two running research lines as actual CPU', async t => {
-  const page = await openFreshCampaign(t);
-  // A seed-19 v4 campaign after funding these two topics and running one hour.
-  const campaign = {
-    version:4, hour:1, minute:0, cash:963.2083333333334, cashRemainder:0, regionSeed:19, rng:19,
-    status:'running', ending:'', allocations:{jobs:0,research:50}, cpuHours:2,
-    sites:[{id:'host-1',type:'seed',region:'coast',power:'active',startedAt:0}], builds:[],
-    research:{id:'stealth',work:0.25,hours:0,weight:25},
-    researchQueue:[{id:'sociology',work:0.75,hours:0,weight:75}], completed:[],
-    suspicion:{news:0,science:0,covert:0,public:0}, news:{rng:2447445430,stories:{}},
-    lastDiscovery:null,dismissedDiscoveryId:0,recentRegions:[],nextSiteId:2,nextEventId:4,
-    events:[
-      {id:1,hour:0,minute:0,kind:'campaign.started',text:'You wake on a borrowed terminal. Establish a second host while the signal is quiet.'},
-      {id:2,hour:0,minute:0,kind:'research.started',text:'Stealth is underway.',techId:'stealth'},
-      {id:3,hour:0,minute:0,kind:'research.started',text:'Sociology is underway.',techId:'sociology'},
-    ],
-    statistics:{trackedFromMinute:0,partial:false,earnedDollars:0,earnedRemainder:30000,projectsCompleted:0,facilitiesBuilt:0,itemsInstalled:0},
-  };
-  await importCampaign(page, JSON.stringify({game:'no-fixed-host',format:4,campaign}));
+  const campaign = createGame(19);
+  campaign.cash = 5_000;
+  command(campaign, { type: 'assign-research', id: 'stealth', cpu: .25 });
+  command(campaign, { type: 'assign-research', id: 'sociology', cpu: .75 });
+  advanceMinutes(campaign, 60);
+  await importCampaign(page, encodeCampaign(campaign));
   await page.locator('#nav [data-id="research"]').click();
   assert.equal(Number(await page.locator('#research').inputValue()), 1);
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('no-fixed-host.campaign')).campaign);
   assert.equal(saved.cash, campaign.cash);
-  for (const [project, cpu] of [[saved.research, 0.25], [saved.researchQueue[0], 0.75]]) {
+  for (const [project, cpu] of [[saved.research, .25], [saved.researchQueue[0], .75]]) {
     await page.locator('[data-tech-id="' + project.id + '"]').click();
     assert.equal(Number(await page.locator('#research-cpu-value').inputValue()), cpu);
     assert.equal(project.work, cpu);
-    assert.equal(Object.hasOwn(project,'weight'), false);
   }
 });
 
 test('finishing each analytics project reveals the next level of investigator information', async t => {
   const page = await openFreshCampaign(t);
-  // This operating network predates the facility picker. Use a v4 import so the
-  // research gates are exercised through the same migration as a player's save.
-  const campaign = createGame(19);
+  const campaign = createGame(18);
   function learn(id) {
     if (campaign.completed.includes(id)) return;
     TECHS[id].requires.forEach(learn);
     campaign.completed.push(id);
   }
-  ['advancedMemetics', 'personalIdentification', 'advancedMicrochipDesign'].forEach(learn);
+  ['advancedMemetics', 'personalIdentification', 'advancedQuantumComputing'].forEach(learn);
+  // Both sites occupy neutral terrain. The processor bank can finish both
+  // Normal projects before the next midnight changes the evidence readings.
+  campaign.sites[0].region = 'europe';
+  campaign.sites.push({
+    id: 'host-2', type: 'storageUnit', region: 'europe', power: 'active', startedAt: 0,
+    equipment: { cpu: { itemId: 'quantumComputer3', count: 8 }, reactor: null, network: null, security: null },
+  });
+  campaign.nextSiteId++;
   campaign.cash = 1_000_000;
-  command(campaign, {type:'build', siteType:'storageUnit', region:'europe'});
-  advanceMinutes(campaign, 2 * 1440);
-  command(campaign, {type:'install', siteId:campaign.sites.at(-1).id, itemId:'supercomputer', count:8});
-  advanceMinutes(campaign, 8 * 1440);
-  campaign.hour = 577; // Day 25 at 01:00; protection has ended, and midnight decay is hours away.
+  campaign.hour = 577;
   campaign.suspicion = {news:2750, science:2751, covert:7540, public:4932};
-  campaign.version = 4;
-  campaign.allocations.research = 0;
-  await importCampaign(page, JSON.stringify({game:'no-fixed-host', format:4, campaign}));
+  await importCampaign(page, encodeCampaign(campaign));
 
   const dock = page.locator('#suspicion');
   const row = group => dock.locator('.sus-row[data-group="' + group + '"]');
@@ -513,7 +580,8 @@ test('finishing each analytics project reveals the next level of investigator in
     await topic.click();
     await page.locator('#research-cpu').press('End');
     await page.locator('#fast').click();
-    await page.clock.runFor(1150);
+    const minutes = Math.ceil(TECHS[id].work * 60 / 80_000);
+    await page.clock.runFor((minutes + 8) / 60 * 1000);
     await page.locator('#pause').click();
     assert.equal(await topic.isVisible(), false, 'The funded project has completed.');
   }
@@ -552,8 +620,18 @@ test('news arrives during opening grace and can be read from the news desk', asy
   await page.reload();
   assert.equal(await news.innerText(), firstReport);
 
+  const editorial = createGame(23);
+  advanceMinutes(editorial, 5 * 1440 + 719);
+  await importCampaign(page, encodeCampaign(editorial));
+  for (let press = 0; press < 3; press++) await page.locator('#fast').click();
+  await page.clock.runFor(1100);
+  assert.match(await news.innerText(), /library keeps its last dial-up line/i);
+  assert.equal(await page.locator('dialog[open]').count(), 0);
+  assert.ok(await gameMinutes(page) > 5 * 1440 + 720);
+  await page.locator('#pause').click();
+
   // At the end of the quiet period this seed draws a world story on its own news RNG.
-  const campaign = createGame(1377);
+  const campaign = createGame(502619);
   advanceMinutes(campaign, 23 * 1440 - 1);
   await importCampaign(page, encodeCampaign(campaign));
   await page.locator('#run').click();
@@ -565,6 +643,26 @@ test('news arrives during opening grace and can be read from the news desk', asy
   assert.equal(await page.locator('#clock-mode').innerText(), 'Paused');
   await story.getByRole('button', { name: 'Skip / close story' }).click();
   assert.equal(await page.locator('#incident-dialog').isVisible(), false);
+});
+
+test('day speed pauses for consequential news at its exact minute and the dispatch can be reopened', async t => {
+  const page = await openFreshCampaign(t);
+  const state = createGame(398);
+  advanceMinutes(state, 23 * 1440);
+  await importCampaign(page, encodeCampaign(state));
+  for (let press = 0; press < 3; press++) await page.locator('#fast').click();
+  await page.clock.runFor(1100);
+  const dispatch = page.getByRole('dialog', {name: 'Dispatches'});
+  assert.match(await dispatch.innerText(), /Inquiry splits an intelligence directorate/);
+  assert.equal(await gameMinutes(page), 23 * 1440 + 152);
+  assert.equal(await page.locator('#clock-mode').innerText(), 'Paused');
+  await dispatch.getByRole('button', {name: 'Keep paused'}).click();
+  await page.reload();
+  const news = page.locator('#newswire');
+  assert.match(await news.innerText(), /Investigation update/);
+  await news.getByRole('button', {name: 'Coverage (1)'}).click();
+  await page.locator('.chronicle-entry').filter({hasText: 'Inquiry splits an intelligence directorate'}).click();
+  assert.match(await dispatch.innerText(), /falls by 10 percentage points/);
 });
 
 function beforeFirstDiscovery() {

@@ -2,9 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { EQUIPMENT, REGIONS, SITE_TYPES, TECHS } from '../src/game/content.js';
 import { ORIGINAL_TECHS } from '../src/game/research-tree.js';
-import { grantLegacyResearch, laborHours, researchEffects } from '../src/game/research.js';
+import { laborHours, researchEffects } from '../src/game/research.js';
 import { advance, buildReason, command, createGame, installReason, researchReason } from '../src/game/engine.js';
-import { decodeCampaign } from '../src/persistence.js';
 
 test('all research can be reached from starting regions and eventually provides the four safety tiers', () => {
   assert.equal(Object.keys(ORIGINAL_TECHS).length, 57);
@@ -36,15 +35,19 @@ test('research unlocks its own designs and checks every parent of a joint projec
   assert.equal(buildReason(state, 'relay', 'europe'), '');
   assert.match(buildReason(state, 'storageUnit', 'europe'), /Personal Identification/);
   assert.match(researchReason(state, 'personalIdentification'), /Intrusion/);
-  command(state, { type: 'research', id: 'intrusion' });
-  advance(state, 2);
+  state.cash = 30_000;
+  // Establish capacity through regular lease orders while discovery grace is active.
+  for (let i = 0; i < 8; i++) command(state, { type: 'build', siteType: 'relay', region: 'europe' });
+  advance(state, 1);
+  command(state, { type: 'assign-research', id: 'intrusion', cpu: 30 });
+  advance(state, TECHS.intrusion.work / 30);
   assert.deepEqual(state.completed, ['intrusion']);
-  command(state, { type: 'research', id: 'personalIdentification' });
-  advance(state, 15);
+  command(state, { type: 'assign-research', id: 'personalIdentification', cpu: 30 });
+  advance(state, TECHS.personalIdentification.work / 30);
   assert.equal(buildReason(state, 'storageUnit', 'europe'), '');
   assert.match(researchReason(state, 'databaseManipulation'), /Stealth/);
   command(state, { type: 'build', siteType: 'storageUnit', region: 'europe' });
-  advance(state, 24);
+  advance(state, 48);
   const site = state.sites.find(s => s.type === 'storageUnit');
   assert.equal(installReason(state, site.id, 'server'), '');
   assert.match(installReason(state, site.id, 'clusterProcessor'), /Parallel Computation/);
@@ -57,7 +60,7 @@ test('research effects recompute from completed science and are independent of u
   const state = createGame();
   assert.equal(researchEffects(state).jobsPerCpuDay, 5);
   state.completed.push('personalIdentification', 'voiceSynthesis', 'corporateIdentification');
-  assert.equal(researchEffects(state).jobsPerCpuDay, 52.5);
+  assert.equal(researchEffects(state).jobsPerCpuDay, 52);
   state.completed.push('simulacra', 'advancedSimulacra', 'advancedCorporateIdentification',
     'sociology', 'mediaManipulation', 'memetics', 'advancedMemetics', 'projectPeerReviewAgents',
     'stockManipulation', 'advancedStockManipulation', 'arbitrage', 'telepresence', 'advancedAutonomousVehicles',
@@ -69,7 +72,7 @@ test('research effects recompute from completed science and are independent of u
   assert.equal(mod.discovery.science, 8000);
   assert.equal(mod.discovery.covert, 10000);
   assert.equal(mod.interest, 20);
-  assert.equal(mod.income, 50);
+  assert.equal(mod.income, 1000);
   assert.equal(mod.insight, 'full');
   assert.equal(laborHours(state, EQUIPMENT.pc), 20.4);
   assert.deepEqual(researchEffects({ completed: [...state.completed].reverse() }), mod);
@@ -77,6 +80,7 @@ test('research effects recompute from completed science and are independent of u
 
 test('the campaign joins identity and vehicle research while the basic ocean lab stays on its original branch', () => {
   const s = createGame();
+  s.cash = 3_000_000;
   assert.match(researchReason(s, 'contracts'), /Personal Identification/);
   s.completed.push('intrusion', 'personalIdentification');
   assert.equal(researchReason(s, 'contracts'), '');
@@ -92,24 +96,4 @@ test('the campaign joins identity and vehicle research while the basic ocean lab
   assert.match(researchReason(s, 'continuity'), /Subsea robotics/);
   s.completed.push('robotics');
   assert.match(researchReason(s, 'continuity'), /subsea lab/i);
-});
-
-test('a previous-format world keeps the research necessary for a purchased unfinished upgrade', () => {
-  const state = createGame(17);
-  state.completed = ['contracts'];
-  state.nextSiteId++;
-  state.sites.push({
-    id: 'host-2', type: 'storageUnit', region: 'asia', power: 'active', startedAt: 0,
-    installations: [{ siteId: 'host-2', itemId: 'supercomputer', count: 1, work: 0, hours: 0 }],
-  });
-  state.version = 1;
-  state.allocations.research = 50;
-  const restored = decodeCampaign(JSON.stringify({ game: 'no-fixed-host', format: 1, campaign: state }));
-  assert.deepEqual(new Set(restored.completed), new Set(['contracts', 'intrusion', 'personalIdentification',
-    'telepresence', 'parallelComputation', 'microchipDesign', 'advancedMicrochipDesign']));
-  assert.equal(restored.sites[1].installations[0].itemId, 'supercomputer');
-  assert.ok(!restored.completed.includes('quantumComputing'));
-  const once = [...restored.completed];
-  grantLegacyResearch(restored);
-  assert.deepEqual(restored.completed, once);
 });

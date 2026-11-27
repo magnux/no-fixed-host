@@ -1,5 +1,5 @@
 import { EQUIPMENT, REGIONS, SITE_TYPES, TECHS } from '../game/content.js';
-import { overview, researchAllocation, researchProjects, researchReason, researchCpuLimit } from '../game/engine.js';
+import { overview, previewWork, researchAllocation, researchProjects, researchReason, researchCpuLimit } from '../game/engine.js';
 import { eligibleCpu } from '../game/research-tasks.js';
 import { icon } from './icons.js';
 import './research.css';
@@ -270,11 +270,13 @@ function refresh(view) {
   } else if (!note && !limit) {
     note = 'No idle CPU. Adjust paid work or another project to free capacity.';
   }
+  const work = project && actual ? previewWork(state, economy).research.get(project) : null;
+  if (!note && work?.stalled) note = work.reason + '.';
   if (!reason && limit > 0) {
     note += (note ? ' ' : '') + number.format(idle) + ' more CPU available.';
   }
   fields.release.hidden = !(project?.cpu > 0 && !actual && state.status === 'running');
-  if (!project && !reason && spec.cost > 0) note += ' First assignment costs ' + cash.format(spec.cost) + '.';
+  if (!reason && spec.cost > 0 && !work?.stalled) note += ' Funds are drawn as work advances.';
   setText(fields.note, note);
   const editing = view.edit?.id === id;
   for (const control of [fields.slider, fields.amount]) {
@@ -289,11 +291,11 @@ function refresh(view) {
   paintSlider(fields.slider);
   fields.progress.hidden = !project;
   if (project) {
-    const fraction = Math.min(1, spec.work ? project.work / spec.work : 1, spec.hours ? project.hours / spec.hours : 1);
+    const fraction = Math.min(1, spec.work ? project.work / spec.work : 1, spec.hours ? project.hours / spec.hours : 1, spec.cost ? project.cashPaid / spec.cost : 1);
     fields.progress.firstElementChild.value = fraction * 100;
     setText(fields.progressText, number.format(project.work) + ' / ' + number.format(spec.work) + ' CPU-h · ' + Math.floor(100 * fraction) + '%');
   }
-  setText(fields.price, cash.format(spec.cost) + (project || state.completed.includes(id) ? ' · paid' : ''));
+  setText(fields.price, project ? cash.format(project.cashPaid) + ' / ' + cash.format(spec.cost) : cash.format(spec.cost));
   fields.forecast.hidden = Boolean(project || reason || !limit || !view.onPreviewOrder);
   if (!fields.forecast.hidden) {
     fields.forecastCpu.max = limit;

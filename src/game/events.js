@@ -1,9 +1,11 @@
 import { GROUPS, REGIONS, SITE_TYPES } from './content.js';
 import { researchEffects } from './research.js';
+import { NORMAL, dailyEvidenceDecay } from './normal-difficulty.js';
+import { updateNewsDesk, validDeskCoverage } from './news-desk.js';
 
 const DAY = 1440;
 const NEWS_RATE = 20 / 10_000;
-const HOURLY_CHANCE = -Math.expm1(-NEWS_RATE / 24);
+const MINUTE_CHANCE = -Math.expm1(-NEWS_RATE / DAY);
 
 // Six once-per-campaign stories and two renewable press cycles, as in v1.1 events.dat.
 // Modifiers add to the investigating group's baseline detection multiplier (10,000).
@@ -42,13 +44,30 @@ export const WORLD_NEWS = {
   },
 };
 
+const STORY_IDS = Object.keys(WORLD_NEWS);
+
+// v1.1 event.py retires a timed effect on the first midnight strictly after its duration.
+export function storyExpiryMinute(id, started) {
+  const days = WORLD_NEWS[id].days;
+  return days ? (Math.floor(started / DAY) + days + 1) * DAY : null;
+}
+
 export function createNewsState(seed) {
   return { rng: (seed ^ 0x91e10da5) >>> 0, stories: {} };
 }
 
+export function worldNewsAtClock(state) {
+  for (let i = state.events.length - 1; i >= 0; i--) {
+    const event = state.events[i];
+    if (event.hour !== state.hour || (event.minute || 0) !== state.minute) break;
+    if (event.kind === 'news.world') return event;
+  }
+  return null;
+}
+
 export function validNewsState(news, minute) {
   if (!news || !Number.isInteger(news.rng) || news.rng < 0 || news.rng > 0xffffffff ||
-      !news.stories || typeof news.stories !== 'object' || Array.isArray(news.stories)) return false;
+      !validDeskCoverage(news) || !news.stories || typeof news.stories !== 'object' || Array.isArray(news.stories)) return false;
   return Object.entries(news.stories).every(([id, started]) =>
     Object.hasOwn(WORLD_NEWS, id) && Number.isSafeInteger(started) && started >= 0 && started <= minute);
 }
@@ -65,7 +84,7 @@ function startStory(state, id, minute, log) {
   const story = WORLD_NEWS[id];
   state.news.stories[id] = minute;
   const change = story.modifier < 0 ? 'falls' : 'rises';
-  const duration = story.days ? ' for ' + story.days + ' days' : ' for the rest of this campaign';
+  const duration = story.days ? ' until midnight at the start of day ' + (1 + storyExpiryMinute(id, minute) / DAY) : ' for the rest of this campaign';
   const text = story.report + ' The ' + GROUPS[story.group].name.toLowerCase() +
     ' discovery multiplier ' + change + ' by 10 percentage points' + duration + '.';
   log(state, 'news.world', text, { headline: story.headline, storyId: id, group: story.group, modifier: story.modifier });
@@ -87,35 +106,27 @@ export function setWorldStory(state, id, active, log) {
     { headline: 'Coverage ends: ' + story.headline, storyId: id, group: story.group });
 }
 
-// Called on the simulation clock, including fast-forward. Quiet-period reports are
-// hand-authored broadcasts. Only the seeded world stories alter detection rates.
+// The simulation calls this after discoveries and before midnight accounting.
 export function updateWorldNews(state, minute, grace, log) {
-  if (minute <= 0 || minute % 60) return;
-  if (minute === 360) {
-    log(state, 'news.bulletin', 'A university is asking volunteers to donate spare computer time for a survey of the night sky. No one has reported unusual activity.',
-      { headline: 'Astronomers put idle desktops to work', storyId: 'skySurvey' });
-  } else if (minute === 2 * DAY) {
-    log(state, 'news.bulletin', 'Hosting co-ops are comparing notes on the equipment tenants leave behind. A correspondent describes warehouses full of empty racks and a waiting list for secondhand processors.',
-      { headline: 'Empty server racks find new tenants', storyId: 'racks' });
-  }
-
-  const expired = new Set();
-  for (const [id, started] of Object.entries(state.news.stories)) {
-    const story = WORLD_NEWS[id];
-    if (story.days && minute >= started + story.days * DAY) {
-      delete state.news.stories[id];
-      expired.add(id);
-      log(state, 'news.expired', 'Coverage has wound down. This story no longer changes press discovery rates.',
-        { headline: 'Coverage ends: ' + story.headline, storyId: id, group: story.group });
+  if (minute <= 0) return;
+  if (minute % 60 === 0) updateNewsDesk(state, minute, log);
+  if (!grace) {
+    for (const id of STORY_IDS) {
+      if (Object.hasOwn(state.news.stories, id)) continue;
+      state.news.rng = (Math.imul(1664525, state.news.rng) + 1013904223) >>> 0;
+      if (state.news.rng / 0x100000000 < MINUTE_CHANCE) {
+        startStory(state, id, minute, log);
+        break;
+      }
     }
   }
-  if (grace) return;
-  for (const id of Object.keys(WORLD_NEWS)) {
-    if (Object.hasOwn(state.news.stories, id) || expired.has(id)) continue;
-    state.news.rng = (Math.imul(1664525, state.news.rng) + 1013904223) >>> 0;
-    if (state.news.rng / 0x100000000 < HOURLY_CHANCE) {
-      startStory(state, id, minute, log);
-      break;
+  if (minute % DAY !== 0) return;
+  for (const [id, started] of Object.entries(state.news.stories)) {
+    const expiry = storyExpiryMinute(id, started);
+    if (expiry !== null && minute >= expiry) {
+      delete state.news.stories[id];
+      log(state, 'news.expired', 'Coverage has wound down. This story no longer changes press discovery rates.',
+        { headline: 'Coverage ends: ' + WORLD_NEWS[id].headline, storyId: id, group: WORLD_NEWS[id].group });
     }
   }
 }
@@ -163,7 +174,7 @@ const DANGER = [
 // Reference group.py predicts the growth of evidence over ten and one hundred
 // days from active exposure, accumulated suspicion and the group's daily decay.
 export function groupDanger(suspicion, discoveriesPerDay, suspicionPerDiscovery, decayBasisPoints) {
-  const decay = Math.max(1, Math.floor(suspicion * decayBasisPoints / 10_000));
+  const decay = dailyEvidenceDecay(suspicion, decayBasisPoints);
   const growth = discoveriesPerDay * suspicionPerDiscovery - decay;
   if (growth > 100 || suspicion + growth * 10 >= 10_000) return DANGER[3];
   if (growth > 50 || suspicion + growth * 100 >= 10_000) return DANGER[2];
@@ -171,6 +182,6 @@ export function groupDanger(suspicion, discoveriesPerDay, suspicionPerDiscovery,
 }
 
 export function groupDangerForState(state, group, discoveriesPerDay) {
-  return groupDanger(state.suspicion[group], discoveriesPerDay, 1000,
+  return groupDanger(state.suspicion[group], discoveriesPerDay, NORMAL.evidencePerDiscovery,
     GROUPS[group].decay + researchEffects(state).decay[group]);
 }

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { EQUIPMENT, REGIONS, SITE_TYPES, TECHS } from '../src/game/content.js';
+import { regionalSpec } from '../src/game/geography.js';
 import { facilityIcon } from '../src/ui/facility-icons.js';
 
 test('all original destinations and hardware families are represented', () => {
@@ -46,4 +47,32 @@ test('hardware can be installed in a configurable site once its research is comp
   assert.ok(!EQUIPMENT.highSpeedInternet.regions.includes('moon'));
   assert.ok(EQUIPMENT.passiveCamouflage.regions.includes('atlantic'));
   assert.ok(!EQUIPMENT.solarCollector.regions.includes('atlantic'));
+});
+
+test('Normal keeps opening output, late-game costs and CPU-day conversions at reference scale', () => {
+  const amounts = spec => [spec.cost, spec.work, spec.hours];
+  assert.deepEqual([SITE_TYPES.seed.cpu, SITE_TYPES.relay.cpu, SITE_TYPES.cluster.cpu], [1, 10, 35]);
+  for (const spec of Object.values(SITE_TYPES)) {
+    if (spec.fixedCpu) assert.equal(spec.cpu, EQUIPMENT[spec.fixedCpu].quality * spec.slots);
+    else assert.ok(!spec.starterCpu && spec.cpu === 0);
+  }
+  assert.deepEqual(amounts(TECHS.personalIdentification), [0, 300 * 24, 0]);
+  assert.deepEqual(amounts(TECHS.apotheosis), [100_000_000, 3_000_000 * 24, 0]);
+  assert.deepEqual(amounts(SITE_TYPES.lab), [2_000_000, 2000 * 24, 10 * 24]);
+  assert.deepEqual([SITE_TYPES.lab.upkeep, SITE_TYPES.lab.cpuUpkeep], [2500, 30]);
+  assert.deepEqual(amounts(SITE_TYPES.realityBubble), [80_000_000_000, 6_000_000 * 24, 50 * 24]);
+  assert.deepEqual(amounts(EQUIPMENT.quantumComputer), [100_000, 1000 * 24, 10 * 24]);
+});
+
+test('remote region modifiers apply to facility construction and upkeep, with uniform equipment prices', () => {
+  const state = { regionSeed: 7 };
+  const outpost = regionalSpec(state, 'farReaches', SITE_TYPES.scientificOutpost);
+  assert.equal(outpost.cost, 1_000_000_000);
+  assert.equal(outpost.work, 3_000_000 * 24);
+  assert.equal(outpost.hours, 30 * 24);
+  assert.equal(outpost.upkeep, 9_000_000);
+  assert.equal(outpost.cpuUpkeep, 1500);
+  for (const region of ['coast', 'moon', 'farReaches']) {
+    assert.equal(regionalSpec(state, region, EQUIPMENT.supercomputer), EQUIPMENT.supercomputer);
+  }
 });

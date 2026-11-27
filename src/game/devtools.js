@@ -1,8 +1,6 @@
-import { EQUIPMENT, SITE_TYPES, TECHS } from './content.js';
+import { TECHS } from './content.js';
 import { setWorldStory, WORLD_NEWS } from './events.js';
-import { regionalSpec } from './geography.js';
-import { laborHours } from './research.js';
-import { MAX_TREASURY } from './treasury.js';
+import { creditTreasury, treasuryBalance, MAX_TREASURY } from './treasury.js';
 
 export function validSandbox(value) {
   return value === undefined || (value !== null && typeof value === 'object' &&
@@ -22,8 +20,8 @@ export function developerCommand(state, action, { log }) {
   switch (action.operation) {
     case 'funds': {
       if (!Number.isSafeInteger(action.amount) || action.amount <= 0 || action.amount > 1e9) throw new Error('Enter between $1 and $1 billion.');
-      if (state.cash + action.amount > MAX_TREASURY) throw new Error('This grant would exceed the $10 billion treasury limit.');
-      state.cash += action.amount;
+      if (treasuryBalance(state) + action.amount > MAX_TREASURY) throw new Error('This grant would exceed the treasury limit.');
+      creditTreasury(state, action.amount);
       note('Sandbox funding granted: $' + action.amount.toLocaleString('en-US') + '.');
       break;
     }
@@ -31,6 +29,7 @@ export function developerCommand(state, action, { log }) {
       const rows = [state.research, ...(state.researchQueue || [])].filter(Boolean);
       if (!rows.length) throw new Error('Assign CPU to sandbox research first.');
       for (const row of rows) {
+        row.cashPaid = row.cashRequired;
         row.work = TECHS[row.id].work;
         row.hours = TECHS[row.id].hours;
       }
@@ -38,22 +37,13 @@ export function developerCommand(state, action, { log }) {
       break;
     }
     case 'construction': {
-      let count = 0;
-      for (const row of state.builds) {
-        const spec = regionalSpec(state, row.region, SITE_TYPES[row.type]);
-        row.work = spec.work;
-        row.hours = row.laborHours ?? laborHours(state, spec);
-        count++;
+      const orders = [...state.builds, ...state.sites.flatMap(site => site.installations || [])];
+      if (!orders.length) throw new Error('Place a construction or installation order in the sandbox first.');
+      for (const order of orders) {
+        order.cashPaid = order.cashRequired;
+        order.work = order.workRequired;
+        order.hours = order.laborHours;
       }
-      for (const site of state.sites) {
-        for (const row of site.installations || []) {
-          const spec = regionalSpec(state, site.region, EQUIPMENT[row.itemId]);
-          row.work = spec.work * row.count;
-          row.hours = row.laborHours ?? laborHours(state, spec);
-          count++;
-        }
-      }
-      if (!count) throw new Error('Place a construction or installation order in the sandbox first.');
       note('Sandbox construction and installations are ready for the next minute.');
       break;
     }

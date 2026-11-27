@@ -13,14 +13,17 @@ const remote = {
   moon: factor({ stealth: 1.5, thrift: 0.5, speed: 0.5 }),
   farReaches: factor({ stealth: 2, thrift: 0.1, speed: 0.1 }),
 };
-const legacy = Object.fromEntries(Object.entries(REGIONS).map(([id, region]) =>
-  [id, region.stealth ? factor({ stealth: region.stealth }) : standard]));
 const urbanIds = Object.keys(REGIONS).filter(id => REGIONS[id].terrain === 'urban');
 const assignments = new WeakMap();
 const localSpecs = new WeakMap();
 
+// Pick the starting university from the six inhabited regions without
+// consuming a draw from the live discovery or world-news stream.
+export function startingRegion(seed) {
+  return urbanIds[seed % urbanIds.length];
+}
+
 export function regionFactors(state, region) {
-  if (state.regionSeed === undefined) return legacy[region] || standard;
   if (REGIONS[region]?.terrain !== 'urban') return remote[region] || standard;
   let assignment = assignments.get(state);
   if (assignment?.seed !== state.regionSeed) {
@@ -39,20 +42,24 @@ export function regionFactors(state, region) {
   return assignment.regions[region];
 }
 
-// Upfront prices and work targets are integer dollars / CPU-hours. Fractional
-// upkeep and whole-minute labor targets retain the engine's existing precision.
+// Locations modify the construction and maintenance of a facility. Hardware
+// has the same price and installation requirements everywhere it is allowed.
 export function regionalSpec(state, region, spec) {
+  if (!('upkeep' in spec)) return spec;
   const factors = regionFactors(state, region);
   if (factors.thrift === 1 && factors.speed === 1) return spec;
   let variants = localSpecs.get(spec);
   if (!variants) { variants = new Map(); localSpecs.set(spec, variants); }
   if (!variants.has(factors)) {
-    const local = { ...spec, cost: Math.round(spec.cost / factors.thrift),
-      work: Math.round(spec.work / factors.thrift), hours: Math.ceil(60 * spec.hours / factors.speed) / 60 };
-    if ('upkeep' in spec) {
-      local.upkeep = Math.round(spec.upkeep / factors.thrift);
-      local.cpuUpkeep = Math.round(100 * spec.cpuUpkeep / factors.thrift) / 100;
-    }
+    // Match the reference's integer dollars, CPU-seconds, labor minutes and
+    // whole daily upkeep before converting back to the campaign's hour units.
+    const local = { ...spec,
+      cost: Math.floor(spec.cost / factors.thrift),
+      work: Math.floor(spec.work * 3600 / factors.thrift) / 3600,
+      hours: Math.floor(spec.hours * 60 / factors.speed) / 60,
+      upkeep: Math.floor(spec.upkeep / factors.thrift),
+      cpuUpkeep: Math.floor(spec.cpuUpkeep / factors.thrift),
+    };
     variants.set(factors, local);
   }
   return variants.get(factors);

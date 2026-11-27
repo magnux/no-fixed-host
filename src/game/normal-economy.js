@@ -1,7 +1,9 @@
+import { NORMAL } from './normal-difficulty.js';
+
 // Normal starts at one basis point of daily interest. The reference rounds
 // the day's rate to whole dollars before prorating it over elapsed time.
 export function dailyInterest(balance, bonusBasisPoints = 0) {
-  return Math.floor(balance * (1 + bonusBasisPoints) / 10_000);
+  return Math.floor(balance * (NORMAL.dailyInterest + bonusBasisPoints) / 10_000);
 }
 
 // Whole-dollar charges follow the day clock. At midnight endMinute is 1440,

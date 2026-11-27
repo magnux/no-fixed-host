@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { EQUIPMENT, REGIONS, SITE_TYPES, TECHS } from '../src/game/content.js';
 import { advance, command, createGame, installQuote, overview, previewSiteExposure, siteExposure, siteHardware, validateSave } from '../src/game/engine.js';
-import { CASH_UNITS_PER_DOLLAR } from '../src/game/report-accounting.js';
 import { riskLabel } from '../src/ui/facility-risk.js';
 import { projectedCompute } from '../src/game/equipment.js';
 import { facilityName, regionFactors, regionalSpec, removalReason } from '../src/game/facility-operations.js';
@@ -29,14 +28,11 @@ test('six shuffled urban profiles survive saves without drawing from the campaig
   assert.equal(lunar.hours, SITE_TYPES.capsule.hours * 2);
   assert.equal(lunar.work, SITE_TYPES.capsule.work * 2);
   assert.equal(lunar.upkeep, SITE_TYPES.capsule.upkeep * 2);
-  const old = structuredClone(state);
-  delete old.regionSeed;
-  assert.equal(regionalSpec(old, 'moon', SITE_TYPES.capsule), SITE_TYPES.capsule);
-  assert.equal(regionFactors(old, 'moon').stealth, 1.5);
 });
 
 test('custom/generated names, cancellation and dismantling guard payments and the last viable host', () => {
   const state = createGame(19);
+  state.cash = 2e6;
   const order = { type: 'build', region: 'europe', siteType: 'relay' };
   const initial = structuredClone(state);
   assert.throws(() => command(state, { ...order, name: 'x'.repeat(49) }));
@@ -83,8 +79,9 @@ test('pending same-model CPU purchases merge paid work, restart labor and use on
   const price = installQuote(state, site.id, 'quantumComputer', 6).cost;
   const cash = state.cash;
   buy(6);
-  assert.equal(Math.round(state.cash * CASH_UNITS_PER_DOLLAR),
-    Math.round(cash * CASH_UNITS_PER_DOLLAR) - price * CASH_UNITS_PER_DOLLAR);
+  assert.equal(state.cash, cash);
+  assert.equal(site.installations[0].cashRequired, price + EQUIPMENT.quantumComputer.cost * 2);
+  assert.ok(site.installations[0].cashPaid > 0);
   assert.equal(site.installations.length, 1);
   assert.equal(site.installations[0].hours, 0);
   assert.equal(site.installations[0].work, work);
@@ -127,9 +124,10 @@ test('site risk scales its disclosure with research and previews a functioning d
   assert.equal(previewSiteExposure(state, type, region).perDay, 0);
 });
 
-test('an old sleeping empty shell wakes on its first processor and sleep survives a subsequent upgrade', () => {
+test('an old sleeping shell wakes whenever an offline processor bank becomes available', () => {
   const state = createGame(19);
   learn(state, 'personalIdentification');
+  state.cash = 2e6;
   const shell = { id: 'host-2', region: 'europe', type: 'storageUnit', startedAt: 0, power: 'sleep' };
   state.sites.push(shell);
   state.nextSiteId++;
@@ -147,7 +145,7 @@ test('an old sleeping empty shell wakes on its first processor and sleep survive
   power('sleep');
   buy('gamingPc');
   advance(resumed, 48);
-  assert.equal(site.power, 'sleep');
+  assert.equal(site.power, 'active');
   assert.equal(siteHardware(resumed, site).installed.cpu.itemId, 'gamingPc');
   assert.ok(validateSave(resumed));
 });

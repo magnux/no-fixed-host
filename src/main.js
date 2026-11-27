@@ -4,10 +4,12 @@ import {
   decodeCampaign,
   encodeCampaign,
   loadCampaign,
+  UnsupportedCampaignError,
   saveCampaign,
 } from './persistence.js';
 import { icon } from './ui/icons.js';
 import { GROUPS, REGIONS } from './game/content.js';
+import { treasuryBalance } from './game/treasury.js';
 import { siteHardware } from './game/equipment.js';
 import { renderResearch, focusResearch } from './ui/research.js';
 import { updateAtlas, updateAtlasTime } from './ui/atlas.js';
@@ -15,6 +17,7 @@ import { FAST_RATES, MinuteClock, nextFastRate } from './ui/clock.js';
 import { renderKnowledge } from './ui/knowledge.js';
 import { renderReports } from './ui/reports.js';
 import { hudProjection, invalidateReports } from './game/reports.js';
+import { worldNewsAtClock } from './game/events.js';
 import { reportsAt } from './game/chronicle.js';
 import { currentWarnings, openDispatches, openStory, renderChronicle, renderDeveloper, storyKey } from './ui/chronicle.js';
 import { initShell } from './ui/shell.js';
@@ -41,7 +44,8 @@ const tabs = {
 };
 const freshGame = () =>
   createGame(crypto.getRandomValues(new Uint32Array(1))[0]);
-const savedCampaign = loadCampaign();
+let startupError;
+const savedCampaign = loadCampaign(error => { startupError = error; });
 let state = savedCampaign ?? freshGame();
 let tab = 'overview';
 let region = 'europe';
@@ -52,6 +56,7 @@ let mountedTab = null;
 let candidate = null;
 let shell;
 let graceChapterPending = false;
+let pendingWorldDispatch = null;
 const clock = new MinuteClock();
 const rateLabels = { 0: 'Paused', 1: '1 tick/s', 60: '60 ticks/s', 360: '360 ticks/s', 1440: '1,440 ticks/s' };
 const dashboardInterval = 100;
@@ -189,7 +194,7 @@ function render() {
     metric(
       'cash',
       'Cash reserves',
-      money(state.cash),
+      money(treasuryBalance(state)),
       (projection.cashNet >= 0 ? '+' : '') + money(projection.cashNet) + ' projected / 24h',
     ) +
       metric(
@@ -250,8 +255,7 @@ function render() {
         (state.status === 'won' ? 'Campaign won' : 'Campaign lost') +
         '</strong><span>' +
         esc(state.ending) +
-        '</span>' + (state.status === 'won' && state.completed.includes('continuity') && !state.completed.includes('apotheosis')
-          ? '<button data-action="continue">Continue campaign</button>' : '<button data-action="ending-story">Read final chapter</button>') +
+        '</span><button data-action="ending-story">Read final chapter</button>' +
         (state.status === 'won' && state.completed.includes('apotheosis') ? '<button data-action="free-play">Enter free play</button>' : '') +
         '<button data-action="new">New campaign</button>',
     );
@@ -259,6 +263,11 @@ function render() {
   if (graceChapterPending && !document.querySelector('dialog[open]')) {
     graceChapterPending = false;
     openStory('grace', readerOptions());
+  } else if (pendingWorldDispatch && !document.querySelector('dialog[open]')) {
+    const event = pendingWorldDispatch;
+    pendingWorldDispatch = null;
+    const records = reportsAt(state.events, event);
+    openDispatches(state, records, readerOptions(), records.indexOf(event));
   }
 }
 
@@ -382,11 +391,12 @@ function advancePlayback(minutes) {
   if (!minutes) return false;
   const discoveryId = state.lastDiscovery?.id;
   const protectedBefore = !state.freePlay && hasGrace(state);
-  advanceMinutes(state, minutes, { stopOnDiscovery: true, stopOnGrace: true });
+  advanceMinutes(state, minutes, { stopOnDiscovery: true, stopOnGrace: true, stopOnWorldNews: true });
   unsaved = true;
   const discovered = state.lastDiscovery?.id !== discoveryId;
   graceChapterPending = protectedBefore && !hasGrace(state) && state.status === 'running' && !discovered;
-  return discovered || graceChapterPending || state.status !== 'running';
+  pendingWorldDispatch = !discovered && !graceChapterPending && state.status === 'running' ? worldNewsAtClock(state) : null;
+  return discovered || graceChapterPending || Boolean(pendingWorldDispatch) || state.status !== 'running';
 }
 function playFrame() {
   frame = null;
@@ -445,6 +455,7 @@ async function openDrill() {
 function restoreCampaign(restored) {
   stopPlayback(performance.now());
   state = restored;
+  pendingWorldDispatch = null;
   graceChapterPending = false;
   selectedSite = null;
   region = 'europe';
@@ -455,6 +466,17 @@ function restoreCampaign(restored) {
   persist();
   render();
 }
+function showVersionNotice(error) {
+  element('version-message').textContent = error.message;
+  const dialog = element('version-dialog');
+  if (!dialog.open) dialog.showModal();
+}
+
+function restartUnsupported(error) {
+  restoreCampaign(freshGame());
+  showVersionNotice(error);
+}
+
 function exportSave() {
   const url = URL.createObjectURL(
     new Blob([encodeCampaign(state)], { type: 'application/json' }),
@@ -546,9 +568,6 @@ document.addEventListener('click', async (event) => {
       case 'free-play':
         doCommand({ type: 'free-play' });
         break;
-      case 'continue':
-        doCommand({ type: 'continue' });
-        break;
       case 'drill':
         await openDrill();
         break;
@@ -587,7 +606,8 @@ document.addEventListener('change', async (event) => {
       restoreCampaign(restored);
       notify('Campaign imported.');
     } catch (error) {
-      notify(error.message || 'Could not import this save.');
+      if (error instanceof UnsupportedCampaignError) restartUnsupported(error);
+      else notify(error.message || 'Could not import this save.');
     }
     event.target.value = '';
   }
@@ -641,14 +661,15 @@ window.addEventListener('storage', (event) => {
     const incoming = decodeCampaign(event.newValue);
     stopPlayback(performance.now());
     state = incoming;
+    pendingWorldDispatch = null;
     graceChapterPending = false;
     candidate = null;
     mountedTab = null;
     unsaved = false;
     editingAllocation = false;
     render();
-  } catch {
-    // Keep the current game if another tab wrote an unreadable save.
+  } catch (error) {
+    if (error instanceof UnsupportedCampaignError) restartUnsupported(error);
   }
 });
 window.addEventListener('pagehide', () => {
@@ -661,6 +682,7 @@ shell = initShell({
   pause: () => setSpeed(0),
   setRate: setSpeed,
   restore: restoreCampaign,
+  restartUnsupported,
   notify,
   onNew: () => element('menu').querySelector('[data-action="new"]').click(),
   onExport: exportSave,
@@ -670,3 +692,4 @@ shell = initShell({
 document.addEventListener('campaign-preferences', render);
 render();
 if (!savedCampaign) persist();
+if (startupError instanceof UnsupportedCampaignError) showVersionNotice(startupError);

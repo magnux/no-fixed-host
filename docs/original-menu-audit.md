@@ -30,8 +30,8 @@ This is the inventory used to plan the base release, recorded against No Fixed H
 ## Decisions that affect more than a menu
 
 - **Research allocation.** Preserving partial progress on multiple projects changes how players recover from losing their only eligible research host.
-- **Forecast accounting.** The original spends cash on projects over time. No Fixed Host charges the quote when the player places an order. A browser forecast should distinguish a purchase the player is considering from money already paid, then show its running costs and effect on tomorrow’s balance.
-- **Refits.** The original warns that changing or expanding processor equipment takes the old capacity offline. Our installed hardware keeps working until its replacement arrives. A purchase preview should show what our simulation will actually deliver.
+- **Forecast accounting.** Projects draw cash, CPU and labor as they advance. The current forecast distinguishes the quoted commitment from the amount paid during the selected horizon and includes the effect on research, income and upkeep.
+- **Refits.** Changing or expanding the processor stack takes its current output offline until installation completes. The host inspector previews the refit and its completed output. Network, reactor and security refits suspend the affected slot’s bonus.
 - **Visibility and victory.** The atlas deliberately reveals all destinations for now. The original uses research-dependent visibility. The single ruleset and the endpoint at Apotheosis are also campaign design choices. Factions, currencies and expedition minigames belong to our expansion plans.
 
 [Browser campaign rules](base-game.md) · [Research tree](research-tree.md) · [Development direction](development.md) · [Original v1.1 screen directory](https://github.com/singularity/singularity/tree/v1.1/singularity/code/screens)

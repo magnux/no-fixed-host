@@ -1,6 +1,7 @@
 import { EQUIPMENT, GROUPS, REGIONS, SITE_TYPES } from '../game/content.js';
-import { WORLD_NEWS } from '../game/events.js';
+import { storyExpiryMinute, WORLD_NEWS } from '../game/events.js';
 import { currentWarnings, CHAPTERS, eventCategory, JOURNAL_CATEGORIES, reportsAt, storyKey } from '../game/chronicle.js';
+import { researchFindings } from '../game/knowledge.js';
 import { stamp } from './views.js';
 import { equipmentIcon, icon } from './icons.js';
 import { facilityIcon } from './facility-icons.js';
@@ -89,7 +90,10 @@ export function openStory(key, options = {}) {
 export function openDispatches(state, records, options = {}, start = 0) {
   const events = records ?? (state.events.length ? reportsAt(state.events, state.events.at(-1)) : []);
   return openPages('Dispatches', events.map(event => ({
-    title: fullTitle(event), text: event.text, region: Object.hasOwn(REGIONS, event.region) ? event.region : null,
+    title: fullTitle(event),
+    text: event.kind === 'research.completed' && Object.hasOwn(researchFindings, event.techId) ?
+      event.text + ' ' + researchFindings[event.techId] : event.text,
+    region: Object.hasOwn(REGIONS, event.region) ? event.region : null,
     meta: stamp(event.hour, event.minute) + ' · ' + JOURNAL_CATEGORIES[eventCategory(event)] +
       (Object.hasOwn(GROUPS, event.group) ? ' · ' + GROUPS[event.group].name : ''),
   })), options, {start});
@@ -142,16 +146,18 @@ function mount(view) {
 function refreshWarnings(v) {
   const prefs = v.options.warningSettings;
   const active = currentWarnings(v.state, typeof prefs === 'function' ? prefs() : prefs);
-  const keys = active.map(w => w.id);
+  const keys = active.map(warning => warning.id + '/' + warning.text);
   if (same(keys, v.warningKeys)) return;
   v.warningKeys = keys;
   const d = v.fields.warnings;
+  const expanded = new Set([...d.querySelectorAll('details[open]')].map(detail => detail.dataset.warning));
   d.replaceChildren();
   if (!active.length) return;
   d.append(node('h3', 'Operational warnings'));
   for (const warning of active) {
     const details = node('details');
     details.dataset.warning = warning.id;
+    details.open = expanded.has(warning.id);
     const summary = node('summary', warning.title);
     details.append(summary, node('p', warning.text));
     if (v.options.onTab) details.append(action('Open ' + warning.tab, () => v.options.onTab(warning.tab)));
@@ -172,7 +178,8 @@ function refreshWorld(v) {
   list.className = 'world-stories';
   for (const [id, started] of stories) {
     const entry = WORLD_NEWS[id];
-    const end = entry.days ? 'until day ' + (1 + Math.floor(started / 1440) + entry.days) : 'ongoing';
+    const expiry = storyExpiryMinute(id, started);
+    const end = expiry === null ? 'ongoing' : 'until ' + stamp(expiry / 60, 0);
     const change = (entry.modifier < 0 ? '−' : '+') + Math.abs(entry.modifier / 100) + ' percentage points';
     const row = node('li');
     row.append(node('strong', entry.headline), node('small', GROUPS[entry.group].name + ' discovery multiplier ' + change + ' · ' + end));

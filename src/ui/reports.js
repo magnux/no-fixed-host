@@ -1,5 +1,6 @@
 import { EQUIPMENT, REGIONS, SITE_TYPES, TECHS } from '../game/content.js';
 import { campaignStatistics, comparisonReport, orderPrice } from '../game/reports.js';
+import { refitWarning } from './equipment-display.js';
 import './reports.css';
 
 const money = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 });
@@ -10,9 +11,8 @@ const cashRows = [
   ['opening', 'Opening balance'], ['jobs', 'Paid work and spare cycles'],
   ['interest', 'Interest'], ['income', 'Other income'], ['research', 'Research orders'],
   ['builds', 'Facility orders'], ['equipment', 'Equipment orders'], ['upkeep', 'Upkeep paid'],
-  ['reserveTransfer', 'Transferred from legacy reserve'], ['limitLoss', 'Income above treasury limit'],
+  ['limitLoss', 'Income above treasury limit'],
   ['net', 'Net cash change'], ['closing', 'Closing balance'], ['unpaid', 'Upkeep unpaid'],
-  ['closingReserve', 'Remaining legacy reserve'],
 ];
 const cpuRows = [
   ['installed', 'Installed capacity'], ['sleeping', 'Sleeping capacity'], ['active', 'Active capacity'],
@@ -48,6 +48,7 @@ function nameOrder(state, action) {
   }
   const host = state.sites.find(site => site.id === action.siteId);
   const place = host?.name || (host ? SITE_TYPES[host.type].name + ' · ' + host.id : 'removed host');
+  if (action.type === 'auto-upgrade') return 'Auto-upgrade package for ' + place;
   if (action.type === 'auto-install') return 'Auto-build package for ' + place;
   return (EQUIPMENT[action.itemId]?.name ?? 'Equipment') + ' × ' + (action.count ?? 1) + ' at ' + place;
 }
@@ -83,7 +84,7 @@ function showAmounts(table, section, base, order) {
   const formatValue = value => format.format(Math.abs(value) < .005 ? 0 : value);
   for (const row of table.tBodies[0].rows) {
     const key = row.dataset.account;
-    if (section === 'cash' && ['reserveTransfer', 'limitLoss', 'closingReserve'].includes(key)) {
+    if (section === 'cash' && key === 'limitLoss') {
       row.hidden = !base.cash[key] && !order?.cash[key];
     }
     text(row.cells[1], formatValue(base[section][key]));
@@ -103,7 +104,7 @@ function mount(container) {
       <div class="report-tools"><label>Forecast period
         <select data-report="period"><option value="midnight">Until midnight</option><option value="24h">Next 24 hours</option></select>
       </label><button type="button" data-report="refresh">Refresh</button><small data-report="range"></small></div>
-      <div class="report-order" data-report="candidate" hidden><div><small data-report="kind"></small><strong data-report="name"></strong><small data-report="package" hidden></small></div>
+      <div class="report-order" data-report="candidate" hidden><div><small data-report="kind"></small><strong data-report="name"></strong><small data-report="package" hidden></small><small data-report="refit" hidden></small></div>
         <button type="button" class="accent-button" data-report="place">Place order</button>
         <button type="button" data-report="clear">Discard preview</button></div>
       <p role="status" data-report="feedback" hidden></p>
@@ -172,10 +173,7 @@ function refresh(view) {
   }
   if (view.mode === 'statistics') {
     const stats = campaignStatistics(state);
-    text(fields.history, stats.partial ?
-      'This is an older save. Earnings, project completions, finished facilities and equipment are counted from ' +
-      clock(stats.trackedFromMinute) + '. CPU-hours and commissioned facilities cover the entire campaign.' :
-      'Cumulative totals for this campaign include work on facilities that have since been lost or dismantled.');
+    text(fields.history, 'Cumulative totals for this campaign include work on facilities that have since been lost or dismantled.');
     for (const [key] of statisticRows) {
       text(view.stats[key], (key === 'cashEarned' ? money : number).format(stats[key]));
     }
@@ -183,24 +181,28 @@ function refresh(view) {
   }
   const { base, order, error } = comparisonReport(state, fields.period.value, candidate, view.force);
   view.force = false;
-  const billing = state.legacyIncomeDay === undefined ? 'Cash upkeep falls due in whole-dollar installments.' :
-    'This older save switches to whole-dollar upkeep at midnight.';
-  text(fields.assumptions, (candidate?.type === 'assign-research' ? 'The first CPU assignment pays the project cost. Later adjustments are free. ' : 'Orders are paid upfront. ') + billing +
-    ' Forecasts include scheduled work and assume no discoveries, failures or random news.');
+  text(fields.assumptions, 'Research, facilities and equipment draw funds as work advances. Cash upkeep falls due in whole-dollar installments. Forecasts include scheduled work and assume no discoveries, failures or random news.');
   fields.candidate.hidden = !candidate;
   if (candidate) {
     const research = candidate.type === 'assign-research';
     text(fields.kind, research ? 'Proposed assignment' : 'Proposed order');
     text(fields.place, research ? 'Assign CPU' : 'Place order');
     text(fields.name, nameOrder(state, candidate));
-    const items = candidate.type === 'auto-install' ? candidate.expectedOrders || [] : [];
+    if (order) text(fields.kind, (research ? 'Proposed assignment' : 'Proposed order') + ' · ' + money.format(order.price) + ' new funding');
+    const items = ['auto-install', 'auto-upgrade'].includes(candidate.type) ? candidate.expectedOrders || [] : [];
+    const warning = refitWarning(state, candidate);
+    fields.refit.hidden = !warning;
+    text(fields.refit, warning);
     fields.package.hidden = !items.length;
-    if (items.length) text(fields.package, items.map(item => EQUIPMENT[item.itemId].name + ' × ' + item.count).join(' · '));
+    if (items.length) {
+      const total = items.reduce((sum, item) => sum + item.cost, 0);
+      text(fields.package, items.map(item => EQUIPMENT[item.itemId].name + ' × ' + item.count).join(' · ') + ' · ' + money.format(total) + ' total');
+    }
   }
   fields.place.hidden = !options.onOrder;
   fields.clear.hidden = !options.onClearCandidate;
   fields.place.disabled = !order;
-  view.price = order?.cash.upfront;
+  view.price = order?.price;
   const message = error || view.message || '';
   fields.feedback.hidden = !message;
   text(fields.feedback, message);

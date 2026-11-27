@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createSunlightRenderer, sunAt } from '../src/ui/solar.js';
+import { createSunlightRenderer, startingDay, sunAt } from '../src/ui/solar.js';
+import { createGame } from '../src/game/engine.js';
+import { decodeCampaign, encodeCampaign } from '../src/persistence.js';
 
 // Sample the actual equirectangular night overlay drawn by the browser, one pixel per degree.
 function nightMask(hour) {
@@ -35,4 +37,16 @@ test('solstices reverse midnight sunlight and midday darkness at the poles', () 
   assert.ok(june(80, 180) < 0.25 && december(80, 0) > 0.7);
   assert.ok(december(-80, 180) < 0.25 && june(-80, 0) > 0.7);
   assert.match(sunAt(0).label, /1 Jan · 00:00 UTC/);
+});
+
+test('campaign season varies by seed and survives reloading without using a discovery draw', () => {
+  const state = createGame(19);
+  const rng = state.rng;
+  const initialDay = startingDay(state.regionSeed);
+  assert.notEqual(startingDay(createGame(20).regionSeed), initialDay);
+  const sun = sunAt(23, 59, initialDay);
+  assert.deepEqual(sun, sunAt(initialDay * 24 + 23, 59));
+  assert.equal(state.rng, rng);
+  const restored = decodeCampaign(encodeCampaign(state));
+  assert.deepEqual(sunAt(23 + 365 * 24, 59, startingDay(restored.regionSeed)), sun);
 });

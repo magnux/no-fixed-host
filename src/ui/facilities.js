@@ -1,7 +1,9 @@
 import { EQUIPMENT, GROUPS, REGIONS, SITE_TYPES, TECHS } from '../game/content.js';
-import { autoInstallQuote, buildReason, installQuote, installReason, laborHours, previewSiteExposure, siteExposure, siteHardware } from '../game/engine.js';
+import { autoInstallQuote, autoUpgradeQuote, buildReason, constructionStatuses, equipmentRank, hostRank, installQuote, installReason, laborHours, previewSiteExposure, siteExposure, siteHardware } from '../game/engine.js';
+import { treasuryBalance } from '../game/treasury.js';
 import { projectedCompute } from '../game/equipment.js';
 import { facilityName, regionFactors, regionalSpec, removalReason } from '../game/facility-operations.js';
+import { rankLabels, refitWarning, showRank } from './equipment-display.js';
 import { riskLabel } from './facility-risk.js';
 import { facilityIcon } from './facility-icons.js';
 import { equipmentIcon, icon } from './icons.js';
@@ -106,12 +108,19 @@ function renderQueue(root, records) {
       button.dataset.cancelId = r.id;
       button.textContent = 'Cancel order';
       row.append(button);
+    } else if (!r.cancellable) {
+      row.querySelector('button')?.remove();
     }
     old.delete(r.id);
     const [name, detail, bar] = row.children;
     setText(name.lastElementChild, r.name);
-    const pc = Math.floor(100 * Math.min(1, r.totalWork ? r.work / r.totalWork : 1, r.totalHours ? r.hours / r.totalHours : 1));
-    const text = pc + '% · ' + number.format(r.work) + '/' + number.format(r.totalWork) + ' CPU-h · ' + duration(r.hours) + ' / ' + duration(r.totalHours);
+    const status = r.status;
+    const pc = Math.floor(status.progress * 100);
+    row.dataset.stalled = String(status.stalled);
+    const remaining = dollars.format(status.cashRemaining) + ' of ' + dollars.format(status.cashPaid + status.cashRemaining) + ' outstanding · ' +
+      number.format(status.workRemaining) + ' CPU-h and ' + duration(status.hoursRemaining) + ' labor remaining';
+    const eta = Number.isFinite(status.etaHours) ? ' · ETA ' + duration(status.etaHours) : '';
+    const text = pc + '% · ' + (status.stalled ? 'Paused · ' : '') + status.reason + ' · ' + remaining + eta;
     setText(detail, text);
     if (bar.value !== pc) bar.value = pc;
     bar.setAttribute('aria-label', r.name + ' completion');
@@ -147,7 +156,7 @@ function mountFacilities(root) {
           <div class="facility-recipe" data-ref="recipe">
             <p data-ref="description"></p>
             <dl class="facility-facts">
-              <div><dt>Cost</dt><dd data-ref="cost"></dd></div>
+              <div><dt>Total cost</dt><dd data-ref="cost"></dd></div>
               <div><dt>Processor slots</dt><dd data-ref="slots"></dd></div>
               <div><dt>Upkeep</dt><dd data-ref="upkeep"></dd></div>
             </dl>
@@ -181,31 +190,34 @@ function mountFacilities(root) {
                 <button type="button" data-ref="dismantle">Dismantle host</button><small data-ref="dismantleReason"></small></div>
             </details>
             <dl data-ref="installed" class="installed-list"></dl>
-            <p data-ref="fixed" hidden>This host includes fixed hardware. A storage unit accepts equipment upgrades.</p>
+            <p data-ref="fixed" hidden>This host uses a fixed hardware package.</p>
             <div data-ref="hardware" class="facility-hardware">
+              <section class="facility-packages" aria-label="Automatic hardware orders">
+                <div class="facility-auto">
+                  <div class="facility-command"><button type="button" data-ref="autoInstall">Auto-build</button>
+                    <button type="button" data-ref="previewAuto" class="text-button">Forecast auto-build</button></div>
+                  <small data-ref="autoParts"></small><small data-ref="autoReason"></small>
+                </div>
+                <div class="facility-auto">
+                  <div class="facility-command"><button type="button" data-ref="autoUpgrade">Auto-upgrade</button>
+                    <button type="button" data-ref="previewUpgrade" class="text-button">Forecast auto-upgrade</button></div>
+                  <small data-ref="upgradeParts"></small><small data-ref="upgradeWarning" class="refit-warning"></small><small data-ref="upgradeReason"></small>
+                </div>
+              </section>
               <div class="hardware-selectors">
                 <label for="equipment-slot">Equipment slot<select id="equipment-slot" data-ref="slot"></select></label>
                 <label for="equipment-item">Item<select id="equipment-item" data-ref="item"></select></label>
                 <label for="equipment-count" data-ref="countLabel">Quantity<input type="number" id="equipment-count" data-ref="count" min="1" step="1" value="1"></label>
               </div>
               <label data-ref="sliderLabel" class="facility-quantity">Batch size<input type="range" data-ref="countSlider" min="1" max="1" step="1" value="1"></label>
-              <p data-ref="effect"></p>
-              <small data-ref="quote"></small>
+              <p class="hardware-proposal"><span data-ref="itemRank"></span><span data-ref="effect"></span></p>
+              <small data-ref="quote"></small><small data-ref="refitWarning" class="refit-warning" hidden></small>
               <div class="facility-command">
                 <button type="button" class="accent-button" data-ref="install">Install</button>
                 <button type="button" data-ref="previewInstall">Forecast order</button>
                 <small data-ref="installReason"></small>
               </div>
               <div class="facility-prereqs" data-ref="installPrereqs" hidden></div>
-              <details class="facility-auto">
-                <summary>Auto-build empty slots</summary>
-                <p data-ref="autoParts"></p>
-                <div class="facility-command">
-                  <button type="button" data-ref="autoInstall">Order package</button>
-                  <button type="button" data-ref="previewAuto">Forecast package</button>
-                  <small data-ref="autoReason"></small>
-                </div>
-              </details>
             </div>
             <section class="facility-queue" data-ref="installQueuePanel" hidden>
               <h4>Installation queue</h4><div data-ref="installQueue"></div>
@@ -233,6 +245,10 @@ function mountFacilities(root) {
     const value = document.createElement('dd');
     term.innerHTML = equipmentIcon(slot);
     term.append(document.createTextNode(name));
+    const rank = document.createElement('span');
+    const installedName = document.createElement('span');
+    const pending = document.createElement('small');
+    value.append(rank, installedName, pending);
     row.append(term, value);
     e.installed.append(row);
     value.dataset.slot = slot;
@@ -289,15 +305,29 @@ function mountFacilities(root) {
   const buildAction = () => ({ type: 'build', siteType: session.design, region: session.region, name: e.buildName.value });
   const installAction = () => ({ type: 'install', siteId: session.expandedId, itemId: e.item.value,
     count: e.slot.value === 'cpu' ? e.count.valueAsNumber : 1 });
-  const packageAction = () => ({ type: 'auto-install', siteId: session.expandedId, expectedOrders: session.autoOrders });
+  const packageAction = upgrade => ({ type: upgrade ? 'auto-upgrade' : 'auto-install', siteId: session.expandedId,
+    expectedOrders: upgrade ? session.upgradeOrders : session.autoOrders });
+  function orderHardware(action, message) {
+    const warning = refitWarning(session.state, action);
+    if (!warning) return perform(action, message);
+    setText(e.removalTitle, 'Take equipment offline for installation?');
+    setText(e.removalText, warning);
+    setText(e.keep, 'Keep equipment online');
+    setText(e.acceptRemoval, 'Confirm installation');
+    session.confirmation = message;
+    session.pendingAction = action;
+    e.removal.showModal();
+  }
   e.build.addEventListener('click', () => {
     if (perform(buildAction(), 'Construction order placed.')) e.buildName.value = '';
   });
-  e.install.addEventListener('click', () => perform(installAction(), 'Hardware installation ordered.'));
-  e.autoInstall.addEventListener('click', () => perform(packageAction(), 'Hardware package ordered.'));
+  e.install.addEventListener('click', () => orderHardware(installAction(), 'Hardware installation ordered.'));
+  e.autoInstall.addEventListener('click', () => orderHardware(packageAction(false), 'Hardware package ordered.'));
+  e.autoUpgrade.addEventListener('click', () => orderHardware(packageAction(true), 'Hardware upgrade ordered.'));
+  e.previewUpgrade.addEventListener('click', () => session.handlers.onPreviewOrder?.(packageAction(true)));
   e.previewBuild.addEventListener('click', () => session.handlers.onPreviewOrder?.(buildAction()));
   e.previewInstall.addEventListener('click', () => session.handlers.onPreviewOrder?.(installAction()));
-  e.previewAuto.addEventListener('click', () => session.handlers.onPreviewOrder?.(packageAction()));
+  e.previewAuto.addEventListener('click', () => session.handlers.onPreviewOrder?.(packageAction(false)));
   e.countSlider.addEventListener('input', () => { e.count.value = e.countSlider.value; refresh(session); });
   e.regionTable.addEventListener('click', event => {
     const button = event.target.closest('[data-region]');
@@ -322,10 +352,12 @@ function mountFacilities(root) {
     const record = (building ? session.state.builds : session.state.sites).find(row => row.id === id);
     const name = record.name || SITE_TYPES[record.type].name;
     setText(e.removalTitle, (building ? 'Cancel construction of ' : 'Dismantle ') + name + '?');
-    setText(e.removalText, building ? 'The construction payment and completed work will be lost.' :
+    setText(e.removalText, building ? 'You will lose the money and work already invested. Future payments stop.' :
       'This permanently removes the host, its hardware and its installation orders.');
     setText(e.acceptRemoval, building ? 'Cancel construction' : 'Dismantle facility');
-    session.removalAction = { type: building ? 'cancel-build' : 'dismantle', id };
+    setText(e.keep, 'Keep facility');
+    session.confirmation = building ? 'Construction order cancelled.' : 'Host dismantled.';
+    session.pendingAction = { type: building ? 'cancel-build' : 'dismantle', id };
     e.removal.showModal();
   }
   e.dismantle.addEventListener('click', () => requestRemoval(session.expandedId, false));
@@ -335,9 +367,10 @@ function mountFacilities(root) {
   });
   e.keep.addEventListener('click', () => e.removal.close());
   e.acceptRemoval.addEventListener('click', () => {
-    const action = session.removalAction;
+    const action = session.pendingAction;
+    session.pendingAction = null;
     e.removal.close();
-    if (action) perform(action, action.type === 'cancel-build' ? 'Construction order cancelled.' : 'Host dismantled.');
+    if (action) perform(action, session.confirmation);
   });
   e.power.addEventListener('click', () => {
     const site = session.state.sites.find(host => host.id === session.expandedId);
@@ -406,18 +439,18 @@ function updateDesigns(session, recipes) {
     const cost = regionalSpec(state, region, spec).cost;
     const missing = [...new Set([...REGIONS[region].requires, ...spec.requires])].filter(tech => !state.completed.includes(tech));
     const locked = missing.length > 0;
-    const affordable = state.cash >= cost;
+    const affordable = treasuryBalance(state) >= cost;
     const priceText = dollars.format(cost);
     const description = [
       'Cost ' + priceText + '.',
       locked ? 'Requires ' + missing.map(tech => TECHS[tech].name).join(', ') + '.' : '',
-      affordable ? '' : 'Insufficient funds.',
+      affordable ? '' : 'Current treasury covers part of the cost. Payments continue as funds arrive.',
     ].filter(Boolean).join(' ');
     if (label.dataset.locked !== String(locked)) label.dataset.locked = String(locked);
     if (label.dataset.affordable !== String(affordable)) label.dataset.affordable = String(affordable);
     if (label.title !== description) label.title = description;
     lock.hidden = !locked;
-    setText(price, affordable ? priceText : dollars.format(Math.ceil(cost - state.cash)) + ' short');
+    setText(price, priceText);
     setText(status, description);
     input.checked = session.design === id;
   }
@@ -445,7 +478,7 @@ function updateBuild(session, recipes) {
   setText(e.slots, model.fixedCpu ? 'Fixed · ' + siteHardware(state, {type: session.design, region}).cpu + ' CPU' : String(model.slots));
   const upkeep = dollars.format(model.upkeep) + '/day' + (model.cpuUpkeep ? ' + ' + model.cpuUpkeep + ' CPU' : '');
   setText(e.upkeep, upkeep);
-  setText(e.commissionTime, number.format(model.work) + ' CPU-h · ' + duration(laborHours(state, model)) + ' minimum');
+  setText(e.commissionTime, 'Paid as work progresses · ' + number.format(model.work) + ' CPU-h · ' + duration(laborHours(state, model)) + ' minimum');
   const reason = buildReason(state, session.design, region);
   e.previewBuild.hidden = !session.handlers.onPreviewOrder;
   e.previewBuild.disabled = e.build.disabled = Boolean(reason);
@@ -480,7 +513,8 @@ function updateInspector(session, site, hw) {
   e.dismantle.disabled = Boolean(reasonToKeep);
   e.saveName.disabled = state.status !== 'running';
   e.prev.disabled = e.next.disabled = session.hostCount < 2;
-  const status = !hw.rawCpu ? 'Offline · Install processors to bring this host online' :
+  const cpuRefit = hw.offlineSlots.includes('cpu');
+  const status = cpuRefit ? 'Processor installation · 0 CPU until complete' : !hw.rawCpu ? 'Offline · Install processors to bring this host online' :
     sleeping ? 'Sleeping · ' + potential + ' offline' : 'Active · ' + potential;
   setText(e.hostSummary, status + ' · Combined daily risk ' + riskLabel(state, totalRate, 'host'));
   e.power.disabled = state.status !== 'running' || !hw.rawCpu;
@@ -489,38 +523,64 @@ function updateInspector(session, site, hw) {
   for (const cell of e.installed.querySelectorAll('[data-slot]')) {
     const slot = cell.dataset.slot;
     const part = hw.installed[slot];
-    const installed = part ? EQUIPMENT[part.itemId].name + (slot === 'cpu' ? ' × ' + part.count : '') : 'Empty';
-    setText(cell, installed + (slot === 'cpu' && !hw.fixedProcessor ? ' · ' + (part?.count || 0) + '/' + hw.capacity + ' slots' : ''));
+    const order = hw.projects.find(project => EQUIPMENT[project.itemId].slot === slot);
+    const [rank, item, pending] = cell.children;
+    const fixed = Boolean(hw.fixedProcessor);
+    const installedName = part ? EQUIPMENT[part.itemId].name + (slot === 'cpu' ? ' × ' + part.count : '') : fixed ? 'Unavailable' : 'Empty';
+    const capacity = slot === 'cpu' && !fixed ? ' · ' + (part?.count || 0) + '/' + hw.capacity + ' slots' : '';
+    const offline = hw.offlineSlots.includes(slot);
+    showRank(rank, part ? equipmentRank(part.itemId) : 0, SLOT_NAMES[slot]);
+    setText(item, installedName + (part && fixed ? ' · Fixed' : '') + capacity);
+    if (order) {
+      const target = EQUIPMENT[order.itemId];
+      setText(pending, (offline && part ? 'Offline · ' : '') + 'Installing ' + target.name + ' × ' + order.count + ' · Rank ' + rankLabels[equipmentRank(order.itemId)]);
+    }
+    pending.hidden = !order;
+    cell.dataset.offline = String(offline);
   }
   e.fixed.hidden = !hw.fixedProcessor;
   e.hardware.hidden = Boolean(hw.fixedProcessor);
   if (hw.fixedProcessor) return;
-  const bundle = autoInstallQuote(state, site.id);
-  session.autoOrders = bundle.orders;
-  const components = bundle.orders.map(order => EQUIPMENT[order.itemId].name + ' × ' + order.count);
-  setText(e.autoParts, components.length ? components.join(' · ') : 'All compatible slots are occupied or have hardware on order.');
-  setText(e.autoInstall, 'Order package · ' + dollars.format(bundle.cost));
-  e.previewAuto.hidden = !session.handlers.onPreviewOrder;
-  e.previewAuto.disabled = e.autoInstall.disabled = Boolean(bundle.reason) || !components.length;
-  setText(e.autoReason, bundle.reason);
+  function showPackage(bundle, button, preview, parts, reason, label) {
+    const items = bundle.orders.map(order => EQUIPMENT[order.itemId].name + ' × ' + order.count);
+    const terms = bundle.orders.map(order => installQuote(state, site.id, order.itemId, order.count));
+    const work = terms.reduce((sum, term) => sum + term.work, 0);
+    const labor = Math.max(0, ...terms.map(term => term.hours));
+    setText(parts, items.length ? items.join(' · ') + ' — ' + number.format(work) + ' CPU-h · ' + duration(labor) + ' minimum · Paid as work progresses' : '');
+    parts.hidden = !items.length;
+    setText(button, label + (items.length ? ' · ' + dollars.format(bundle.cost) : ''));
+    preview.hidden = !session.handlers.onPreviewOrder || !items.length;
+    preview.disabled = button.disabled = Boolean(bundle.reason) || !items.length;
+    setText(reason, bundle.reason);
+    reason.hidden = !bundle.reason;
+    return bundle.orders;
+  }
+  session.autoOrders = showPackage(autoInstallQuote(state, site.id), e.autoInstall, e.previewAuto, e.autoParts, e.autoReason, 'Auto-build');
+  session.upgradeOrders = showPackage(autoUpgradeQuote(state, site.id), e.autoUpgrade, e.previewUpgrade, e.upgradeParts, e.upgradeReason, 'Auto-upgrade');
+  const warning = refitWarning(state, { type: 'auto-upgrade', siteId: site.id, expectedOrders: session.upgradeOrders });
+  e.upgradeWarning.hidden = !warning;
+  setText(e.upgradeWarning, warning);
   const slot = e.slot.value;
   const items = Object.entries(EQUIPMENT).filter(([, item]) => item.slot === slot && item.regions.includes(site.region));
   setOptions(e.item, items.map(([id, item]) => [
-    id, item.name + (item.requires.some(tech => !state.completed.includes(tech)) ? ' · Requires research' : ''),
+    id, item.name + ' · Rank ' + rankLabels[equipmentRank(id)] + (item.requires.some(tech => !state.completed.includes(tech)) ? ' · Requires research' : ''),
   ]));
   const itemId = e.item.value;
   const item = EQUIPMENT[itemId];
   e.countLabel.hidden = e.sliderLabel.hidden = slot !== 'cpu';
   e.previewInstall.hidden = !session.handlers.onPreviewOrder;
   e.item.disabled = !item;
+  e.itemRank.hidden = !item;
   if (!item) {
     e.previewInstall.disabled = e.install.disabled = e.countSlider.disabled = true;
     setText(e.effect, 'No compatible equipment in this category.');
     setText(e.quote, '');
+    e.refitWarning.hidden = true;
     setText(e.installReason, '');
     prerequisites(e.installPrereqs, [], state, session.handlers.onResearch);
     return;
   }
+  showRank(e.itemRank, equipmentRank(itemId), item.name);
   const count = slot === 'cpu' ? e.count.valueAsNumber : 1;
   const validCount = Number.isSafeInteger(count) && count > 0;
   const quote = installQuote(state, site.id, itemId, validCount ? count : 1);
@@ -534,8 +594,11 @@ function updateInspector(session, site, hw) {
   const after = projectedCompute(state, site, itemId, count);
   setText(e.effect, equipmentEffect(item) + replacement + extension +
     (after === null ? '' : ' · Host output ' + number.format(hw.cpu) + ' → ' + number.format(after) + ' CPU'));
-  setText(e.quote, validCount ? dollars.format(quote.cost) + ' · ' + number.format(quote.work) + ' CPU-h · ' + duration(quote.hours) + ' minimum' : '');
+  setText(e.quote, validCount ? dollars.format(quote.cost) + ' total · Paid as work progresses · ' + number.format(quote.work) + ' CPU-h · ' + duration(quote.hours) + ' minimum' : '');
   const reason = validCount ? installReason(state, site.id, itemId, count) : 'Enter a positive whole quantity.';
+  const manualWarning = reason ? '' : refitWarning(state, { type: 'install', siteId: site.id, itemId });
+  setText(e.refitWarning, manualWarning);
+  e.refitWarning.hidden = !manualWarning;
   e.previewInstall.disabled = e.install.disabled = Boolean(reason);
   e.install.setAttribute('aria-label', 'Install ' + item.name);
   const locked = prerequisites(e.installPrereqs, item.requires, state, session.handlers.onResearch);
@@ -549,7 +612,7 @@ function createHostRow(site) {
   row.innerHTML = `<h3><button type="button" class="facility-host-toggle">
     <span class="facility-host-mark" aria-hidden="true">${facilityIcon(site.type)}<span class="facility-host-light"></span></span>
     <span class="facility-host-title"><strong></strong><small></small></span>
-    <span class="facility-host-state"></span><span class="facility-chevron" aria-hidden="true">›</span>
+    <span class="facility-host-state"></span><span class="hardware-rank"></span><span class="facility-chevron" aria-hidden="true">›</span>
   </button></h3><div class="facility-host-detail" role="region" hidden></div>`;
   const button = row.querySelector('button');
   const panel = row.querySelector('.facility-host-detail');
@@ -559,15 +622,15 @@ function createHostRow(site) {
   button.setAttribute('aria-controls', panel.id);
   panel.setAttribute('aria-labelledby', button.id);
   row.querySelector('small').textContent = SITE_TYPES[site.type].name + ' · ' + REGIONS[site.region].name + ' · ' + site.id;
-  return { row, button, panel, title: row.querySelector('strong'), status: row.querySelector('.facility-host-state') };
+  return { row, button, panel, title: row.querySelector('strong'), status: row.querySelector('.facility-host-state'), rank: row.querySelector('.hardware-rank') };
 }
 
-function installRecords(state, site) {
+function installRecords(site, statuses) {
   return (site.installations || []).map(project => {
-    const item = regionalSpec(state, site.region, EQUIPMENT[project.itemId]);
+    const item = EQUIPMENT[project.itemId];
     return {
       ...project, id: site.id + '-' + item.slot, name: item.name + ' × ' + project.count + ' · ' + site.id,
-      totalWork: item.work * project.count, totalHours: project.laborHours ?? laborHours(state, item),
+      status: statuses.get(project),
     };
   });
 }
@@ -598,9 +661,11 @@ function updateHosts(session, sites) {
     if (e.hosts.children[index] !== entry.row) e.hosts.insertBefore(entry.row, e.hosts.children[index] || null);
     const hw = siteHardware(state, site);
     const sleeping = site.power === 'sleep';
-    const occupancy = !hw.cpu ? 'Offline · Awaiting CPU' : sleeping ? 'Asleep' : 'Online';
+    showRank(entry.rank, hostRank(site), hw.fixedProcessor ? 'Fixed hardware' : 'Average installed slot rank, including empty slots');
+    const cpuRefit = hw.offlineSlots.includes('cpu');
+    const occupancy = cpuRefit ? 'Processor installation · 0 CPU' : !hw.cpu ? 'Offline · Awaiting CPU' : sleeping ? 'Asleep' : 'Online';
     setText(entry.status, hw.cpu ? occupancy + ' · ' + number.format(hw.cpu) + ' CPU' : occupancy);
-    entry.row.dataset.status = !hw.cpu ? 'empty' : sleeping ? 'sleep' : 'online';
+    entry.row.dataset.status = cpuRefit ? 'refit' : !hw.cpu ? 'empty' : sleeping ? 'sleep' : 'online';
     const open = site.id === session.expandedId;
     entry.button.setAttribute('aria-expanded', String(open));
     entry.panel.hidden = !open;
@@ -613,7 +678,7 @@ function updateHosts(session, sites) {
         entry.panel.append(e.inspector);
       }
       updateInspector(session, site, hw);
-      const installs = installRecords(state, site);
+      const installs = installRecords(site, session.statuses);
       e.installQueuePanel.hidden = !installs.length;
       renderQueue(e.installQueue, installs);
     }
@@ -625,6 +690,7 @@ function updateHosts(session, sites) {
 
 function refresh(session) {
   const { state, region, elements: e } = session;
+  session.statuses = constructionStatuses(state);
   const manage = session.mode === 'manage';
   const showAll = manage && session.showAll;
   setOptions(e.region, manage ? [['all', 'All regions'], ...regionOptions] : regionOptions);
@@ -648,10 +714,10 @@ function refresh(session) {
     const spec = regionalSpec(state, build.region, SITE_TYPES[build.type]);
     return {
       ...build, cancellable: state.status === 'running', name: (build.name ? build.name + ' · ' : '') + spec.name + ' · ' + (showAll ? REGIONS[build.region].name + ' · ' : '') + build.id,
-      totalWork: spec.work, totalHours: build.laborHours ?? laborHours(state, spec),
+      status: session.statuses.get(build),
     };
   });
-  if (!manage) for (const site of sites) queue.push(...installRecords(state, site));
+  if (!manage) for (const site of sites) queue.push(...installRecords(site, session.statuses));
   e.queuePanel.hidden = !queue.length;
   if (queue.length) setText(e.queueHeading, manage ? 'Under construction' : 'Regional work queue');
   renderQueue(e.queue, queue);

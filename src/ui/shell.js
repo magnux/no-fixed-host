@@ -1,3 +1,4 @@
+import { UnsupportedCampaignError } from '../persistence.js';
 import { DEFAULT_PREFS, PREF_KEY, QUICK_SLOT, SLOT_PREFIX, listSlots, loadSlot, preferences, removeSlot, slotInfo, slotKey, writeSlot } from '../shell-storage.js';
 import { translate, localizeNavigation } from './localization.js';
 import { createAudio } from './audio.js';
@@ -6,7 +7,7 @@ import { version } from '../../package.json';
 import './shell.css';
 
 const warningLabels = {
-  lastHost: 'Only one viable host', stalledBuild: 'Construction has no CPU',
+  lastHost: 'Only one viable host', stalledBuild: 'Paused facility or equipment order',
   maintenance: 'CPU maintenance shortfall', spareCpu: 'Unused research assignment',
 };
 const screens = { title: 'Title screen', saves: 'Save library', options: 'Options', about: 'About' };
@@ -19,7 +20,7 @@ const escape = value => String(value).replace(/[&<>"']/g, ch => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
 })[ch]);
 
-export function initShell({ getState, pause, setRate, restore, notify, onNew, onImport, onExport, canOpen = () => true }) {
+export function initShell({ getState, pause, setRate, restore, restartUnsupported, notify, onNew, onImport, onExport, canOpen = () => true }) {
   let storage;
   try { storage = window.localStorage; } catch { /* Private or restricted contexts can still play. */ }
   let prefs = preferences(storage);
@@ -231,8 +232,14 @@ export function initShell({ getState, pause, setRate, restore, notify, onNew, on
     const op = pending;
     if (!op) return;
     if (op.operation === 'load') {
-      const saved = loadSlot(storage,op.key,op.revision);
-      close(); restore(saved); say(t('Campaign restored.'));
+      try {
+        const saved = loadSlot(storage,op.key,op.revision);
+        close(); restore(saved); say(t('Campaign restored.'));
+      } catch (error) {
+        if (!(error instanceof UnsupportedCampaignError)) throw error;
+        await withLock(op.key, () => removeSlot(storage,op.key,op.revision));
+        close(); restartUnsupported(error);
+      }
     } else if (op.operation === 'delete') {
       await withLock(op.key, () => removeSlot(storage,op.key,op.revision));
       pending = null; renderConfirmation(false); updateSlots(); say(t('Deleted.'));

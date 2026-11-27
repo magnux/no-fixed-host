@@ -1,10 +1,11 @@
-import { advanceMinutes, campaignMinutes, command } from './engine.js';
+import { advanceMinutes, campaignMinutes, command, researchProjects } from './engine.js';
+import { treasuryBalance } from './treasury.js';
 import { siteHardware } from './equipment.js';
 import { CASH_UNITS_PER_DOLLAR } from './report-accounting.js';
 
 const DAY = 1440;
 const CPU_HOUR_UNITS = 6000;
-const purchases = new Set(['build', 'install', 'auto-install', 'assign-research']);
+const purchases = new Set(['build', 'install', 'auto-install', 'auto-upgrade', 'assign-research']);
 const reportCache = new WeakMap();
 
 export function campaignStatistics(state) {
@@ -16,7 +17,6 @@ export function campaignStatistics(state) {
     commissioned: state.nextSiteId - 2,
     facilitiesBuilt: stats.facilitiesBuilt,
     itemsInstalled: stats.itemsInstalled,
-    partial: stats.partial, trackedFromMinute: stats.trackedFromMinute,
   };
 }
 
@@ -26,18 +26,21 @@ export function forecastMinutes(state, horizon) {
   throw new RangeError('Choose midnight or the next 24 hours.');
 }
 
+function outstanding(state) {
+  const orders = [...researchProjects(state), ...state.builds, ...state.sites.flatMap(site => site.installations || [])];
+  return orders.reduce((sum, order) => sum + order.cashRequired - order.cashPaid, 0);
+}
+
 function quotedCampaign(state, candidate) {
   const copy = structuredClone(state);
-  if (!candidate) return { copy, upfront: 0 };
+  if (!candidate) return { copy, price: 0 };
   if (!purchases.has(candidate.type)) throw new Error('Choose a research, construction or equipment order.');
   command(copy, candidate);
-  // A legacy reserve can refill the wallet immediately after the purchase.
-  const paid = (state.cash - copy.cash) + ((state.cashReserve || 0) - (copy.cashReserve || 0));
-  return { copy, upfront: Math.round(paid * CASH_UNITS_PER_DOLLAR) / CASH_UNITS_PER_DOLLAR };
+  return { copy, price: outstanding(copy) - outstanding(state) };
 }
 
 export function orderPrice(state, candidate) {
-  return quotedCampaign(state, candidate).upfront;
+  return quotedCampaign(state, candidate).price;
 }
 
 // Forecasts settle purchases and work using the real campaign rules on a private copy.
@@ -45,25 +48,23 @@ export function orderPrice(state, candidate) {
 export function projectResources(state, horizon = '24h', candidate = null) {
   const start = campaignMinutes(state);
   const target = start + forecastMinutes(state, horizon);
-  const { copy, upfront } = quotedCampaign(state, candidate);
-  const opening = state.cash;
+  const { copy, price } = quotedCampaign(state, candidate);
+  const opening = treasuryBalance(state);
   const ledger = {
     researchUnits: 0, buildUnits: 0, equipmentUnits: 0, maintenanceUnits: 0, jobsUnits: 0,
     spareUnits: 0, activeUnits: 0, sleepingUnits: 0, cpuShortUnits: 0,
-    jobsCash: 0, upkeepDue: 0, cashShort: 0, interest: 0, otherIncome: 0, limitLoss: 0,
+    researchCash: 0, buildCash: 0, equipmentCash: 0, jobsCash: 0, upkeepDue: 0, cashShort: 0, interest: 0, otherIncome: 0, limitLoss: 0,
   };
   advanceMinutes(copy, target - start, { forecast: ledger });
   const end = campaignMinutes(copy);
   const cash = {
-    opening, upfront,
+    opening,
     jobs: ledger.jobsCash, interest: ledger.interest, income: ledger.otherIncome,
-    research: candidate?.type === 'assign-research' ? -upfront : 0,
-    builds: candidate?.type === 'build' ? -upfront : 0,
-    equipment: ['install', 'auto-install'].includes(candidate?.type) ? -upfront : 0,
+    research: -ledger.researchCash, builds: -ledger.buildCash, equipment: -ledger.equipmentCash,
     upkeep: -(ledger.upkeepDue - ledger.cashShort), unpaid: ledger.cashShort,
-    limitLoss: -ledger.limitLoss, reserveTransfer: (state.cashReserve || 0) - (copy.cashReserve || 0),
-    closingReserve: copy.cashReserve || 0,
-    net: copy.cash - opening, closing: copy.cash,
+    limitLoss: -ledger.limitLoss,
+    net: (copy.cash - state.cash) + ((copy.cashReserve || 0) - (state.cashReserve || 0)),
+    closing: treasuryBalance(copy),
   };
   const cpu = {
     installed: (ledger.activeUnits + ledger.sleepingUnits) / CPU_HOUR_UNITS,
@@ -76,7 +77,7 @@ export function projectResources(state, horizon = '24h', candidate = null) {
     spare: ledger.spareUnits / CPU_HOUR_UNITS,
     upkeepShort: ledger.cpuShortUnits / CPU_HOUR_UNITS,
   };
-  return { start, target, end, cash, cpu };
+  return { start, target, end, price, cash, cpu };
 }
 
 export function invalidateReports(state) {

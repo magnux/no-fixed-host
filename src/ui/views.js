@@ -41,6 +41,7 @@ const btn = (label, action, attrs = '', cls = '') =>
   label +
   '</button>';
 const isNews = event => event.kind.startsWith('news.');
+const changesCoverage = event => ['news.world', 'news.expired'].includes(event.kind);
 
 function eventRows(events, limit) {
   return events.slice(-limit).reverse().map(event => {
@@ -48,17 +49,22 @@ function eventRows(events, limit) {
     const category = isNews(event) ? 'news' : event.kind === 'site.discovered' ? 'discovery' : 'activity';
     const chapter = storyKey(event);
     const readChapter = chapter && event.kind !== 'campaign.started' ? btn('Read chapter', 'chapter', 'data-id="' + chapter + '"', 'text-button') : '';
-    return '<li data-kind="' + category + '"><time>' + stamp(event.hour, event.minute) + '</time>' +
+    const desk = changesCoverage(event) ? 'Investigation update' : isNews(event) ? (event.desk || 'Bulletin') : '';
+    return '<li data-kind="' + category + '"><time>' + stamp(event.hour, event.minute) + (desk ? ' · ' + esc(desk) : '') + '</time>' +
       '<div>' + headline + '<span>' + esc(event.text) + '</span>' + readChapter + '</div></li>';
   }).join('');
 }
 
 export function newsPanel(state) {
   const news = state.events.filter(isNews);
+  const latest = news.slice(-4);
+  const update = news.findLast(changesCoverage);
+  // Keep a recent change in investigator behavior readable through several editions of the wire.
+  if (update && !latest.includes(update) && state.hour - update.hour <= 22 * 24) latest[0] = update;
   const active = Object.keys(state.news.stories).length;
   const coverage = active ? btn('Coverage (' + active + ')', 'tab', 'data-id="activity"', 'text-button') : icon('globe');
   return cardHeader('Newswire', coverage) + (news.length
-    ? '<ul class="event-list dock-events news-events" data-keep-scroll>' + eventRows(news, 4) + '</ul>'
+    ? '<ul class="event-list dock-events news-events" data-keep-scroll>' + eventRows(latest, 4) + '</ul>'
     : '<p class="waiting-news">' + (state.hour < 6 ? 'Listening for the first broadcast.' : 'No recent broadcasts.') + '</p>');
 }
 
