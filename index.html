@@ -92,20 +92,21 @@
                 value="0"
               />
               <div class="range-row">
-                <label for="research"><i class="dot violet"></i>Research</label
-                ><output id="research-value" for="research">0%</output>
+                <label for="research"><i class="dot violet"></i>Research total</label
+                ><output id="research-value" for="research">0 CPU</output>
               </div>
               <input
                 id="research"
                 type="range"
+                title="Resize the CPU assigned to your current research projects proportionally"
                 min="0"
-                max="100"
-                step="1"
+                max="0"
+                step="0.01"
                 value="0"
               />
               <div class="range-row pool">
                 <span><i class="dot cyan"></i>Shared pool</span
-                ><strong id="pool-value">100%</strong>
+                ><strong id="pool-value">0 CPU</strong>
               </div>
               <p class="allocation-note">
                 Pool covers upkeep and construction. Spare cycles earn cash.

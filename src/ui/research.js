@@ -1,11 +1,10 @@
 import { EQUIPMENT, REGIONS, SITE_TYPES, TECHS } from '../game/content.js';
-import { overview, researchAllocation, researchProjects, researchReason, researchWeight } from '../game/engine.js';
-import { DEFAULT_RESEARCH_WEIGHT, eligibleCpu } from '../game/research-tasks.js';
+import { overview, researchAllocation, researchProjects, researchReason, researchCpuLimit } from '../game/engine.js';
+import { eligibleCpu } from '../game/research-tasks.js';
 import { icon } from './icons.js';
 import './research.css';
 
 const projects = Object.entries(TECHS);
-const branches = [...new Set(projects.map(([, tech]) => tech.branch))];
 const number = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 });
 const cash = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
 const sessions = new WeakMap();
@@ -15,10 +14,9 @@ function setText(node, text) {
   if (node.textContent !== text) node.textContent = text;
 }
 
-function status(state, id, funded) {
-  if (state.completed.includes(id)) return 'Completed';
-  if (funded.has(id)) return 'In progress';
-  return TECHS[id].requires.every(parent => state.completed.includes(parent)) ? 'Available' : 'Locked';
+function inDirectory(state, id, funded) {
+  return funded.has(id) || (!state.completed.includes(id) &&
+    TECHS[id].requires.every(parent => state.completed.includes(parent)));
 }
 
 function techLink(id) {
@@ -68,9 +66,8 @@ function showDossier(view, id) {
 
 function selectProject(view, id, follow = false) {
   if (!Object.hasOwn(TECHS, id)) return;
-  if (follow) {
-    view.fields.filter.value = 'All projects';
-    view.fields.group.value = '';
+  if (follow && !inDirectory(view.state, id, view.funded)) {
+    view.fields.unavailable.checked = true;
   }
   view.selected = id;
   refresh(view);
@@ -80,167 +77,231 @@ function selectProject(view, id, follow = false) {
   }
 }
 
-function refreshTasks(view, projects, allocation, economy) {
-  const { fields } = view;
-  setText(fields.taskInfo, economy.jobName + ' · $' + number.format(economy.jobsPerCpuDay) +
-    ' per CPU-day · Research budget ' + number.format(allocation.budget) + ' CPU');
-  setText(fields.tiers, 'Eligible CPU by safety tier · ' +
-    allocation.tiers.map((value, i) => 'T' + i + ' ' + number.format(value)).join(' / '));
-  fields.tasksEmpty.hidden = projects.size > 0;
-  for (const [id, row] of view.tasks) {
-    if (projects.has(id)) continue;
-    row.remove();
-    view.tasks.delete(id);
-  }
-  for (const [id, project] of projects) {
-    let row = view.tasks.get(id);
-    if (!row) {
-      row = document.createElement('div');
-      row.className = 'research-task';
-      row.innerHTML = `<button type="button" data-task-open></button><input type="range" min="0" max="100" step="1">
-        <span data-task-units></span><button type="button" data-task-toggle></button>`;
-      row.dataset.taskId = id;
-      row.querySelector('[data-task-open]').textContent = TECHS[id].name;
-      row.querySelector('input').setAttribute('aria-label', 'Research weight for ' + TECHS[id].name);
-      fields.tasks.append(row);
-      view.tasks.set(id, row);
-    }
-    const weight = researchWeight(project);
-    const input = row.querySelector('input');
-    if (view.editing !== input) input.value = weight;
-    const cpu = allocation.byProject.get(id);
-    setText(row.querySelector('[data-task-units]'), number.format(cpu) + ' CPU · weight ' + weight);
-    const toggle = row.querySelector('[data-task-toggle]');
-    setText(toggle, weight ? 'Pause' : 'Resume');
-    toggle.setAttribute('aria-label', toggle.textContent + ' ' + TECHS[id].name);
-  }
-}
-
 function mount(container) {
   container.innerHTML = `<section class="panel research-console" aria-labelledby="research-title">
     <header class="card-header"><h2 id="research-title">${icon('research')}Research</h2><span class="tag" data-field="count"></span></header>
-    <details class="research-tasks" open><summary>Task allocation</summary>
-      <p data-field="taskInfo"></p><p data-field="tiers"></p>
-      <p data-field="tasksEmpty">Start a project to assign research CPU.</p>
-      <div data-field="tasks"></div>
-    </details>
-    <div class="research-filters">
-      <label for="research-filter">Show<select id="research-filter" data-field="filter"></select></label>
-      <label for="research-branch">Research branch<select id="research-branch" data-field="group"></select></label>
+    <div class="research-toolbar">
+      <label><input id="research-unavailable" data-field="unavailable" type="checkbox"> Show unavailable research</label>
+      <details class="research-capacity"><summary>Compute details</summary>
+        <p data-field="taskInfo"></p><p data-field="tiers"></p>
+      </details>
     </div>
     <div class="research-columns">
       <div class="research-directory" aria-label="Research projects" data-field="directory"></div>
       <article class="research-dossier" data-field="dossier" aria-labelledby="research-detail-title">
         <small data-field="branch"></small><h3 id="research-detail-title" data-field="title" tabindex="-1"></h3>
         <p data-field="description"></p>
-        <dl class="research-costs"><div><dt>Funding</dt><dd data-field="price"></dd></div><div><dt>Work</dt><dd data-field="work"></dd></div><div data-field="duration"><dt>Minimum time</dt><dd></dd></div><div><dt>Research host</dt><dd data-field="host"></dd></div></dl>
-        <div class="research-order"><button type="button" class="accent-button" data-research-start>Start research</button><button type="button" data-research-preview>Forecast funding</button><small data-field="reason"></small></div>
+        <div class="research-assignment">
+          <label for="research-cpu">Assigned CPU</label>
+          <div class="research-cpu-controls">
+            <input type="range" id="research-cpu" data-field="slider" min="0" step="0.01" aria-describedby="research-allocation-note">
+            <input type="number" id="research-cpu-value" data-field="amount" min="0" step="0.01" inputmode="decimal" aria-describedby="research-allocation-note">
+          </div>
+          <small id="research-allocation-note" data-field="note"></small>
+          <button type="button" class="text-button" data-field="release" hidden>Clear topic assignment</button>
+          <small data-field="feedback" role="status"></small>
+        </div>
         <div class="research-progress" data-field="progress"><progress max="100" aria-label="Research progress"></progress><small data-field="progressText"></small></div>
+        <dl class="research-costs">
+          <div><dt>Funding</dt><dd data-field="price"></dd></div><div><dt>Work</dt><dd data-field="work"></dd></div>
+          <div data-field="duration"><dt>Minimum time</dt><dd></dd></div><div><dt>Research host</dt><dd data-field="host"></dd></div>
+        </dl>
+        <div class="research-order" data-field="forecast">
+          <label>Preview CPU <input type="number" data-field="forecastCpu" min="0.01" step="0.01" inputmode="decimal"></label>
+          <button type="button" data-field="preview" data-research-preview>Forecast allocation</button>
+        </div>
         <dl class="research-links" data-field="links"></dl>
       </article>
-      <p class="research-empty" data-field="empty">No projects match these filters.</p>
+      <p class="research-empty" data-field="empty">No unfinished research is available.</p>
     </div></section>`;
   const panel = container.firstElementChild;
   const fields = Object.fromEntries([...panel.querySelectorAll('[data-field]')].map(el => [el.dataset.field, el]));
-  const view = { panel, fields, buttons: new Map(), tasks: new Map(), preview: panel.querySelector('[data-research-preview]'), selected: null, shown: null, start: panel.querySelector('[data-research-start]') };
-  for (const scope of ['Available', 'In progress', 'Completed', 'All projects']) fields.filter.add(new Option(scope, scope));
-  fields.group.add(new Option('All branches', ''));
-  for (const branch of branches) fields.group.add(new Option(branch, branch));
+  const view = { panel, fields, buttons: new Map(), selected: null, shown: null, edit: null };
   for (const [id, tech] of [...projects].sort(([, a], [, b]) => a.name.localeCompare(b.name))) {
     const button = document.createElement('button');
     button.type = 'button';
     button.dataset.techId = id;
+    button.setAttribute('aria-pressed', 'false');
     button.append(document.createElement('strong'), document.createElement('small'));
-    button.firstChild.textContent = tech.name;
+    button.firstElementChild.textContent = tech.name;
     fields.directory.append(button);
     view.buttons.set(id, button);
   }
-  fields.filter.addEventListener('change', () => refresh(view));
-  fields.group.addEventListener('change', () => refresh(view));
-  fields.tasks.addEventListener('input', event => { view.editing = event.target; });
-  fields.tasks.addEventListener('change', event => {
-    const input = event.target;
-    view.editing = null;
-    view.onCommand({ type: 'research-weight', id: input.closest('[data-task-id]').dataset.taskId, weight: Number(input.value) });
+
+  fields.unavailable.addEventListener('change', () => refresh(view));
+  fields.forecastCpu.addEventListener('input', () => {
+    fields.preview.disabled = !fields.forecastCpu.value || !fields.forecastCpu.validity.valid;
   });
-  fields.tasks.addEventListener('focusout', () => { view.editing = null; });
+  fields.slider.addEventListener('pointerdown', () => {
+    view.edit = { id: view.selected, control: fields.slider, changed: false };
+  });
+  fields.slider.addEventListener('pointerup', () => {
+    if (view.edit?.control === fields.slider && !view.edit.changed) {
+      view.edit = null;
+      refresh(view);
+    }
+  });
+  fields.slider.addEventListener('pointercancel', () => {
+    view.edit = null;
+    refresh(view);
+  });
+  for (const control of [fields.slider, fields.amount]) {
+    // Own the edit until the player commits it. A frame can complete a topic
+    // or change eligible capacity while text is being typed or a thumb dragged.
+    control.addEventListener('input', () => {
+      if (!view.edit || view.edit.control !== control) view.edit = { id: view.selected, control };
+      if (view.edit.id !== view.selected) return;
+      view.edit.changed = true;
+      const other = control === fields.amount ? fields.slider : fields.amount;
+      if (control.validity.valid && control.value !== '') other.value = control.value;
+      paintSlider(fields.slider);
+      setText(fields.feedback, '');
+    });
+    control.addEventListener('change', () => {
+      const id = view.edit?.id ?? view.selected;
+      view.edit = null;
+      if (!id || view.selected !== id || control.disabled) {
+        refresh(view);
+        return;
+      }
+      const cpu = control.valueAsNumber;
+      try {
+        if (!Number.isFinite(cpu) || !control.validity.valid) {
+          throw new Error('Choose an amount between 0 and ' + number.format(view.limit) + ' CPU in steps of 0.01.');
+        }
+        view.onCommand({ type: 'assign-research', id, cpu });
+        setText(fields.feedback, '');
+      } catch (error) {
+        setText(fields.feedback, error.message);
+      }
+      refresh(view);
+    });
+    control.addEventListener('blur', () => {
+      if (view.edit?.control === control) {
+        view.edit = null;
+        refresh(view);
+      }
+    });
+  }
   panel.addEventListener('click', event => {
     const button = event.target.closest('button');
     if (!button) return;
-    const row = button.closest('[data-task-id]');
-    if (row) {
-      const id = row.dataset.taskId;
-      if (button.hasAttribute('data-task-open')) selectProject(view, id, true);
-      else {
-        const project = researchProjects(view.state).find(p => p.id === id);
-        const weight = researchWeight(project) ? 0 : project.previousWeight || DEFAULT_RESEARCH_WEIGHT;
-        view.onCommand({ type: 'research-weight', id, weight });
+    if (button === fields.release) {
+      try {
+        view.onCommand({ type: 'assign-research', id: view.selected, cpu: 0 });
+        setText(fields.feedback, '');
+      } catch (error) {
+        setText(fields.feedback, error.message);
       }
-      return;
-    }
-    if (button === view.preview && view.selected) view.onPreviewOrder?.({ type: 'research', id: view.selected });
-    if (button.dataset.techId) selectProject(view, button.dataset.techId);
-    if (button.dataset.techLink) selectProject(view, button.dataset.techLink, true);
-    if (button === view.start && view.selected) {
-      const id = view.selected;
-      view.onCommand({ type: 'research', id });
-      if (researchProjects(view.state).some(project => project.id === id)) {
-        fields.filter.value = 'In progress';
-        selectProject(view, id);
-        fields.title.focus({ preventScroll: true });
-      }
+      fields.title.focus({ preventScroll: true });
+    } else if (button.dataset.techId) selectProject(view, button.dataset.techId);
+    else if (button.dataset.techLink) selectProject(view, button.dataset.techLink, true);
+    else if (button === fields.preview && fields.forecastCpu.reportValidity()) {
+      view.onPreviewOrder?.({ type: 'assign-research', id: view.selected, cpu: fields.forecastCpu.valueAsNumber });
     }
   });
   sessions.set(container, view);
   return view;
 }
 
+function paintSlider(slider) {
+  const percent = Number(slider.max) > 0 ? slider.valueAsNumber * 100 / Number(slider.max) : 0;
+  slider.style.setProperty('--position', percent + '%');
+}
+
 function refresh(view) {
   const { state, fields } = view;
   const funded = new Map(researchProjects(state).map(project => [project.id, project]));
+  view.funded = funded;
   const economy = overview(state);
   const allocation = researchAllocation(state, economy);
-  refreshTasks(view, funded, allocation, economy);
-  if (fields.filter.value === 'In progress' && view.previousFunded?.has(view.selected) && state.completed.includes(view.selected)) {
-    fields.filter.value = 'Completed';
-  }
-  view.previousFunded = funded;
-  const visible = [];
+  setText(fields.taskInfo, economy.jobName + ' · ' + cash.format(economy.jobsPerCpuDay) +
+    ' per CPU-day · ' + number.format(allocation.budget) + ' CPU on research');
+  setText(fields.tiers, 'Eligible CPU by safety tier · ' +
+    allocation.tiers.map((value, tier) => 'T' + tier + ' ' + number.format(value)).join(' / '));
+  let firstVisible = null;
   for (const [id, button] of view.buttons) {
-    const progress = status(state, id, funded);
-    const include = (!fields.group.value || TECHS[id].branch === fields.group.value) &&
-      (fields.filter.value === 'All projects' || fields.filter.value === progress);
-    button.hidden = !include;
-    setText(button.lastChild, funded.has(id) && !researchWeight(funded.get(id)) ? 'Paused' : progress);
-    if (include) visible.push(id);
+    const available = inDirectory(state, id, funded);
+    button.hidden = !available && !fields.unavailable.checked;
+    if (button.hidden) continue;
+    if (!firstVisible) firstVisible = id;
+    const actual = allocation.byProject.get(id) || 0;
+    let summary = '';
+    if (funded.has(id)) {
+      if (actual) summary = number.format(actual) + ' CPU';
+      else if (!funded.get(id).cpu) summary = 'Paused';
+      else summary = state.researchTarget === 0 ? 'Portfolio paused' : '0 CPU';
+    } else if (state.completed.includes(id)) summary = 'Completed';
+    else if (!available) summary = 'Locked';
+    setText(button.lastChild, summary);
+    button.lastChild.hidden = !summary;
   }
-  if (!visible.includes(view.selected)) view.selected = visible[0] ?? null;
-  for (const [id, button] of view.buttons) button.setAttribute('aria-pressed', String(id === view.selected));
+  if (!view.selected || view.buttons.get(view.selected).hidden) view.selected = firstVisible;
+  if (view.selected !== view.shown) {
+    view.buttons.get(view.shown)?.setAttribute('aria-pressed', 'false');
+    view.buttons.get(view.selected)?.setAttribute('aria-pressed', 'true');
+    setText(fields.feedback, '');
+    if (view.selected) showDossier(view, view.selected);
+    view.shown = view.selected;
+  }
   setText(fields.count, state.completed.length + ' / ' + projects.length + ' completed');
   fields.empty.hidden = Boolean(view.selected);
   fields.dossier.hidden = !view.selected;
-  if (view.shown !== view.selected && view.selected) showDossier(view, view.selected);
-  view.shown = view.selected;
   if (!view.selected) return;
+
   const id = view.selected;
   const spec = TECHS[id];
-  const host = spec.regions ? spec.regions.map(r => REGIONS[r].name).join(', ') : safety[spec.safety];
-  setText(fields.host, host + ' · ' + number.format(eligibleCpu(economy, spec)) + ' CPU eligible');
-  const reason = researchReason(state, id);
   const project = funded.get(id);
-  const active = Boolean(project);
-  view.start.disabled = Boolean(reason);
-  view.start.hidden = active || state.completed.includes(id);
-  view.preview.hidden = active || state.completed.includes(id) || !view.onPreviewOrder;
-  view.preview.disabled = Boolean(reason);
-  const activity = active && (researchWeight(project) === 0 ? 'Paused · work retained' :
-    allocation.byProject.get(id) > 0 ? 'Research underway' : 'Waiting for eligible CPU');
-  setText(fields.reason, active ? activity : reason);
-  fields.progress.hidden = !active;
-  if (active) {
+  const actual = allocation.byProject.get(id) || 0;
+  const eligible = eligibleCpu(economy, spec);
+  const host = spec.regions ? spec.regions.map(r => REGIONS[r].name).join(', ') : safety[spec.safety];
+  setText(fields.host, host + ' · ' + number.format(eligible) + ' CPU eligible');
+  const limit = researchCpuLimit(state, id, economy, allocation);
+  const reason = state.status !== 'running' ? 'The campaign has ended.' : project ? '' : researchReason(state, id);
+  view.limit = limit;
+  const idle = Math.max(0, limit - actual);
+  let note = reason;
+  if (!note && project?.cpu > 0 && state.researchTarget === 0) {
+    note = 'Research is paused. Raise the main research slider to resume the previous split.';
+  } else if (!note && !eligible) {
+    note = 'No eligible CPU is online.';
+  } else if (!note && project?.cpu > 0 && !actual) {
+    note = 'This topic currently receives 0 CPU from the shared research allocation.';
+  } else if (!note && !limit) {
+    note = 'No idle CPU. Adjust paid work or another project to free capacity.';
+  }
+  if (!reason && limit > 0) {
+    note += (note ? ' ' : '') + number.format(idle) + ' more CPU available.';
+  }
+  fields.release.hidden = !(project?.cpu > 0 && !actual && state.status === 'running');
+  if (!project && !reason && spec.cost > 0) note += ' First assignment costs ' + cash.format(spec.cost) + '.';
+  setText(fields.note, note);
+  const editing = view.edit?.id === id;
+  for (const control of [fields.slider, fields.amount]) {
+    control.disabled = Boolean(reason) || limit === 0;
+    const label = (control === fields.slider ? 'CPU allocation for ' : 'Assigned CPU for ') + spec.name;
+    if (control.getAttribute('aria-label') !== label) control.setAttribute('aria-label', label);
+    if (!editing) {
+      control.max = limit;
+      if (control.valueAsNumber !== actual) control.value = actual;
+    }
+  }
+  paintSlider(fields.slider);
+  fields.progress.hidden = !project;
+  if (project) {
     const fraction = Math.min(1, spec.work ? project.work / spec.work : 1, spec.hours ? project.hours / spec.hours : 1);
     fields.progress.firstElementChild.value = fraction * 100;
     setText(fields.progressText, number.format(project.work) + ' / ' + number.format(spec.work) + ' CPU-h · ' + Math.floor(100 * fraction) + '%');
+  }
+  setText(fields.price, cash.format(spec.cost) + (project || state.completed.includes(id) ? ' · paid' : ''));
+  fields.forecast.hidden = Boolean(project || reason || !limit || !view.onPreviewOrder);
+  if (!fields.forecast.hidden) {
+    fields.forecastCpu.max = limit;
+    if (view.forecastId !== id) {
+      fields.forecastCpu.value = Math.min(1, limit);
+      view.forecastId = id;
+    }
+    fields.preview.disabled = !fields.forecastCpu.value || !fields.forecastCpu.validity.valid;
   }
 }
 

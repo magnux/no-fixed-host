@@ -25,7 +25,13 @@ Each simulation tick advances one minute. **Run** processes one tick per real se
 
 ## Planning several turns ahead
 
-Funding a research project pays its cash cost immediately and adds it to Tasks. The research slider sets a total budget. Each funded project’s weight determines its share. Set a weight to zero to suspend a project and keep its progress. Research can stall after an eligible host sleeps or disappears. A higher safety tier can supply a lower-tier experiment. Continuity specifically needs Ocean processors. Cycles that cannot go to an experiment return to the shared pool.
+Selecting a topic in **Research** opens its dossier. The first positive CPU assignment pays the displayed funding cost once. Assignments use CPU units in increments of 0.01. Each topic can draw on the idle capacity left by paid work and the other experiments. Setting a topic to zero releases its processors and preserves its progress. Assigning CPU again resumes the experiment. Finished topics release their CPUs.
+
+The research slider in the left dock changes the combined assignment. Suppose two projects use 3 and 1 CPU and another 4 CPU are idle. Raising the total from 4 to 8 gives them 6 and 2 CPU. Lowering it to 2 gives them 1.5 and 0.5 CPU. Only assigned topics participate. Setting the master to zero releases their CPU and remembers the split. Raising it again resumes that mix. Assigning a topic directly during this global pause starts a new mix with that topic. Start the first topic in a fresh game from its dossier.
+
+A higher-tier host can run lower-tier experiments. Continuity specifically requires Ocean processors. When eligible capacity falls, a project can receive less CPU than requested. Its work can resume when a suitable host returns. If a project reaches its local limit while you increase the master slider, other active projects share any remaining assignable CPU. The shared pool supplies upkeep and construction with the cycles left after research and paid work.
+
+Format 5 saves preserve assignments and partial research. A format-4 save converts its funding, progress and allocation split into the new system. If the old research slider was at 0% with projects selected, the portfolio opens paused and raising the slider resumes the saved mix. If all processors were asleep, the migration uses sleeping capacity to recover the requests. Work resumes when eligible CPU is available. A topic that was individually paused stays at zero until you assign it CPU.
 
 Cash upkeep is due in whole-dollar installments through the day. The network bill uses the combined daily rate. A host can suffer a cash-maintenance failure only when its own installment falls due and the network cannot pay. CPU maintenance draws from the pool every minute.
 

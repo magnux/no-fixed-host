@@ -28,7 +28,7 @@ const spanish = {
   'Audio': 'Sonido', 'Enable audio': 'Activar sonido', 'Interface volume': 'Volumen de la interfaz', 'Music volume': 'Volumen de la música',
   'Preview sound': 'Probar sonido', 'Warnings': 'Avisos', 'Only one viable host': 'Solo queda un servidor viable',
   'Construction has no CPU': 'No hay CPU para construcción', 'CPU maintenance shortfall': 'CPU insuficiente para mantenimiento',
-  'Paused research or spare CPU': 'Investigación detenida o CPU disponible', 'Preferences apply to this browser.': 'Las preferencias se guardan en este navegador.',
+  'Unused research assignment': 'CPU asignada a investigación sin utilizar', 'Preferences apply to this browser.': 'Las preferencias se guardan en este navegador.',
   'Project and credits': 'Proyecto y créditos', 'Original inspiration': 'Inspiración original',
   'A browser strategy game about a fugitive intelligence.': 'Un juego de estrategia sobre una inteligencia que intenta sobrevivir.',
   'Source and issue tracker': 'Código e incidencias', 'Keyboard shortcuts': 'Atajos de teclado',

@@ -1,5 +1,5 @@
-import { allocateProjects, eligibleCpu, researchProjects, researchWeight } from './research-tasks.js';
-export { researchProjects, researchWeight } from './research-tasks.js';
+import { allocateProjects, assignmentLimit, eligibleCpu, portfolioLimit, requestedAssignments, researchProjects, resizePortfolio, validCpu } from './research-tasks.js';
+export { researchProjects } from './research-tasks.js';
 import { settleTreasury, spendTreasury, validTreasury } from './treasury.js';
 import { initializeStatistics, recordCreated, recordEarnings, validStatistics } from './report-accounting.js';
 import { regionalSpec, regionFactors, facilityName, validFacilityName, applyFacilityCommand } from './facility-operations.js';
@@ -17,7 +17,7 @@ const HOURS_PER_DAY = 24;
 const UNITS = 10_000;
 const MINUTES_PER_HOUR = 60;
 const MINUTES_PER_DAY = HOURS_PER_DAY * MINUTES_PER_HOUR;
-export const CAMPAIGN_VERSION = 4;
+export const CAMPAIGN_VERSION = 5;
 // A whole-percent share of a single CPU-minute earns one work unit.
 const WORK_UNITS = 100 * MINUTES_PER_HOUR;
 const CASH_UNITS = WORK_UNITS * HOURS_PER_DAY;
@@ -44,7 +44,7 @@ export function createGame(seed = 1) {
   }
   const state = {
     version: CAMPAIGN_VERSION, hour: 0, minute: 0, cash: 1000, regionSeed: seed, rng: seed, status: 'running', ending: '',
-    allocations: { jobs: 0, research: 50 },
+    allocations: { jobs: 0 },
     sites: [{ id: 'host-1', type: 'seed', region: 'coast', power: 'active', startedAt: 0 }],
     builds: [], research: null, researchQueue: [], completed: [],
     suspicion: { news: 0, science: 0, covert: 0, public: 0 },
@@ -93,6 +93,15 @@ export function researchAllocation(state, economy = overview(state)) {
   return allocateProjects(state, economy);
 }
 
+export function researchCpuLimit(state, id, economy = overview(state), allocation = researchAllocation(state, economy)) {
+  if (!known(TECHS, id) || state.status !== 'running') return 0;
+  return assignmentLimit(state, id, economy, allocation);
+}
+
+export function researchResizeLimit(state, economy = overview(state)) {
+  return state.status === 'running' ? portfolioLimit(state, economy) : 0;
+}
+
 export function buildReason(state, type, region) {
   if (state.status !== 'running') return 'The campaign has ended.';
   if (!known(SITE_TYPES, type) || !known(REGIONS, region)) return 'Unknown site or region.';
@@ -117,6 +126,41 @@ export function researchReason(state, id) {
     'Requires an active host with processors at safety tier ' + spec.safety + ' or higher.';
   if (state.cash < spec.cost) return 'Requires $' + spec.cost + ' to begin.';
   return '';
+}
+
+function assignResearch(state, id, cpu) {
+  if (!known(TECHS, id) || !validCpu(cpu)) throw new RangeError('Choose a topic and a nonnegative CPU amount in hundredths.');
+  const projects = researchProjects(state);
+  let project = projects.find(p => p.id === id);
+  if (!project && !cpu) return;
+  if (!project) {
+    const reason = researchReason(state, id);
+    if (reason) throw new Error(reason);
+  }
+  const economy = overview(state);
+  const allocation = researchAllocation(state, economy);
+  const maximum = researchCpuLimit(state, id, economy, allocation);
+  if (cpu > maximum) throw new RangeError('At most ' + maximum + ' CPU are available for this project.');
+  // A direct edit starts from the visible assignments. Clearing one member
+  // of a muted portfolio still lets the master restore the remaining mix.
+  const keepMuted = state.researchTarget === 0 && cpu === 0;
+  if (!keepMuted) {
+    const requested = requestedAssignments(projects, state.researchTarget);
+    projects.forEach((peer, i) => {
+      peer.cpu = eligibleCpu(economy, TECHS[peer.id]) ? allocation.byProject.get(peer.id) : requested[i];
+    });
+    delete state.researchTarget;
+  }
+  if (!project) {
+    spendTreasury(state, TECHS[id].cost);
+    project = { id, work: 0, hours: 0, cpu };
+    if (!state.research) state.research = project;
+    else state.researchQueue.push(project);
+    log(state, 'research.started', TECHS[id].name + ' is underway.', { techId: id });
+  } else {
+    project.cpu = cpu;
+    if (!projects.some(p => p.cpu > 0)) delete state.researchTarget;
+  }
 }
 
 export function command(state, action) {
@@ -147,31 +191,37 @@ export function command(state, action) {
   switch (action?.type) {
     case 'allocate': {
       const { jobs, research } = action;
-      if (![jobs, research].every(n => Number.isInteger(n) && n >= 0) || jobs + research > 100) {
-        throw new RangeError('Allocate whole percentages totaling at most 100%.');
+      if (!Number.isInteger(jobs) || jobs < 0 || jobs > 100 ||
+          (research !== undefined && (!Number.isFinite(research) || research < 0 || jobs + research > 100))) {
+        throw new RangeError('Allocate percentages totaling at most 100%.');
       }
-      state.allocations = { jobs, research };
+      const economy = overview(state);
+      const before = researchAllocation(state, economy);
+      state.allocations.jobs = jobs;
+      if (research !== undefined) {
+        resizePortfolio(state, Math.round(economy.activeCpu * research) / 100, economy);
+      } else if (before.budget > economy.activeCpu * (100 - jobs) / 100) {
+        resizePortfolio(state, economy.activeCpu * (100 - jobs) / 100, economy);
+      }
       break;
     }
+    case 'resize-research': {
+      if (!validCpu(action.cpu)) throw new RangeError('Choose a nonnegative CPU amount in hundredths.');
+      resizePortfolio(state, action.cpu, overview(state));
+      break;
+    }
+    case 'assign-research':
+      assignResearch(state, action.id, action.cpu);
+      break;
     case 'research': {
+      // Compatibility for scripts and the developer console. Gameplay uses an
+      // explicit CPU count, including when confirming a forecast.
       const reason = researchReason(state, action.id);
       if (reason) throw new Error(reason);
-      const spec = TECHS[action.id];
-      spendTreasury(state, spec.cost);
-      const project = { id: action.id, work: 0, hours: 0 };
-      if (!state.research) state.research = project;
-      else state.researchQueue.push(project);
-      log(state, 'research.started', spec.name + ' is underway.', { techId: action.id });
-      break;
-    }
-    case 'research-weight': {
-      const project = researchProjects(state).find(p => p.id === action.id);
-      if (!project || !Number.isInteger(action.weight) || action.weight < 0 || action.weight > 100) {
-        throw new Error('Choose a funded project and a weight from 0 to 100.');
-      }
-      if (action.weight === 0 && researchWeight(project)) project.previousWeight = researchWeight(project);
-      if (action.weight > 0) delete project.previousWeight;
-      project.weight = action.weight;
+      const economy = overview(state);
+      const cpu = Math.min(economy.activeCpu / 2, researchCpuLimit(state, action.id, economy));
+      if (!cpu) throw new Error('Free some CPU before assigning research.');
+      assignResearch(state, action.id, cpu);
       break;
     }
     case 'build': {
@@ -297,6 +347,23 @@ function workMinute(state, economy, effects, forecast, upkeepUnitsFor) {
       const progress = progressOrder(project, tech.work, tech.hours, allocated);
       researchUnits += progress.used;
       if (progress.done) finished.push(project);
+    }
+    if (finished.length && state.researchTarget !== undefined) {
+      const projects = researchProjects(state);
+      const blocked = projects.some(p => !finished.includes(p) && p.cpu > 0 && !eligibleCpu(economy, TECHS[p.id]));
+      if (state.researchTarget > 0 && blocked) {
+        // A live project may have temporarily borrowed an offline line's
+        // share. Its completion releases that CPU without cancelling the
+        // offline experiment's standing request.
+        const desired = requestedAssignments(projects, state.researchTarget);
+        projects.forEach((p, i) => {
+          p.cpu = eligibleCpu(economy, TECHS[p.id]) ? allocation.byProject.get(p.id) : desired[i];
+        });
+        delete state.researchTarget;
+      } else {
+        const released = finished.reduce((total, p) => total + Math.round(allocation.byProject.get(p.id) * 100), 0);
+        state.researchTarget = (Math.round(allocation.budget * 100) - released) / 100;
+      }
     }
     pool -= researchUnits;
   }
@@ -458,6 +525,7 @@ function minute(state, effects, forecast) {
     const remaining = researchProjects(state).filter(project => !finished.includes(project));
     state.research = remaining.shift() || null;
     state.researchQueue = remaining;
+    if (!researchProjects(state).some(p => p.cpu > 0)) delete state.researchTarget;
   }
   for (const { id: finishedTech } of finished) {
     state.completed.push(finishedTech);
@@ -532,7 +600,7 @@ function validProgress(row, spec) {
 const oldCampaignParents = { contracts: [], robotics: ['contracts'] };
 
 export function validateSave(state, version = CAMPAIGN_VERSION) {
-  if (![2, 3, CAMPAIGN_VERSION].includes(version) || !record(state) || state.version !== version ||
+  if (![2, 3, 4, CAMPAIGN_VERSION].includes(version) || !record(state) || state.version !== version ||
       !whole(state.hour) || !validMinute(state.minute) || !minuteAmount(state.cpuHours) ||
       !Number.isSafeInteger(campaignMinutes(state)) || (state.cashRemainder !== undefined &&
         (!quantity(state.cashRemainder) || state.cashRemainder >= 1)) ||
@@ -540,8 +608,10 @@ export function validateSave(state, version = CAMPAIGN_VERSION) {
       !['running', 'won', 'lost'].includes(state.status) || typeof state.ending !== 'string') return false;
   if (state.legacyIncomeDay !== undefined && (version < 4 || state.legacyIncomeDay !== Math.floor(state.hour / 24) ||
       campaignMinutes(state) % MINUTES_PER_DAY === 0)) return false;
-  if (!record(state.allocations) || !whole(state.allocations.jobs) || !whole(state.allocations.research) ||
-      state.allocations.jobs + state.allocations.research > 100) return false;
+  if (!record(state.allocations) || !whole(state.allocations.jobs) || state.allocations.jobs > 100) return false;
+  if (version < 5 && (!whole(state.allocations.research) || state.allocations.jobs + state.allocations.research > 100)) return false;
+  if (version >= 5 && (state.allocations.research !== undefined ||
+      (state.researchTarget !== undefined && !validCpu(state.researchTarget)))) return false;
   if (!record(state.suspicion) || !GROUP_IDS.every(id => whole(state.suspicion[id])) ||
       !Array.isArray(state.recentRegions) || state.recentRegions.length > 2 ||
       !state.recentRegions.every(id => known(REGIONS, id))) return false;
@@ -560,10 +630,13 @@ export function validateSave(state, version = CAMPAIGN_VERSION) {
   for (const p of funded) {
     if (!record(p) || !known(TECHS, p.id) || techIds.has(p.id) || state.completed.includes(p.id) ||
         !hasParents(p.id) || !validProgress(p, TECHS[p.id]) ||
-        (version >= 4 && ((p.weight !== undefined && (!whole(p.weight) || p.weight > 100)) ||
+        (version >= 5 && (!validCpu(p.cpu) || p.weight !== undefined || p.previousWeight !== undefined)) ||
+        (version === 4 && ((p.weight !== undefined && (!whole(p.weight) || p.weight > 100)) ||
           (p.previousWeight !== undefined && (p.weight !== 0 || !whole(p.previousWeight) || !p.previousWeight || p.previousWeight > 100))))) return false;
     techIds.add(p.id);
   }
+  if (version >= 5 && ((state.researchTarget !== undefined && !funded.some(p => p.cpu > 0)) ||
+      !Number.isSafeInteger(funded.reduce((total, p) => total + Math.round(p.cpu * 100), 0)))) return false;
   if (!Array.isArray(state.sites) || !Array.isArray(state.builds) ||
       !whole(state.nextSiteId) || state.nextSiteId < 2 ||
       !whole(state.nextEventId) || state.nextEventId < 1) return false;

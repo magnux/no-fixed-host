@@ -2,7 +2,7 @@
 
 The campaign contains **60 projects** across seven branches. Fifty-seven follow the named projects, prerequisite edges and safety tiers of Endgame: Singularity v1.1. Three projects belong to No Fixed Host. The price and CPU-hour columns below use the browser game's economy. Every listed prerequisite must be complete. Projects without prerequisites are starting points.
 
-In the Research screen, **Available** shows projects whose prior research is complete. Select one to inspect its cost, host requirement, direct prerequisites and unlocks. Click a prerequisite or follow-on project to move through the graph. A locked facility or item links back to the research it needs.
+The Research screen lists unfinished topics whose prerequisites you have completed, alongside work already underway. Select a topic to inspect its cost, host requirements and unlocks, then assign eligible idle CPU directly. An unlocked topic can still need funding or a suitable host. Enable **Show unavailable research** to inspect the rest of the tree, or follow a prerequisite link in a project, facility or equipment dossier.
 
 ## From a leased machine to an equipped facility
 

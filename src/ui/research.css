@@ -27,13 +27,21 @@
   .research-dossier { border-left: 0; border-top: 1px solid var(--line); }
 }
 
-.research-tasks { padding: .55rem 1rem; border-bottom: 1px solid var(--line); }
-.research-tasks summary { cursor: pointer; font-weight: 650; }
-.research-tasks p { font-size: .78rem; color: var(--quiet); margin: .35rem 0; }
-.research-task { display: grid; grid-template-columns: minmax(7rem,1fr) minmax(4rem,.6fr) auto auto; align-items: center; gap: .5rem; margin-top: .35rem; }
-.research-task button { font-size: .76rem; padding: .28rem .5rem; }
-.research-task input { width: 100%; accent-color: var(--mint); }
-.research-task span { font: .72rem var(--mono); }
-@media (max-width: 41rem) {
-  .research-task { grid-template-columns: 1fr 1fr; }
-}
+.research-toolbar { padding: .55rem 1rem; display: flex; align-items: baseline; flex-wrap: wrap; gap: .45rem 1rem; border-bottom: 1px solid var(--line); }
+.research-toolbar label { display: inline-flex; align-items: center; gap: .4rem; font-size: .82rem; }
+.research-toolbar input[type="checkbox"] { accent-color: var(--mint); margin: 0; }
+.research-capacity summary { cursor: pointer; font-size: .8rem; color: var(--quiet); }
+.research-capacity p { color: var(--quiet); font-size: .78rem; margin: .4rem 0 0; }
+.research-assignment { display: grid; gap: .35rem; padding: .7rem; background: #162528; border: 1px solid var(--line); border-radius: .35rem; }
+.research-assignment label { font-size: .82rem; font-weight: 600; }
+.research-cpu-controls { display: grid; grid-template-columns: minmax(3rem,1fr) minmax(5.25rem,25%); align-items: center; gap: .8rem; }
+.research-cpu-controls input { width: 100%; min-width: 0; accent-color: var(--mint); }
+.research-cpu-controls input[type="number"] { font: .82rem var(--mono); padding: .35rem .45rem; }
+.research-assignment small { font-size: .76rem; line-height: 1.35; color: var(--quiet); }
+.research-assignment small:empty { display: none; }
+.research-assignment [role=status] { color: #f3cf87; }
+.research-cpu-controls input[type="range"] { --range: var(--violet); --position: 0%; margin: 0; }
+.research-cpu-controls input:disabled { opacity: .58; cursor: default; }
+.research-assignment .text-button { justify-self: start; }
+.research-order label { display: inline-flex; align-items: center; gap: .4rem; font-size: .8rem; color: var(--quiet); }
+.research-order input[type="number"] { width: 5.25rem; padding: .3rem; font: .8rem var(--mono); }

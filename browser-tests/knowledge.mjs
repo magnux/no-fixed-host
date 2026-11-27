@@ -7,8 +7,7 @@ import { CAMPAIGN_STORAGE_KEY, encodeCampaign } from '../src/persistence.js';
 
 test('the reference can be searched during playback and links a completed finding to its real project', async t => {
   const world = createGame(19);
-  command(world, {type:'research', id:'intrusion'});
-  command(world, {type:'allocate', jobs:0, research:100});
+  command(world, {type:'assign-research', id:'intrusion', cpu:1});
   for (let i = 0; !world.completed.includes('intrusion') && i < 8; i++) advanceMinutes(world, 1440);
   assert.ok(world.completed.includes('intrusion'));
   const server = await createServer({logLevel:'error', server:{host:'127.0.0.1', port:0, hmr:false, watch:null}});

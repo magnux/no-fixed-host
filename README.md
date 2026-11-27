@@ -13,13 +13,13 @@ npm run dev
 
 Open the address printed by Vite. The campaign starts paused and saves in the browser. **Run** advances one game minute per real second. Each click of **Fast** changes the rate: **Fast x1** runs one game hour per second, **Fast x2** six hours, and **Fast x3** one day. The next click returns to x1. The clock and daylight move throughout the second. **Pause** stops at the current minute, and discovery interrupts playback at the minute the site is found. Use the campaign menu to export or import a portable save.
 
-For a first run, click Europe on the map and commission a leased relay. Open Research and complete **Intrusion**, then **Personal Identification**. This unlocks storage units and basic paid work. In Facilities, build a storage unit and expand its entry to install processors. A configurable building starts contributing compute when the first processors go online. A second equipped site also gives you somewhere to survive a discovery.
+For a first run, click Europe on the map and commission a leased relay. Open **Research**, select **Intrusion**, and assign it some CPU. When it finishes, assign CPU to **Personal Identification**. This unlocks storage units and basic paid work. In Facilities, build a storage unit and expand its entry to install processors. A configurable building starts contributing compute when the first processors go online. A second equipped site also gives you somewhere to survive a discovery.
 
 ## Playing the campaign
 
 | When you need to… | Where to go |
 | --- | --- |
-| Split work between projects or suspend an experiment | **Research → Tasks**. Fund the projects first, assign a research percentage in the left dock, then change their relative weights. |
+| Split work between projects or suspend an experiment | In **Research**, select an available topic and assign idle CPU. The first positive assignment pays its listed price. Set a topic to zero to pause it, or use the left-dock research slider to resize all running topics proportionally. |
 | Compare building here with keeping the money | Open a facility or research design and preview the order in **Reports**. Compare cash and CPU to midnight or over the next 24 hours. Place the order there if the trade looks worthwhile. |
 | Change an existing host | Click its region on the atlas, expand its entry in **Facilities**, and inspect upgrades, local upkeep and investigator risks. |
 | Understand a discovery | Read the paused report, inspect its region, or open **Activity** to filter the history and replay dispatches. |

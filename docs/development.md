@@ -31,7 +31,7 @@ After editing research definitions, run `node scripts/research-reference.mjs` to
 
 ## Playtest notes
 
-On the base-release seed-19 playthrough, a campaign using ordinary commands and up to two concurrent projects reached Apotheosis on day 210 at 22:50. It completed 25 projects and survived 20 discoveries. A portable victory checkpoint restored successfully and free play continued to day 213. The Far Reaches construction schedule was the longest leg.
+On the format-4 base-release seed-19 playthrough, a campaign using ordinary commands and up to two concurrent projects reached Apotheosis on day 210 at 22:50. It completed 25 projects and survived 20 discoveries. A portable victory checkpoint restored successfully and free play continued to day 213. The Far Reaches construction schedule was the longest leg.
 
 In the first 60-project release, a fresh seed 4 campaign completed all projects and reached Apotheosis on game day 119 after ten facility discoveries. A seed 19 run that prioritized processor racks reached Apotheosis on day 75, survived nine discoveries and ended with about $26.9 million. Both used normal player commands. These runs predate the change to Contract brokerage and the engineering prerequisite for Subsea robotics. They raised a balance question for future expeditions: how should late projects compete for funding once supercomputer racks make paid work highly profitable?
 

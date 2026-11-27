@@ -7,7 +7,7 @@ import './shell.css';
 
 const warningLabels = {
   lastHost: 'Only one viable host', stalledBuild: 'Construction has no CPU',
-  maintenance: 'CPU maintenance shortfall', spareCpu: 'Paused research or spare CPU',
+  maintenance: 'CPU maintenance shortfall', spareCpu: 'Unused research assignment',
 };
 const screens = { title: 'Title screen', saves: 'Save library', options: 'Options', about: 'About' };
 const errors = {

@@ -4,7 +4,7 @@ import { CASH_UNITS_PER_DOLLAR } from './report-accounting.js';
 
 const DAY = 1440;
 const CPU_HOUR_UNITS = 6000;
-const purchases = new Set(['build', 'install', 'auto-install', 'research']);
+const purchases = new Set(['build', 'install', 'auto-install', 'assign-research']);
 const reportCache = new WeakMap();
 
 export function campaignStatistics(state) {
@@ -57,7 +57,7 @@ export function projectResources(state, horizon = '24h', candidate = null) {
   const cash = {
     opening, upfront,
     jobs: ledger.jobsCash, interest: ledger.interest, income: ledger.otherIncome,
-    research: candidate?.type === 'research' ? -upfront : 0,
+    research: candidate?.type === 'assign-research' ? -upfront : 0,
     builds: candidate?.type === 'build' ? -upfront : 0,
     equipment: ['install', 'auto-install'].includes(candidate?.type) ? -upfront : 0,
     upkeep: -(ledger.upkeepDue - ledger.cashShort), unpaid: ledger.cashShort,

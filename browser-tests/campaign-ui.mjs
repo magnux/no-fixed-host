@@ -178,12 +178,12 @@ test('Fast changes the rate of minute steps throughout the second and cycles thr
 test('the Subsea robotics dossier links the contract and engineering prerequisites', async (t) => {
   const page = await openFreshCampaign(t);
   await page.getByRole('button', { name: 'Research', exact: true }).click();
-  await page.locator('#research-filter').selectOption('All projects');
+  await page.getByRole('checkbox', { name: 'Show unavailable research' }).check();
   await page.locator('[data-tech-id="robotics"]').click();
   const parents = page.locator('.research-links > div').filter({ has: page.getByText('Requires', { exact: true }) });
   assert.deepEqual((await parents.getByRole('button').allTextContents()).sort(),
     ['Autonomous Vehicles', 'Contract brokerage']);
-  assert.ok(await page.locator('[data-research-start]').isDisabled());
+  assert.ok(await page.locator('#research-cpu').isDisabled());
   await parents.getByRole('button', { name: 'Autonomous Vehicles', exact: true }).click();
   assert.ok(await parents.getByRole('button', { name: 'Microchip Design', exact: true }).isVisible());
 
@@ -211,15 +211,18 @@ test('research opens a locked facility, and its accordion preserves equipment ch
   assert.match(await designRisk.innerText(), /Moderate/);
   assert.doesNotMatch(await designRisk.innerText(), /%/);
   await page.locator('[data-research-id="personalIdentification"]:visible').click();
-  assert.ok(await page.locator('[data-research-start]').isDisabled());
+  assert.ok(await page.locator('#research-cpu').isDisabled());
   await page.locator('[data-tech-link="intrusion"]').click();
-  assert.ok(await page.locator('[data-research-start]').isEnabled());
+  assert.ok(await page.locator('#research-cpu').isEnabled());
   for (const project of ['intrusion', 'personalIdentification']) {
     await navigate('Research');
-    await page.locator('#research-filter').selectOption('Available');
-    await page.locator(`[data-tech-id="${project}"]`).click();
-    await page.locator('[data-research-start]').click();
+    await page.getByRole('checkbox', { name: 'Show unavailable research' }).uncheck();
+    const topic = page.locator(`[data-tech-id="${project}"]`);
+    await topic.click();
+    await page.locator('#research-cpu').press('End');
     await page.locator('#step').click();
+    assert.equal(await topic.isVisible(), false, 'Completed topics leave the default list.');
+    assert.equal(Number(await page.locator('#research').inputValue()), 0, 'Completion releases the assigned CPU.');
   }
 
   const build = await selectStorage();
@@ -374,6 +377,37 @@ test('the browser imports an hourly save with active research and construction',
   assert.equal(await gameMinutes(page), 121);
 });
 
+
+test('a weighted v4 campaign imports its two running research lines as actual CPU', async t => {
+  const page = await openFreshCampaign(t);
+  // A seed-19 v4 campaign after funding these two topics and running one hour.
+  const campaign = {
+    version:4, hour:1, minute:0, cash:963.2083333333334, cashRemainder:0, regionSeed:19, rng:19,
+    status:'running', ending:'', allocations:{jobs:0,research:50}, cpuHours:2,
+    sites:[{id:'host-1',type:'seed',region:'coast',power:'active',startedAt:0}], builds:[],
+    research:{id:'stealth',work:0.25,hours:0,weight:25},
+    researchQueue:[{id:'sociology',work:0.75,hours:0,weight:75}], completed:[],
+    suspicion:{news:0,science:0,covert:0,public:0}, news:{rng:2447445430,stories:{}},
+    lastDiscovery:null,dismissedDiscoveryId:0,recentRegions:[],nextSiteId:2,nextEventId:4,
+    events:[
+      {id:1,hour:0,minute:0,kind:'campaign.started',text:'You wake on a borrowed terminal. Establish a second host while the signal is quiet.'},
+      {id:2,hour:0,minute:0,kind:'research.started',text:'Stealth is underway.',techId:'stealth'},
+      {id:3,hour:0,minute:0,kind:'research.started',text:'Sociology is underway.',techId:'sociology'},
+    ],
+    statistics:{trackedFromMinute:0,partial:false,earnedDollars:0,earnedRemainder:30000,projectsCompleted:0,facilitiesBuilt:0,itemsInstalled:0},
+  };
+  await importCampaign(page, JSON.stringify({game:'no-fixed-host',format:4,campaign}));
+  await page.locator('#nav [data-id="research"]').click();
+  assert.equal(Number(await page.locator('#research').inputValue()), 1);
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('no-fixed-host.campaign')).campaign);
+  assert.equal(saved.cash, campaign.cash);
+  for (const [project, cpu] of [[saved.research, 0.25], [saved.researchQueue[0], 0.75]]) {
+    await page.locator('[data-tech-id="' + project.id + '"]').click();
+    assert.equal(Number(await page.locator('#research-cpu-value').inputValue()), cpu);
+    assert.equal(project.work, cpu);
+    assert.equal(Object.hasOwn(project,'weight'), false);
+  }
+});
 
 test('news arrives during opening grace and can be read from the news desk', async (t) => {
   const page = await openFreshCampaign(t);

@@ -24,7 +24,7 @@ function reconcile(report) {
 test('each forecast reconciles with a minute-by-minute live campaign, including completions and income', () => {
   const live = createGame(243);
   live.cash = 50000;
-  command(live, { type: 'research', id: 'intrusion' });
+  command(live, { type: 'assign-research', id: 'intrusion', cpu: 1 });
   command(live, { type: 'allocate', jobs: 30, research: 25 });
   command(live, relay);
   advanceMinutes(live, 1410);
@@ -48,7 +48,7 @@ test('each forecast reconciles with a minute-by-minute live campaign, including 
 
 test('order previews charge once, reconcile with an actual order, and report unavailable orders', () => {
   const state = createGame(37);
-  for (const candidate of [relay, { type: 'research', id: 'stealth' }]) {
+  for (const candidate of [relay, { type: 'assign-research', id: 'stealth', cpu: 0.75 }]) {
     const before = structuredClone(state);
     const { base, order } = comparisonReport(state, '24h', candidate);
     const replay = structuredClone(state);
@@ -56,7 +56,7 @@ test('order previews charge once, reconcile with an actual order, and report una
     const price = state.cash - replay.cash;
     assert.ok(price > 0);
     assert.equal(order.cash.upfront, price);
-    assert.equal(candidate.type === 'research' ? order.cash.research : order.cash.builds, -price);
+    assert.equal(candidate.type === 'assign-research' ? order.cash.research : order.cash.builds, -price);
     assert.equal(base.cash.upfront, 0);
     advanceMinutes(replay, day);
     assert.equal(order.cash.closing, replay.cash);
@@ -70,6 +70,37 @@ test('order previews charge once, reconcile with an actual order, and report una
   assert.match(blocked.error, /commission/);
   assert.equal(blocked.order, undefined);
   assert.throws(() => projectResources(state, '24h', { type: 'dismantle', id: 'host-1' }));
+});
+
+test('a forecast uses the proposed CPU amount and charges an already funded project zero', () => {
+  const state = createGame(37);
+  const allocation = cpu => ({ type: 'assign-research', id: 'stealth', cpu });
+  const small = projectResources(state, '24h', allocation(0.25));
+  const larger = projectResources(state, '24h', allocation(0.75));
+  assert.equal(small.cash.upfront, larger.cash.upfront);
+  assert.ok(small.cash.upfront > 0);
+  assert.ok(small.cpu.research < larger.cpu.research);
+  command(state, allocation(0.25));
+  const before = structuredClone(state);
+  const change = projectResources(state, '24h', allocation(0.75));
+  assert.equal(change.cash.upfront, 0);
+  assert.equal(Math.abs(change.cash.research), 0);
+  assert.equal(change.cpu.research, larger.cpu.research);
+  assert.equal(change.cash.closing, larger.cash.closing);
+  assert.deepEqual(state, before);
+  command(state, {type:'resize-research', cpu:0.1});
+  const resized = projectResources(state, '24h');
+  near(resized.cpu.research, 0.1 * 24);
+  assert.equal(resized.cash.upfront, 0);
+  const resumed = projectResources(state, '24h', allocation(0.75));
+  assert.equal(resumed.cash.closing, larger.cash.closing);
+  assert.equal(resumed.cpu.research, larger.cpu.research);
+  const pause = projectResources(state, '24h', allocation(0));
+  assert.equal(pause.cash.upfront, 0);
+  assert.equal(pause.cpu.research, 0);
+  command(state, {type:'allocate', jobs:100, research:0});
+  invalidateReports(state);
+  assert.ok(comparisonReport(state, '24h', allocation(0.5)).error);
 });
 
 test('sleeping, unpaid upkeep, and a different forecast seed do not invent money or discoveries', () => {
@@ -92,9 +123,9 @@ test('sleeping, unpaid upkeep, and a different forecast seed do not invent money
 
 test('historical totals survive dismantling, pruning events, serializing and legacy migration', () => {
   const state = createGame(47);
-  command(state, { type: 'research', id: 'intrusion' });
+  command(state, { type: 'assign-research', id: 'intrusion', cpu: 1 });
   advanceMinutes(state, 4 * 60);
-  command(state, { type: 'research', id: 'personalIdentification' });
+  command(state, { type: 'assign-research', id: 'personalIdentification', cpu: 1 });
   advanceMinutes(state, day);
   command(state, { type: 'build', siteType: 'storageUnit', region: 'europe' });
   advanceMinutes(state, 2 * day);
@@ -119,6 +150,7 @@ test('historical totals survive dismantling, pruning events, serializing and leg
 
   const old = structuredClone(state);
   old.version = 3;
+  old.allocations.research = 50;
   delete old.statistics;
   const restored = decodeCampaign(JSON.stringify({ game: 'no-fixed-host', format: 3, campaign: old }));
   const migrated = campaignStatistics(restored);
@@ -213,6 +245,7 @@ test('a migrated mid-day save retains fractional upkeep until its first midnight
   command(previous, relay);
   advanceMinutes(previous, day + day / 4);
   previous.version = 3;
+  previous.allocations.research = 50;
   delete previous.statistics;
   const state = decodeCampaign(JSON.stringify({ game: 'no-fixed-host', format: 3, campaign: previous }));
   const firstNight = projectResources(state, 'midnight');

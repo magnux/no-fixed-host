@@ -168,8 +168,7 @@ test('fractional research allocation completes on the exact hour and pays the re
   build(game, 'relay', 'europe');
   advance(game, SITE_TYPES.relay.hours);
   assert.equal(overview(game).activeCpu, 6);
-  allocate(game, 0, 20);
-  research(game, 'contracts');
+  command(game, {type:'assign-research', id:'contracts', cpu:1.2});
   const startingCash = game.cash;
   advance(game, 249);
   assert.equal(game.research.id, 'contracts');

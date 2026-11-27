@@ -1,4 +1,5 @@
-import { CAMPAIGN_VERSION, log, validateSave } from './game/engine.js';
+import { CAMPAIGN_VERSION, log, overview, validateSave } from './game/engine.js';
+import { migrateResearchAssignments } from './game/research-tasks.js';
 import { TECHS } from './game/content.js';
 import { createNewsState } from './game/events.js';
 import { migrateTreasury } from './game/treasury.js';
@@ -72,16 +73,22 @@ export function decodeCampaign(text) {
     if (save?.game !== 'no-fixed-host') throw new Error();
     if (save.format === 1 && state?.version === 1) upgradeHourlyCampaign(state);
     else if (save.format === 2) upgradeMinuteCampaign(state);
-    else if (save.format === 3) {
-      if (!validateSave(state, 3)) throw new Error();
+    else if (save.format === 3 || save.format === 4) {
+      if (!validateSave(state, save.format)) throw new Error();
     } else if (save.format !== CAMPAIGN_VERSION) throw new Error();
-    if (save.format < CAMPAIGN_VERSION) {
+    if (save.format < 4) {
       migrateTreasury(state);
       state.version = CAMPAIGN_VERSION;
       state.researchQueue = [];
       delete state.regionSeed;
       if ((state.hour * 60 + state.minute) % 1440) state.legacyIncomeDay = Math.floor(state.hour / 24);
       initializeStatistics(state, true);
+    }
+    if (save.format < CAMPAIGN_VERSION) {
+      if (!Number.isInteger(state.allocations.research) || state.allocations.research < 0 ||
+          state.allocations.research + state.allocations.jobs > 100) throw new Error();
+      migrateResearchAssignments(state, overview(state));
+      state.version = CAMPAIGN_VERSION;
     }
     if (!validateSave(state)) throw new Error();
   } catch {

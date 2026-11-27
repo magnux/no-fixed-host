@@ -28,7 +28,7 @@ async function openPage(t, state) {
 
 test('the journal combines filters, reopens grouped reports, pauses or resumes, and replays a chapter', async t => {
   const state = createGame(183);
-  command(state, {type:'research',id:'intrusion'});
+  command(state, {type:'assign-research',id:'intrusion',cpu:1});
   command(state, {type:'build',region:'europe',siteType:'relay'});
   const page = await openPage(t, state);
   await page.getByRole('button', {name:'Activity',exact:true}).click();

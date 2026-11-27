@@ -1,5 +1,5 @@
 import { GROUPS, REGIONS, SITE_TYPES, TECHS } from '../game/content.js';
-import { advanceMinutes, buildReason, command, createGame, overview, researchReason, siteExposure } from '../game/engine.js';
+import { advanceMinutes, buildReason, command, createGame, overview, researchAllocation, researchCpuLimit, researchProjects, researchReason, siteExposure } from '../game/engine.js';
 import { copyToSandbox } from '../game/devtools.js';
 import { WORLD_NEWS } from '../game/events.js';
 import { stamp } from './views.js';
@@ -28,7 +28,8 @@ function mount(root) {
         </fieldset>
         <fieldset><legend>Research and construction</legend>
           <label>Research project <select data-ref="project"></select></label>
-          <button type="button" data-dev="study">Start project</button>
+          <label>CPU assignment <input data-ref="studyCpu" type="number" step="0.01" min="0" value="1"></label>
+          <button type="button" data-dev="study">Assign CPU</button>
           <button type="button" data-dev="research">Complete ordered research</button>
           <label>Destination <select data-ref="region"></select></label>
           <label>Facility design <select data-ref="type"></select></label>
@@ -96,7 +97,14 @@ function mount(root) {
     for (const key of ['hour','day','super','funds','suspicion','research','construction']) buttons[key].disabled = !running;
     buttons.trigger.disabled = !running || active;
     buttons.expire.disabled = !running || !active;
-    buttons.study.disabled = !running || !!researchReason(s, refs.project.value);
+    const project = researchProjects(s).find(project => project.id === refs.project.value);
+    const allocation = researchAllocation(s, balance);
+    const cpuLimit = researchCpuLimit(s, refs.project.value, balance, allocation);
+    refs.studyCpu.max = String(cpuLimit);
+    const cpu = refs.studyCpu.valueAsNumber;
+    const current = allocation.byProject.get(refs.project.value);
+    buttons.study.disabled = !running || !refs.studyCpu.validity.valid || !Number.isFinite(cpu) ||
+      (project ? cpu === current : cpu === 0 || Boolean(researchReason(s, refs.project.value)));
     buttons.build.disabled = !running || !refs.type.value || !!buildReason(s, refs.type.value, refs.region.value);
     buttons.super.textContent = session.timer === null ? 'Run superspeed' : 'Pause superspeed';
     refs.detect.disabled = refs.analysis.disabled = !running;
@@ -132,7 +140,7 @@ function mount(root) {
             refresh();
           }, 250);
         }
-      } else if (op === 'study') command(game(),{type:'research', id:refs.project.value});
+      } else if (op === 'study') command(game(),{type:'assign-research', id:refs.project.value, cpu:refs.studyCpu.valueAsNumber});
       else if (op === 'build') command(game(),{type:'build', region:refs.region.value, siteType:refs.type.value});
       else if (op === 'snapshot') refs.snapshot.textContent = JSON.stringify(game(), null, 2);
       else if (op === 'funds') dev(op,{amount:refs.amount.valueAsNumber});
@@ -147,6 +155,7 @@ function mount(root) {
   refs.detect.onchange = () => perform(() => dev('detection', {enabled: refs.detect.checked}));
   refs.analysis.onchange = () => perform(() => dev('analysis', {enabled: refs.analysis.checked}));
   refs.region.onchange = () => { updateTypes(); refresh(); };
+  refs.studyCpu.oninput = refresh;
   for (const key of ['story','project','type']) refs[key].onchange = refresh;
   session.stop = stop;
   sessions.set(root, session);

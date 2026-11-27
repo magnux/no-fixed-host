@@ -75,7 +75,7 @@ export function storyKey(event) {
 }
 
 const warnings = {
-  spareCpu: { title: 'Reserved research CPU is idle', text: 'Some of the research share has no eligible work. Those cycles return to the pool. Assign a project or bring a qualified host online to advance research.', tab: 'research' },
+  spareCpu: { title: 'A research assignment has idle CPU', text: 'One or more projects cannot use all their assigned CPU. Check the project’s remaining work and eligible hosts. Spare cycles return to the pool.', tab: 'research' },
   lastHost: { title: 'Only one viable host', text: 'This machine holds the last surviving copy. Finish another host with processors before risking it.', tab: 'facilities' },
   stalledBuild: { title: 'Construction has no compute', text: 'An order still needs CPU work, and the pool has no capacity after upkeep. Release some paid-work or research allocation.', tab: 'facilities' },
   maintenance: { title: 'CPU upkeep is underfunded', text: 'The pool cannot cover CPU upkeep. A facility may fail. Reduce allocations or wake another equipped host.', tab: 'reports' },
@@ -83,12 +83,12 @@ const warnings = {
 
 export function campaignWarnings(state, prefs = {}, metrics) {
   if (state.status !== 'running') return [];
-  const researchBudget = metrics.activeCpu * state.allocations.research / 100;
+  const assignedCpu = state.researchTarget ?? researchProjects(state).reduce((sum, project) => sum + project.cpu, 0);
   const reservedJobs = metrics.activeCpu * state.allocations.jobs / 100;
   const poolUnits = Math.round(100 * (metrics.activeCpu - reservedJobs - metrics.researchCpu));
   const upkeepUnits = Math.round(100 * metrics.cpuUpkeep);
   const flags = {
-    spareCpu: Math.round(100 * (researchBudget - metrics.researchCpu)) > 0,
+    spareCpu: Math.round(100 * (assignedCpu - metrics.researchCpu)) > 0,
     lastHost: !state.freePlay && metrics.viable === 1,
     stalledBuild: metrics.pendingWork && poolUnits <= upkeepUnits,
     maintenance: !state.freePlay && poolUnits < upkeepUnits,

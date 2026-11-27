@@ -33,15 +33,15 @@ test('compare, discard and place research and facility orders, then reconcile th
 
   await nav('Research');
   await page.locator('[data-tech-id="stealth"]').click();
-  await button('Forecast funding').click();
-  assert.equal(await page.locator('[data-report="name"]').innerText(), 'Stealth');
+  await page.locator('[data-research-preview]').click();
+  assert.equal(await page.locator('[data-report="name"]').innerText(), 'Stealth · 1 CPU');
   await page.setViewportSize({ width: 1366, height: 768 });
   const overflow = await page.locator('#view').evaluate(view => ({
     vertical: view.scrollHeight - view.clientHeight, horizontal: view.scrollWidth - view.clientWidth,
   }));
   assert.ok(overflow.vertical <= 1 && overflow.horizontal <= 1, JSON.stringify(overflow));
   assert.equal(await page.getByRole('combobox', { name: 'Forecast period' }).inputValue(), 'midnight');
-  const research = { type: 'research', id: 'stealth' };
+  const research = { type: 'assign-research', id: 'stealth', cpu: 1 };
   const projectedResearch = projectResources(state, 'midnight', research);
   assert.equal(await account('closing', 1).innerText(), usd.format(projectedResearch.cash.closing));
   assert.equal(await account('research', 1).innerText(), usd.format(projectedResearch.cash.research));
@@ -50,8 +50,8 @@ test('compare, discard and place research and facility orders, then reconcile th
   assert.equal(await ledger.getByRole('columnheader', { name: 'With order' }).count(), 0);
   await nav('Research');
   await page.locator('[data-tech-id="stealth"]').click();
-  await button('Forecast funding').click();
-  await button('Place order').click();
+  await page.locator('[data-research-preview]').click();
+  await button('Assign CPU').click();
   command(state, research);
   assert.equal((await readSave()).research.id, research.id);
   assert.equal(await account('research', 0).innerText(), usd.format(0));

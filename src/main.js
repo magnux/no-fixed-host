@@ -1,4 +1,4 @@
-import { advanceMinutes, command, createGame, hasGrace, overview } from './game/engine.js';
+import { advanceMinutes, command, createGame, hasGrace, overview, researchAllocation, researchResizeLimit } from './game/engine.js';
 import {
   CAMPAIGN_STORAGE_KEY,
   decodeCampaign,
@@ -157,16 +157,20 @@ function metric(glyph, label, value, detail, unit = '') {
     '</small></div>'
   );
 }
-function allocationValues(jobs, research) {
-  for (const [id, v] of [
-    ['jobs', jobs],
-    ['research', research],
-  ]) {
-    element(id).value = v;
-    element(id).style.setProperty('--position', v + '%');
-    element(id + '-value').value = v + '%';
-  }
-  element('pool-value').textContent = 100 - jobs - research + '%';
+const cpuNumber = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 });
+function allocationValues(activeCpu, jobs, researchCpu, researchLimit) {
+  const researchBar = element('research');
+  researchBar.max = researchLimit;
+  researchBar.value = researchCpu;
+  researchBar.style.setProperty('--position', (researchLimit ? 100 * researchCpu / researchLimit : 0) + '%');
+  const researchLabel = cpuNumber.format(researchCpu) + ' CPU';
+  researchBar.setAttribute('aria-valuetext', researchLabel);
+  element('research-value').value = researchLabel;
+  element('jobs').value = jobs;
+  element('jobs').style.setProperty('--position', jobs + '%');
+  const jobCpu = activeCpu * jobs / 100;
+  element('jobs-value').value = jobs + '% · ' + cpuNumber.format(jobCpu) + ' CPU';
+  element('pool-value').textContent = cpuNumber.format(Math.max(0, activeCpu - jobCpu - researchCpu)) + ' CPU';
 }
 function renderDate() {
   const day = 'Day ' + String(Math.floor(state.hour / 24) + 1).padStart(2, '0');
@@ -230,12 +234,14 @@ function render() {
   updateHtml('recent-activity', recentPanel(state, currentWarnings(state, shell?.getPreferences().warnings).length));
   updateHtml('objective', objectivePanel(state));
   updateHtml('suspicion', suspicionPanel(state, o.grace));
-  updateHtml('research-summary', researchSummary(state));
-  element('cpu-total').textContent = o.activeCpu + ' CPU';
-  if (!editingAllocation)
-    allocationValues(state.allocations.jobs, state.allocations.research);
-  element('jobs').disabled = element('research').disabled =
-    state.status !== 'running' || tab === 'developer';
+  const research = researchAllocation(state, o);
+  const limit = researchResizeLimit(state, o);
+  updateHtml('research-summary', researchSummary(state, research));
+  element('cpu-total').textContent = cpuNumber.format(o.activeCpu) + ' CPU';
+  if (!editingAllocation) allocationValues(o.activeCpu, state.allocations.jobs, research.budget, limit);
+  const locked = state.status !== 'running' || tab === 'developer';
+  element('jobs').disabled = locked;
+  element('research').disabled = locked || !limit;
   element('ending').hidden = state.status === 'running';
   if (state.status !== 'running')
     updateHtml(
@@ -590,27 +596,30 @@ for (const id of ['jobs', 'research']) {
   const input = element(id);
   input.addEventListener('input', () => {
     editingAllocation = true;
-    const value = Number(input.value);
-    const other = Math.min(
-      Number(element(id === 'jobs' ? 'research' : 'jobs').value),
-      100 - value,
-    );
-    allocationValues(
-      id === 'jobs' ? value : other,
-      id === 'jobs' ? other : value,
-    );
+    const economy = overview(state);
+    const jobs = Number(element('jobs').value);
+    const available = economy.activeCpu * (100 - jobs) / 100;
+    const researchBar = element('research');
+    const requested = id === 'jobs' ? researchAllocation(state, economy).budget : Number(researchBar.value);
+    // Preview a drag using the live portfolio; the release commits a single resize.
+    allocationValues(economy.activeCpu, jobs, Math.min(available, requested), Number(researchBar.max));
   });
   input.addEventListener('change', () => {
     editingAllocation = false;
-    if (state.status === 'running')
-      doCommand({
-        type: 'allocate',
-        jobs: Number(element('jobs').value),
-        research: Number(element('research').value),
-      });
+    if (state.status !== 'running' || tab === 'developer') { render(); return; }
+    try {
+      if (id === 'jobs') doCommand({ type: 'allocate', jobs: Number(input.value) });
+      else doCommand({ type: 'resize-research', cpu: Math.min(Number(input.value), researchResizeLimit(state)) });
+    } catch (error) {
+      notify(error.message);
+      render();
+    }
   });
   input.addEventListener('blur', () => {
-    editingAllocation = false;
+    if (editingAllocation) {
+      editingAllocation = false;
+      render();
+    }
   });
 }
 element('incident-dialog').addEventListener('cancel', (event) => {

@@ -1,6 +1,6 @@
 import { EQUIPMENT, GROUPS, REGIONS, SITE_TYPES, TECHS } from '../game/content.js';
 import { siteExposure, siteHardware } from '../game/engine.js';
-import { researchProjects, researchWeight } from '../game/research-tasks.js';
+import { researchProjects } from '../game/research-tasks.js';
 import { storyKey } from '../game/chronicle.js';
 import { icon } from './icons.js';
 import { groupDangerForState } from '../game/events.js';
@@ -67,13 +67,13 @@ export function recentPanel(state, warnings) {
     '<ul class="event-list dock-events" data-keep-scroll>' + eventRows(state.events.filter(event => !isNews(event)), 8) + '</ul>';
 }
 
-export function researchSummary(state) {
+export function researchSummary(state, allocation) {
   const projects = researchProjects(state);
-  const active = projects.filter(project => researchWeight(project) > 0);
+  const active = projects.filter(project => allocation.byProject.get(project.id) > 0);
   const description = active.length === 1 ? TECHS[active[0].id].name :
-    active.length ? active.length + ' active projects' : 'No active project';
-  const paused = projects.length - active.length;
-  return `<small>${esc(description)}${paused ? ' · ' + paused + ' paused' : ''}</small>
+    active.length ? active.length + ' active projects' : 'Select a topic to assign CPU';
+  const waiting = projects.length - active.length;
+  return `<small>${esc(description)}${waiting ? ' · ' + waiting + ' on hold' : ''}</small>
     ${btn('Projects', 'tab', 'data-id="research"', 'text-button')}`;
 }
 
@@ -122,10 +122,11 @@ export function objectivePanel(s) {
     id = 'europe';
     cta = 'Plan a relay';
   } else if (s.research) {
-    title = 'Complete ' + TECHS[s.research.id].name;
-    desc = 'Assign compute to research and advance time to contribute work.';
+    const project = researchProjects(s).find(row => row.cpu > 0) ?? s.research;
+    title = 'Complete ' + TECHS[project.id].name;
+    desc = 'Assign CPU to the project, then advance time to contribute work.';
     action = 'technology';
-    id = s.research.id;
+    id = project.id;
     cta = 'View research';
   } else if (!s.completed.includes('robotics')) {
     id = nextRequiredProject('robotics', s.completed);

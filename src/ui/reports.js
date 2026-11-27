@@ -38,7 +38,9 @@ function text(node, value) {
 }
 
 function nameOrder(state, action) {
-  if (action.type === 'research') return TECHS[action.id]?.name ?? 'Research order';
+  if (action.type === 'assign-research') {
+    return (TECHS[action.id]?.name ?? 'Research') + ' · ' + number.format(action.cpu) + ' CPU';
+  }
   if (action.type === 'build') {
     const model = SITE_TYPES[action.siteType]?.name ?? 'Facility';
     const name = action.name?.trim();
@@ -101,7 +103,7 @@ function mount(container) {
       <div class="report-tools"><label>Forecast period
         <select data-report="period"><option value="midnight">Until midnight</option><option value="24h">Next 24 hours</option></select>
       </label><button type="button" data-report="refresh">Refresh</button><small data-report="range"></small></div>
-      <div class="report-order" data-report="candidate" hidden><div><small>Proposed order</small><strong data-report="name"></strong><small data-report="package" hidden></small></div>
+      <div class="report-order" data-report="candidate" hidden><div><small data-report="kind"></small><strong data-report="name"></strong><small data-report="package" hidden></small></div>
         <button type="button" class="accent-button" data-report="place">Place order</button>
         <button type="button" data-report="clear">Discard preview</button></div>
       <p role="status" data-report="feedback" hidden></p>
@@ -183,10 +185,13 @@ function refresh(view) {
   view.force = false;
   const billing = state.legacyIncomeDay === undefined ? 'Cash upkeep falls due in whole-dollar installments.' :
     'This older save switches to whole-dollar upkeep at midnight.';
-  text(fields.assumptions, 'Orders are paid upfront. ' + billing +
+  text(fields.assumptions, (candidate?.type === 'assign-research' ? 'The first CPU assignment pays the project cost. Later adjustments are free. ' : 'Orders are paid upfront. ') + billing +
     ' Forecasts include scheduled work and assume no discoveries, failures or random news.');
   fields.candidate.hidden = !candidate;
   if (candidate) {
+    const research = candidate.type === 'assign-research';
+    text(fields.kind, research ? 'Proposed assignment' : 'Proposed order');
+    text(fields.place, research ? 'Assign CPU' : 'Place order');
     text(fields.name, nameOrder(state, candidate));
     const items = candidate.type === 'auto-install' ? candidate.expectedOrders || [] : [];
     fields.package.hidden = !items.length;

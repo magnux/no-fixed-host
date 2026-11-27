@@ -103,6 +103,7 @@ test('a previous-format world keeps the research necessary for a purchased unfin
     installations: [{ siteId: 'host-2', itemId: 'supercomputer', count: 1, work: 0, hours: 0 }],
   });
   state.version = 1;
+  state.allocations.research = 50;
   const restored = decodeCampaign(JSON.stringify({ game: 'no-fixed-host', format: 1, campaign: state }));
   assert.deepEqual(new Set(restored.completed), new Set(['contracts', 'intrusion', 'personalIdentification',
     'telepresence', 'parallelComputation', 'microchipDesign', 'advancedMicrochipDesign']));

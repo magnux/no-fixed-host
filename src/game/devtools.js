@@ -29,7 +29,7 @@ export function developerCommand(state, action, { log }) {
     }
     case 'research': {
       const rows = [state.research, ...(state.researchQueue || [])].filter(Boolean);
-      if (!rows.length) throw new Error('Start research in the sandbox first.');
+      if (!rows.length) throw new Error('Assign CPU to sandbox research first.');
       for (const row of rows) {
         row.work = TECHS[row.id].work;
         row.hours = TECHS[row.id].hours;

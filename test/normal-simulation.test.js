@@ -106,6 +106,7 @@ test('older balances above the wallet ceiling remain available for purchases and
 test('a large v3 treasury survives normal save, purchase and reload entry points', () => {
   const old = createGame(15);
   old.version = 3;
+  old.allocations.research = 50;
   old.cash = MAX_TREASURY + 500.25;
   delete old.regionSeed;
   delete old.statistics;

@@ -41,14 +41,24 @@ test('each campaign milestone and both loss causes select the matching authored 
   assert.equal(storyKey({kind:'news.world'}), null);
 });
 
-test('warning preferences are independent and surplus research accounts for unused eligible CPU', () => {
+test('warning preferences distinguish unused assignments from CPU deliberately left in the pool', () => {
   const state = createGame(9);
-  assert.deepEqual(warningIds(currentWarnings(state)), ['spareCpu', 'lastHost']);
-  assert.deepEqual(warningIds(currentWarnings(state, {spareCpu:false})), ['lastHost']);
-  command(state, {type:'research', id:'intrusion'});
+  assert.deepEqual(warningIds(currentWarnings(state)), ['lastHost']);
+  command(state, {type:'assign-research', id:'intrusion', cpu:0.5});
+  assert.deepEqual(warningIds(currentWarnings(state)), ['lastHost']);
+  command(state, {type:'resize-research', cpu:0.25});
+  assert.deepEqual(warningIds(currentWarnings(state)), ['lastHost'], 'unused CPU after downsizing is deliberate');
+  command(state, {type:'power', id:state.sites[0].id, power:'sleep'});
+  assert.deepEqual(warningIds(currentWarnings(state)), ['spareCpu', 'lastHost'], 'assignment lost its eligible processors');
+  command(state, {type:'power', id:state.sites[0].id, power:'active'});
   assert.deepEqual(warningIds(currentWarnings(state)), ['lastHost']);
   state.research.work = TECHS.intrusion.work;
   assert.deepEqual(warningIds(currentWarnings(state)), ['spareCpu', 'lastHost']);
+  assert.deepEqual(warningIds(currentWarnings(state, {spareCpu:false})), ['lastHost']);
+  command(state, {type:'resize-research', cpu:0});
+  assert.deepEqual(warningIds(currentWarnings(state)), ['lastHost']);
+  command(state, {type:'assign-research', id:'intrusion', cpu:0});
+  assert.deepEqual(warningIds(currentWarnings(state)), ['lastHost']);
   command(state, {type:'allocate', jobs:100, research:0});
   const metrics = {activeCpu:2, researchCpu:0, cpuUpkeep:1, viable:2, pendingWork:true};
   assert.deepEqual(warningIds(campaignWarnings(state, {}, metrics)), ['stalledBuild', 'maintenance']);
@@ -94,7 +104,7 @@ test('sandbox completion honors each regional work target, saved labor estimate 
   const region = Object.keys(REGIONS).find(id => SITE_TYPES.relay.regions.includes(id) && regionalSpec(state, id, SITE_TYPES.relay).work > SITE_TYPES.relay.work);
   assert.ok(region, 'seed must exercise a nonstandard target');
   dev(state, 'funds', {amount:50000});
-  command(state, {type:'research', id:'intrusion'});
+  command(state, {type:'assign-research', id:'intrusion', cpu:1});
   command(state, {type:'build', siteType:'relay', region});
   dev(state, 'research');
   dev(state, 'construction');
@@ -102,7 +112,7 @@ test('sandbox completion honors each regional work target, saved labor estimate 
   assert.equal(state.builds[0].work, regionalSpec(state, region, SITE_TYPES.relay).work);
   advanceMinutes(state, 1);
   assert.ok(state.completed.includes('intrusion'));
-  command(state, {type:'research', id:'personalIdentification'});
+  command(state, {type:'assign-research', id:'personalIdentification', cpu:1});
   dev(state, 'research');
   advanceMinutes(state, 1);
   command(state, {type:'build', siteType:'storageUnit', region});

@@ -32,13 +32,14 @@ test('the loader rejects malformed, foreign and incompatible saves', () => {
 test('version 2 preserves paid campaign work and grants only its newly required research', () => {
   const state = createGame(51);
   state.version = 2;
+  state.allocations.research = 50;
   state.completed = ['contracts'];
   state.research = { id: 'robotics', work: 27.5, hours: 5.5 };
   const pack = () => JSON.stringify({ game: 'no-fixed-host', format: 2, campaign: state });
   const migrated = decodeCampaign(pack());
-  assert.equal(migrated.version, 4);
+  assert.equal(migrated.version, 5);
   assert.equal(migrated.cash, state.cash);
-  assert.deepEqual(migrated.research, state.research);
+  assert.deepEqual(migrated.research, { ...state.research, cpu: 1 });
   assert.deepEqual(new Set(migrated.completed), new Set(['contracts', 'intrusion', 'personalIdentification',
     'telepresence', 'parallelComputation', 'microchipDesign', 'autonomousVehicles']));
   assert.deepEqual(decodeCampaign(encodeCampaign(migrated)), migrated);
@@ -52,6 +53,7 @@ test('version 2 preserves paid campaign work and grants only its newly required 
 test('version 2 refunds an in-flight upstream project already credited by the revised prerequisites', () => {
   const state = createGame(52);
   state.version = 2;
+  state.allocations.research = 50;
   state.completed = ['contracts', 'robotics'];
   state.research = { id: 'telepresence', work: 9, hours: 0 };
   state.cash = 738;
