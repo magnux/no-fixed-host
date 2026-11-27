@@ -10,7 +10,7 @@ The [base game specification](docs/base-game.md) describes the economy, Normal d
 
 ## Run locally
 
-Use Node.js 22.12 or later and npm.
+Use Node.js 20.18.1 or later and npm. The project pins its build tools in `package-lock.json`.
 
 ```sh
 npm ci
