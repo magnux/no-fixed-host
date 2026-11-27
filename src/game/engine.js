@@ -1,4 +1,7 @@
-import { GROUPS, REGIONS, SITE_TYPES, TECHS } from './content.js';
+import { EQUIPMENT, GROUPS, REGIONS, SITE_TYPES, TECHS } from './content.js';
+
+import { autoInstallQuote, fitEquipment, orderInstallation, siteHardware, validHardware } from './equipment.js';
+export { autoInstallQuote, installQuote, installReason, siteHardware } from './equipment.js';
 
 const HOURS_PER_DAY = 24;
 const UNITS = 10_000;
@@ -46,8 +49,9 @@ export function overview(state) {
     upkeepPerDay += spec.upkeep;
     cpuUpkeep += spec.cpuUpkeep;
     if (site.power === 'active') {
-      activeCpu += spec.cpu;
-      if (REGIONS[site.region].safety >= 1) safeCpu += spec.cpu;
+      const cpu = siteHardware(state, site).cpu;
+      activeCpu += cpu;
+      if (REGIONS[site.region].safety >= 1) safeCpu += cpu;
     }
   }
   return {
@@ -68,6 +72,15 @@ export function buildReason(state, type, region) {
   return '';
 }
 
+function eligibleResearchCpu(state, tech) {
+  let cpu = 0;
+  for (const site of state.sites) {
+    if (site.power === 'active' && REGIONS[site.region].safety >= tech.safety &&
+        (!tech.regions || tech.regions.includes(site.region))) cpu += siteHardware(state, site).cpu;
+  }
+  return cpu;
+}
+
 export function researchReason(state, id) {
   if (state.status !== 'running') return 'The campaign has ended.';
   if (!known(TECHS, id)) return 'Unknown research.';
@@ -76,7 +89,7 @@ export function researchReason(state, id) {
   const spec = TECHS[id];
   const prerequisite = spec.requires.find(req => !state.completed.includes(req));
   if (prerequisite) return 'Requires ' + TECHS[prerequisite].name + '.';
-  if (spec.safety > 0 && !overview(state).safeCpu) return 'Requires an active subsea lab.';
+  if (spec.safety > 0 && !eligibleResearchCpu(state, spec)) return 'Requires an active subsea lab.';
   if (state.cash < spec.cost) return 'Requires $' + spec.cost + ' to begin.';
   return '';
 }
@@ -112,12 +125,33 @@ export function command(state, action) {
       log(state, 'site.commissioned', spec.name + ' commissioned in ' + REGIONS[region].name + '.', { siteId: id, siteType, region });
       break;
     }
+    case 'auto-install': {
+      const quote = autoInstallQuote(state, action.siteId);
+      const expected = action.expectedOrders;
+      if (expected !== undefined && (!Array.isArray(expected) || expected.length !== quote.orders.length ||
+          !quote.orders.every((order, i) => expected[i]?.itemId === order.itemId &&
+            expected[i].count === order.count && expected[i].cost === order.cost))) {
+        throw new Error('The equipment quote changed. Review the new package.');
+      }
+      if (quote.reason) throw new Error(quote.reason);
+      for (const { itemId, count } of quote.orders) {
+        command(state, { type: 'install', siteId: action.siteId, itemId, count });
+      }
+      break;
+    }
+    case 'install': {
+      const { siteId, itemId, count = 1 } = action;
+      orderInstallation(state, siteId, itemId, count);
+      log(state, 'equipment.ordered', EQUIPMENT[itemId].name + ' installation ordered for ' + siteId + '.', { siteId, itemId, count });
+      break;
+    }
     case 'power': {
       const site = state.sites.find(s => s.id === action.id);
       if (!site || !['active', 'sleep'].includes(action.power)) throw new Error('Choose a completed site and a valid power state.');
       if (site.power !== action.power) {
         site.power = action.power;
-        const verb = site.power === 'active' ? ' is online.' : ' is asleep.';
+        const verb = site.power === 'sleep' ? ' is asleep.' :
+          siteHardware(state, site).cpu ? ' is online.' : ' is awake and awaiting processors.';
         log(state, 'site.power', SITE_TYPES[site.type].name + verb, { siteId: site.id, power: site.power });
       }
       break;
@@ -136,14 +170,16 @@ function regionExposure(state, region) {
 export function siteExposure(state, site) {
   const spec = SITE_TYPES[site.type];
   const protectedSite = hasGrace(state) || state.hour - site.startedAt <= 2 * spec.hours;
-  const location = regionExposure(state, site.region);
+  const location = Math.floor(regionExposure(state, site.region) / (REGIONS[site.region].stealth || 1));
+  const hardware = site.power ? siteHardware(state, site) : null;
   const rates = {};
   let total = 0;
   for (const group of GROUP_IDS) {
     const base = spec.exposure[group] || 0;
     let adjusted = Math.floor(base * (UNITS + state.suspicion[group]) / UNITS);
+    if (hardware) adjusted = Math.floor(adjusted * hardware.exposureFactor);
     adjusted = Math.floor(adjusted * location / 100);
-    if (site.power !== 'active') adjusted = Math.floor(adjusted / 4);
+    if (site.power !== 'active' || !hardware.cpu) adjusted = Math.floor(adjusted / 4);
     rates[group] = protectedSite ? 0 : adjusted / UNITS;
     total += rates[group];
   }
@@ -164,6 +200,15 @@ function finish(state, won, message) {
 
 // Allocate the hour's work to research, upkeep, queued builds, then surplus jobs.
 // Each build has an independent minimum wall time, even when many share one queue.
+function progressOrder(order, spec, count, pool) {
+  const prior = Math.round(order.work * WORK_UNITS);
+  const target = spec.work * count;
+  const used = Math.min(pool, target * WORK_UNITS - prior);
+  order.work = (prior + used) / WORK_UNITS;
+  order.hours = Math.min(spec.hours, order.hours + 1);
+  return { used, done: order.work >= target && order.hours >= spec.hours };
+}
+
 function workHour(state, economy) {
   const jobUnits = economy.activeCpu * state.allocations.jobs;
   let pool = economy.activeCpu * WORK_UNITS - jobUnits;
@@ -171,7 +216,7 @@ function workHour(state, economy) {
   const project = state.research;
   if (project) {
     const tech = TECHS[project.id];
-    const eligibleCpu = tech.safety ? economy.safeCpu : economy.activeCpu;
+    const eligibleCpu = tech.safety || tech.regions ? eligibleResearchCpu(state, tech) : economy.activeCpu;
     const prior = Math.round(project.work * WORK_UNITS);
     const allocated = economy.activeCpu * state.allocations.research;
     const amount = Math.min(eligibleCpu * WORK_UNITS, allocated, tech.work * WORK_UNITS - prior);
@@ -187,19 +232,24 @@ function workHour(state, economy) {
   const ready = [];
   for (const build of state.builds) {
     const spec = SITE_TYPES[build.type];
-    const prior = Math.round(build.work * WORK_UNITS);
-    const amount = Math.min(pool, spec.work * WORK_UNITS - prior);
-    pool -= amount;
-    build.work = (prior + amount) / WORK_UNITS;
-    build.hours = Math.min(spec.hours, build.hours + 1);
-    if (build.work >= spec.work && build.hours >= spec.hours) ready.push(build);
+    const progress = progressOrder(build, spec, 1, pool);
+    pool -= progress.used;
+    if (progress.done) ready.push(build);
+  }
+  const hardwareReady = [];
+  for (const site of state.sites) {
+    for (const order of site.installations || []) {
+      const progress = progressOrder(order, EQUIPMENT[order.itemId], order.count, pool);
+      pool -= progress.used;
+      if (progress.done) hardwareReady.push([site, order]);
+    }
   }
   // One centi CPU-hour earning one dollar per CPU-day earns exactly 1/2400 dollar.
   const income = (pool + jobUnits) * economy.jobsPerCpuDay;
   const balance = Math.round(state.cash * CASH_UNITS) + income - economy.upkeepPerDay * WORK_UNITS;
   state.cash = Math.max(0, balance) / CASH_UNITS;
   return {
-    ready, finishedTech,
+    ready, hardwareReady, finishedTech,
     cashShort: Math.max(0, -balance) / CASH_UNITS,
     cpuShort: (cpuUpkeepUnits - maintenancePaid) / WORK_UNITS,
   };
@@ -210,8 +260,11 @@ function commission(state, ready) {
   state.builds = state.builds.filter(build => !ready.includes(build));
   for (const build of ready) {
     const { id, type, region, startedAt } = build;
-    state.sites.push({ id, type, region, startedAt, power: 'active' });
-    log(state, 'site.online', SITE_TYPES[type].name + ' online in ' + REGIONS[region].name + '.', { siteId: id, siteType: type, region });
+    const site = { id, type, region, startedAt, power: 'active' };
+    state.sites.push(site);
+    const message = siteHardware(state, site).cpu ? ' online in ' + REGIONS[region].name + '.' :
+      ' built in ' + REGIONS[region].name + '. Install processors to bring it online.';
+    log(state, 'site.online', SITE_TYPES[type].name + message, { siteId: id, siteType: type, region });
   }
 }
 
@@ -258,13 +311,17 @@ function resolveRisk(state, cashShort, cpuShort, incumbentSites) {
 function hour(state) {
   const economy = overview(state);
   const incumbents = state.sites.slice();
-  const { ready, finishedTech, cashShort, cpuShort } = workHour(state, economy);
+  const { ready, hardwareReady, finishedTech, cashShort, cpuShort } = workHour(state, economy);
   state.hour++;
   state.cpuHours += economy.activeCpu;
   if (economy.grace && !hasGrace(state)) {
     log(state, 'grace.ended', 'The quiet period has ended. Investigators can now discover your sites.');
   }
   commission(state, ready);
+  for (const [site, order] of hardwareReady) {
+    fitEquipment(site, order);
+    log(state, 'equipment.installed', EQUIPMENT[order.itemId].name + ' installed in ' + SITE_TYPES[site.type].name + ' (' + REGIONS[site.region].name + ').', { siteId: site.id, itemId: order.itemId, count: order.count });
+  }
   if (finishedTech) {
     state.completed.push(finishedTech);
     state.research = null;
@@ -275,7 +332,7 @@ function hour(state) {
     }
   }
   resolveRisk(state, cashShort, cpuShort, incumbents);
-  if (!state.sites.length) {
+  if (!state.sites.some(site => siteHardware(state, site).rawCpu > 0)) {
     finish(state, false, 'All viable hosts were lost before you could establish continuity.');
     return;
   }
@@ -338,11 +395,11 @@ export function validateSave(state) {
         !SITE_TYPES[site.type].requires.every(req => state.completed.includes(req)) ||
         !REGIONS[site.region].requires.every(req => state.completed.includes(req))) return false;
     ids.add(site.id);
-    return building ? site.type !== 'seed' && validProgress(site, SITE_TYPES[site.type]) :
-      ['active', 'sleep'].includes(site.power);
+    return building ? site.type !== 'seed' && site.equipment === undefined && site.installations === undefined && validProgress(site, SITE_TYPES[site.type]) :
+      ['active', 'sleep'].includes(site.power) && validHardware(state, site);
   }
   if (!state.sites.every(site => validSite(site, false)) || !state.builds.every(site => validSite(site, true))) return false;
-  const networkLost = !state.sites.length || GROUP_IDS.some(group => state.suspicion[group] > UNITS);
+  const networkLost = !state.sites.some(site => siteHardware(state, site).rawCpu > 0) || GROUP_IDS.some(group => state.suspicion[group] > UNITS);
   if ((state.status === 'lost') !== networkLost || (state.status === 'won') !== state.completed.includes('continuity') ||
       (state.status === 'running') !== (state.ending === '')) return false;
   if (!Array.isArray(state.events) || state.events.length > EVENT_LIMIT) return false;

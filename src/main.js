@@ -7,14 +7,17 @@ import {
   saveCampaign,
 } from './persistence.js';
 import { icon } from './ui/icons.js';
+import { updateAtlas } from './ui/atlas.js';
+import { renderFacilities } from './ui/facilities.js';
 import {
   activityPage,
   esc,
-  facilitiesPage,
+  inventoryPanel,
   money,
   objectivePanel,
-  overviewPage,
+  recentPanel,
   researchPage,
+  researchSummary,
   suspicionPanel,
 } from './ui/views.js';
 
@@ -31,6 +34,9 @@ const savedCampaign = loadCampaign();
 let state = savedCampaign ?? freshGame();
 let tab = 'overview';
 let region = 'europe';
+let selectedSite = null;
+let facilityNavigationId = 0;
+let mountedTab = null;
 let speed = 0;
 let arcadeOpen = false;
 let editingAllocation = false;
@@ -45,7 +51,13 @@ function updateHtml(id, html) {
     : null;
   const focusId = oldFocus?.id;
   const { action, id: dataId } = oldFocus?.dataset ?? {};
+  const scrollList = target.querySelector('[data-keep-scroll]');
+  const scrollTop = scrollList?.scrollTop;
   target.innerHTML = html;
+  if (scrollTop) {
+    const replacement = target.querySelector('[data-keep-scroll]');
+    if (replacement) replacement.scrollTop = scrollTop;
+  }
   htmlCache.set(id, html);
   if (!oldFocus) return;
   const next = focusId
@@ -171,15 +183,12 @@ function render() {
       icon('jump') +
       'First Jump drill</button>',
   );
-  const pages = {
-    overview: overviewPage,
-    facilities: facilitiesPage,
-    research: researchPage,
-    activity: activityPage,
-  };
-  updateHtml('view', pages[tab](state, region));
+  renderView();
+  updateHtml('inventory', inventoryPanel(state));
+  updateHtml('recent-activity', recentPanel(state));
   updateHtml('objective', objectivePanel(state));
   updateHtml('suspicion', suspicionPanel(state, o.grace));
+  updateHtml('research-summary', researchSummary(state));
   element('cpu-total').textContent = o.activeCpu + ' CPU';
   if (!editingAllocation)
     allocationValues(state.allocations.jobs, state.allocations.research);
@@ -195,6 +204,48 @@ function render() {
         esc(state.ending) +
         '</span><button data-action="new">New campaign</button>',
     );
+}
+function selectRegion(id) {
+  region = id;
+  selectedSite = null;
+  render();
+}
+
+function selectSite(id) {
+  selectedSite = id;
+  render();
+}
+
+function renderView() {
+  const view = element('view');
+  if (tab !== mountedTab) {
+    view.replaceChildren();
+    view.scrollTop = 0;
+    view.dataset.view = tab;
+    htmlCache.delete('view');
+    mountedTab = tab;
+  }
+  switch (tab) {
+    case 'overview':
+      updateAtlas(view, state);
+      break;
+    case 'facilities':
+      renderFacilities(view, state, {
+        region,
+        siteId: selectedSite,
+        navigationId: facilityNavigationId,
+        onRegion: selectRegion,
+        onSite: selectSite,
+        onCommand: doCommand,
+      });
+      break;
+    case 'research':
+      updateHtml('view', researchPage(state));
+      break;
+    case 'activity':
+      updateHtml('view', activityPage(state));
+      break;
+  }
 }
 function doCommand(action) {
   command(state, action);
@@ -216,7 +267,9 @@ function changeView(id, moveFocus) {
       heading.tabIndex = -1;
       heading.focus({ preventScroll: true });
     }
-    element('nav').scrollIntoView({ block: 'nearest' });
+    if (!window.matchMedia('(min-width: 65rem) and (min-height: 37rem)').matches) {
+      element('nav').scrollIntoView({ block: 'start' });
+    }
   }
 }
 async function openDrill() {
@@ -263,27 +316,25 @@ document.addEventListener('click', async (event) => {
         changeView(id, !element('nav').contains(button));
         break;
       case 'region':
+        facilityNavigationId++;
+        selectedSite = null;
         region = id;
         changeView('facilities', true);
         break;
-      case 'build':
-        doCommand({ type: 'build', siteType: id, region });
-        notify('Facility added to the construction queue.');
+      case 'host': {
+        const site = state.sites.find(item => item.id === id);
+        if (site) {
+          facilityNavigationId++;
+          selectedSite = site.id;
+          region = site.region;
+          changeView('facilities', true);
+        }
         break;
+      }
       case 'start-research':
         doCommand({ type: 'research', id });
         notify('Research started. Assign compute and advance time.');
         break;
-      case 'power': {
-        const site = state.sites.find((item) => item.id === id);
-        if (site)
-          doCommand({
-            type: 'power',
-            id,
-            power: site.power === 'active' ? 'sleep' : 'active',
-          });
-        break;
-      }
       case 'drill':
         await openDrill();
         break;
@@ -304,6 +355,7 @@ document.addEventListener('click', async (event) => {
       case 'confirm-reset':
         element('reset-dialog').close();
         state = freshGame();
+        selectedSite = null;
         region = 'europe';
         tab = 'overview';
         persist();
@@ -316,11 +368,6 @@ document.addEventListener('click', async (event) => {
   }
 });
 document.addEventListener('change', async (event) => {
-  if (event.target.id === 'region') {
-    region = event.target.value;
-    render();
-    return;
-  }
   if (event.target.id === 'file') {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -328,6 +375,8 @@ document.addEventListener('change', async (event) => {
       if (file.size > 2_000_000) throw new Error('Save file is too large.');
       const restored = decodeCampaign(await file.text());
       state = restored;
+      selectedSite = null;
+      region = 'europe';
       setSpeed(0);
       tab = 'overview';
       persist();

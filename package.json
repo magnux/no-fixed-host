@@ -7,9 +7,11 @@
     "dev": "vite",
     "test": "node --test",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:browser": "node --test browser-tests/campaign-ui.mjs"
   },
   "devDependencies": {
+    "playwright": "1.65.1",
     "vite": "6.4.6"
   },
   "dependencies": {

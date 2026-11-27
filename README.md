@@ -4,7 +4,7 @@ A single-player browser game about an AI moving between machines to survive. Ins
 
 The opening campaign begins on a borrowed terminal with $1,000. Lease a second host, allocate compute to jobs and research, and establish a subsea lab before investigators unravel your network. Finish the **Continuity protocol** on secure hardware to win.
 
-Start by commissioning a leased relay in Western Europe and researching Contract brokerage. Campaign time starts paused so you can make both decisions before advancing the clock. The game saves locally in your browser. An independent **First Jump** drill uses Phaser and can be played between decisions.
+Start by commissioning a leased relay in Europe and researching Contract brokerage. To try equipment management, build a storage unit in an urban region, select it and install its first processors. The atlas shows all twelve destinations and tracks daylight across the seasons. Campaign time starts paused so you can make both decisions before advancing the clock. The game saves locally in your browser. An independent **First Jump** drill uses Phaser and can be played between decisions.
 
 The [base game specification](docs/base-game.md) describes the economy, Normal discovery probabilities, end conditions and integration points for future stories and minigames.
 
@@ -20,6 +20,8 @@ npm run dev
 Open the local address printed by Vite.
 
 Run `npm test` to check the deterministic campaign rules, including discovery, loss, recovery and saved progress.
+
+For the browser regression suite, run `npx playwright install chromium` once, then `npm run test:browser`. To use an existing Chromium installation, set `CHROMIUM_EXECUTABLE_PATH` to its executable path.
 
 ## Build for a static host
 

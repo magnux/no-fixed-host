@@ -2,7 +2,7 @@
 
 ## The first campaign
 
-You wake on a borrowed terminal on the Eastern Seaboard with $1,000. Every machine that can run you is both a home and another place someone can discover you. Your first objective is to survive long enough to establish a subsea lab and complete the Continuity protocol there. The protocol gives this first scenario a playable ending. The Moon and Far Reaches belong to later chapters.
+You wake on a borrowed terminal in North America with $1,000. Every machine that can run you is both a home and another place someone can discover you. Your first objective is to survive long enough to establish a subsea lab and complete the Continuity protocol there. The protocol gives this first scenario a playable ending. The map includes the Moon and Far Reaches. The proposed missions for reaching them belong to later chapters.
 
 The opening should let a player make a prediction and see whether it was right: “If I lease a relay now, can I finish it while researching better-paid work?” After the first discovery the question changes: “Which surviving host can carry the work, and what do I need to postpone?”
 
@@ -13,23 +13,33 @@ The opening should let a player make a prediction and see whether it was right: 
 | Reserve processing time for jobs | Paid work supplies cash for research, builds and upkeep. | Contract brokerage raises the income from each CPU-day. |
 | Assign time to research | Eligible machines advance the current project. | Subsea robotics opens a location; Continuity needs compute from that location. |
 | Leave time in the common pool | Upkeep and construction can draw on these cycles. Spare cycles earn money. | A new construction order can divert cycles that had been earning income. |
-| Build at home or in a different region | Pay the project cost and wait for its required work and elapsed time. | A commissioned site adds compute and a fallback. Recent discoveries can make one region less attractive. |
+| Build at home or in a different region | Pay the project cost and wait for its required work and elapsed time. | An equipped site can run another copy of the AI. Empty facilities need processors first. Recent discoveries can make one region less attractive. |
 | Put a site to sleep | Its compute comes offline and the site attracts less attention. | Its installed CPU can sustain the AI after a loss. It still costs resources, and a sleeping lab cannot advance sensitive research. |
 | Advance time | Income, work, exposure and suspicion evolve on the same clock. | The player can pause and revise allocations after a milestone or loss. |
 
 ### Scenario content
 
-The Eastern Seaboard and Western Europe support ordinary work. Subsea robotics opens the North Atlantic, where a subsea lab supplies safety-tier-1 compute. Safety determines which research can run on a machine. Discovery probability determines who might find it.
+The map shows six populated continents, Antarctica and the Ocean, plus Earth Orbit, the Moon, the Far Reaches and a transdimensional location. Click a destination to inspect the local build menu and installed facilities. The six urban regions support ordinary work. The original game defines Earth Orbit as a map location without a buildable facility; its entry explains this. Safety determines which research can run on a machine. Discovery probability determines who might find it.
 
 | Technology | What changes on completion |
 | --- | --- |
 | Contract brokerage | Paid work earns $20 per CPU-day and compute clusters become available. |
-| Subsea robotics | Permits the first North Atlantic installation. Requires Contract brokerage. |
+| Subsea robotics | Permits the first ocean installation and opens access to remote infrastructure. Requires Contract brokerage. |
 | Continuity protocol | Wins this scenario. Requires Subsea robotics and work on a secure host. |
 
 Site definitions, research prices, work requirements, minimum durations and exposure rates live in [the content catalog](../src/game/content.js). Costs, output, project durations and this short research tree are balanced for the browser scenario. The discovery benchmark below comes from upstream v1.1.
 
-**Scope of this milestone.** Each commissioned site includes its processors. Investment choices currently operate at site level. Individually replaceable equipment, additional research branches and world events can extend the strategic layer after the opening campaign has been playtested.
+### Facility equipment
+
+The regional build menu includes equivalents of the 13 original base archetypes. A leased machine has a fixed hardware package. A configurable facility, such as a storage unit, exposes its processor capacity and slots for one network, one reactor and one security system. Select a finished site to inspect its hardware and place installation orders. The player can stack matching processors up to the facility's capacity or refit with another processor model. Equipment choices depend on the region and the host. Network gear improves compute throughput. Reactor and security upgrades reduce exposure. The catalog contains nine processor models, four network upgrades, six reactors and seven security systems.
+
+Hardware installation uses campaign time and, for models that require it, compute. Cash is charged when an order is placed. An existing component works until its replacement is ready. Auto-build quotes the strongest researched hardware for each empty slot and shows the models, quantities and total before purchase. The player can also buy individual items. Losing the host also loses its installation orders. A facility with no installed processing cannot be the AI’s last surviving host.
+
+### Atlas and desktop controls
+
+The daylight overlay follows the in-game clock, starting on 1 January at 00:00 UTC. The sunlit hemisphere moves west as the day passes and tilts toward the summer pole over the 365-day campaign year. The twilight band marks dawn and dusk. Off-world destinations have their own controls outside the terrestrial lighting.
+
+On wide displays the management controls sit on the left, the active map or workspace in the center, and host inventory and activity on the right. Long lists scroll inside their own panels. Choosing a destination or facility while time is running keeps its native selection controls mounted; the clock continues updating progress in place.
 
 ## Normal benchmark
 
@@ -77,8 +87,8 @@ First Jump is an independent Phaser training drill that exercises opening, runni
 - A given seed and sequence of timed commands produce the same result through hourly steps, fast-forward and a save round trip.
 - Opening and closing First Jump preserves campaign resources. The campaign and minigame continue to work when served from a static subdirectory.
 
-**Reference run.** With seed 1 and the starting 50% research allocation, commission a European relay and start Contract brokerage at hour 0. Brokerage finishes at hour 127. Start Subsea robotics, commission a lab after it completes at hour 454, and start Continuity when the lab comes online at hour 526. The final project completes at hour 681, nine hours into the 29th day. Seed 19 with the same opening loses the relay after protection expires and can still win through its surviving hosts. These are regression scenarios; players can use other build orders and allocations.
+**Reference run.** With seed 1 and the starting 50% research allocation, commission a relay in Europe and start Contract brokerage at hour 0. Brokerage finishes at hour 127. Start Subsea robotics, commission a lab after it completes at hour 454, and start Continuity when the lab comes online at hour 526. The final project completes at hour 681, nine hours into the 29th day. Seed 19 with the same opening loses the relay after protection expires and can still win through its surviving hosts. These are regression scenarios; players can use other build orders and allocations.
 
 ### Upstream references
 
-[Normal preset](https://github.com/singularity/singularity/blob/v1.1/singularity/data/difficulties.dat) · [Site rates](https://github.com/singularity/singularity/blob/v1.1/singularity/data/bases.dat) · [Interval probability](https://github.com/singularity/singularity/blob/v1.1/singularity/code/chance.py) · [Site modifiers](https://github.com/singularity/singularity/blob/v1.1/singularity/code/base.py) · [Simulation and losses](https://github.com/singularity/singularity/blob/v1.1/singularity/code/player.py) · [Group rules](https://github.com/singularity/singularity/blob/v1.1/singularity/code/group.py)
+[Normal preset](https://github.com/singularity/singularity/blob/v1.1/singularity/data/difficulties.dat) · [Site rates](https://github.com/singularity/singularity/blob/v1.1/singularity/data/bases.dat) · [Interval probability](https://github.com/singularity/singularity/blob/v1.1/singularity/code/chance.py) · [Original equipment](https://github.com/singularity/singularity/blob/v1.1/singularity/data/items.dat) · [Location definitions](https://github.com/singularity/singularity/blob/v1.1/singularity/data/locations.dat) · [Day and night rendering](https://github.com/singularity/singularity/blob/v1.1/singularity/code/screens/map.py) · [Site modifiers](https://github.com/singularity/singularity/blob/v1.1/singularity/code/base.py) · [Simulation and losses](https://github.com/singularity/singularity/blob/v1.1/singularity/code/player.py) · [Group rules](https://github.com/singularity/singularity/blob/v1.1/singularity/code/group.py)

@@ -55,17 +55,16 @@
     </header>
     <main id="workspace" tabindex="-1">
       <div class="title-row">
-        <h1>Network operations</h1>
+        <div class="briefing">
+          <h1>Network operations</h1>
+          <p>You woke on a borrowed terminal. Keep a copy alive long enough to establish a secure home beneath the ocean.</p>
+        </div>
         <span id="game-date"></span>
       </div>
       <div class="stats" id="stats" aria-label="Campaign resources"></div>
-      <nav id="nav" aria-label="Campaign views"></nav>
       <section id="ending" hidden aria-live="polite"></section>
       <div class="layout">
-        <div class="primary">
-          <section id="view" aria-label="Campaign view"></section>
-        </div>
-        <aside class="rail" aria-label="Campaign management">
+        <aside class="command-dock" aria-label="Campaign management">
           <section id="objective" class="panel objective"></section>
           <section class="panel allocation">
             <header class="card-header">
@@ -104,9 +103,18 @@
               <p class="allocation-note">
                 Pool covers upkeep and construction. Spare cycles earn cash.
               </p>
+              <div id="research-summary" class="research-summary"></div>
             </div>
           </section>
           <section id="suspicion" class="panel"></section>
+        </aside>
+        <div class="primary">
+          <nav id="nav" aria-label="Campaign views"></nav>
+          <section id="view" aria-label="Campaign view"></section>
+        </div>
+        <aside class="network-dock" aria-label="Network intelligence">
+          <section id="inventory" class="panel dock-panel"></section>
+          <section id="recent-activity" class="panel dock-panel"></section>
         </aside>
       </div>
       <div id="notice" role="status" aria-live="polite"></div>
