@@ -9,6 +9,8 @@ import {
 } from './persistence.js';
 import { icon } from './ui/icons.js';
 import { GROUPS, REGIONS } from './game/content.js';
+import { networkThreat } from './game/threat.js';
+import { translate } from './ui/localization.js';
 import { treasuryBalance } from './game/treasury.js';
 import { siteHardware } from './game/equipment.js';
 import { renderResearch, focusResearch } from './ui/research.js';
@@ -72,6 +74,36 @@ const htmlCache = new Map();
 element('game-date').innerHTML = icon('calendar') + '<b></b><span></span>';
 const dayLabel = element('game-date').querySelector('b');
 const timeLabel = element('game-date').querySelector('span');
+
+const threatIndicator = element('threat-indicator');
+const threatLabel = threatIndicator.querySelector('.threat-label');
+const threatLabels = {
+  protected: 'Protected', quiet: 'Low threat', guarded: 'Elevated threat', high: 'High threat', critical: 'Critical threat',
+};
+const threatDetails = {
+  protection: 'Opening protection is active.',
+  apotheosis: 'Your network is beyond discovery.',
+  quiet: 'Investigators show little evidence or activity.',
+  discovery: 'A recent discovery put the network on alert.',
+  evidence: 'Current suspicion determines the alert.',
+  outlook: 'The discovery outlook determines the alert.',
+  'investigation-loss': 'Investigators ended this campaign.',
+};
+
+function renderThreat({ level, cause, sourceGroup }) {
+  const language = shell?.getPreferences().language ?? 'en';
+  const label = translate(language, threatLabels[level]);
+  const groupName = GROUPS[sourceGroup]?.name;
+  const detail = translate(language, threatDetails[cause]) +
+    (groupName ? ' · ' + translate(language, groupName) : '');
+  if (document.documentElement.dataset.threat !== level) document.documentElement.dataset.threat = level;
+  if (threatLabel.textContent !== label) threatLabel.textContent = label;
+  if (threatIndicator.title !== detail) {
+    threatIndicator.title = detail;
+    threatIndicator.setAttribute('aria-description', detail);
+  }
+  if (threatIndicator.lang !== language) threatIndicator.lang = language;
+}
 
 function updateHtml(id, html) {
   if (htmlCache.get(id) === html) return;
@@ -238,7 +270,9 @@ function render() {
   updateHtml('newswire', newsPanel(state));
   updateHtml('recent-activity', recentPanel(state, currentWarnings(state, shell?.getPreferences().warnings).length));
   updateHtml('objective', objectivePanel(state));
-  updateHtml('suspicion', suspicionPanel(state, o.grace));
+  const threat = networkThreat(state, o.grace);
+  renderThreat(threat);
+  updateHtml('suspicion', suspicionPanel(threat));
   const research = researchAllocation(state, o);
   const limit = researchResizeLimit(state, o);
   updateHtml('research-summary', researchSummary(state, research));

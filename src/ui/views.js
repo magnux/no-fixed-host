@@ -1,11 +1,8 @@
 import { EQUIPMENT, GROUPS, REGIONS, SITE_TYPES, TECHS } from '../game/content.js';
-import { siteExposure, siteHardware } from '../game/engine.js';
-import { networkDiscoveryReading, suspicionReading } from '../game/awareness.js';
-import { researchEffects } from '../game/research.js';
+import { siteHardware } from '../game/engine.js';
 import { researchProjects } from '../game/research-tasks.js';
 import { storyKey } from '../game/chronicle.js';
 import { icon } from './icons.js';
-import { groupDangerForState } from '../game/events.js';
 
 export const money = (value) =>
   new Intl.NumberFormat('en-US', {
@@ -184,21 +181,15 @@ export function objectivePanel(s) {
       : '')
   );
 }
-export function suspicionPanel(state, grace) {
-  const immortal = state.freePlay || state.completed.includes('apotheosis');
-  if (grace || immortal) {
-    const text = immortal ? 'Apotheosis puts your network beyond discovery.' :
+export function suspicionPanel({ level, cause, rows, insight }) {
+  if (level === 'protected') {
+    const text = cause === 'apotheosis' ? 'Apotheosis puts your network beyond discovery.' :
       'Investigators can begin tracing your hosts when opening protection ends.';
     return cardHeader('Group suspicion', tag('Protected', 'green')) + '<p class="awareness-protected">' + text + '</p>';
   }
 
-  const insight = researchEffects(state).insight;
-  const exposures = [...state.sites, ...state.builds].map(site => siteExposure(state, site).rates);
-  const rows = Object.entries(GROUPS).map(([id, group]) => {
-    const intensity = exposures.reduce((sum, rates) => sum + rates[id], 0);
-    const danger = groupDangerForState(state, id, -Math.expm1(-intensity));
-    const suspicion = suspicionReading(state.suspicion[id], insight);
-    const outlook = networkDiscoveryReading(intensity, insight, danger);
+  const groups = rows.map(({ id, danger, suspicion, outlook }) => {
+    const group = GROUPS[id];
     const forecastLabel = insight === 'none' ? 'Discovery outlook' : 'Discovery today';
     const meter = suspicion.percent === null ? '' :
       `<progress aria-label="${group.name} suspicion" aria-valuetext="${suspicion.text}" max="100" value="${suspicion.percent}"></progress>`;
@@ -208,5 +199,5 @@ export function suspicionPanel(state, grace) {
       <small class="danger-forecast"><span class="outlook-emoji" role="img" aria-label="${danger.label} discovery outlook">${danger.emoji}</span> ${forecastLabel} · <span class="danger-label">${outlook}</span></small>
     </div>`;
   });
-  return cardHeader('Group suspicion') + '<div class="sus-list">' + rows.join('') + '</div>';
+  return cardHeader('Group suspicion') + '<div class="sus-list">' + groups.join('') + '</div>';
 }

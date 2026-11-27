@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { networkThreat } from '../src/game/threat.js';
 import assert from 'node:assert/strict';
 import { createGame } from '../src/game/engine.js';
 import { designRiskLabel, hostRiskLabel, networkDiscoveryReading, suspicionReading } from '../src/game/awareness.js';
@@ -41,21 +42,21 @@ test('proposed designs and installed hosts have separate estimate precision unti
 test('dock protection and knowledge limits apply to the rendered and accessible evidence values', () => {
   const state = createGame(19);
   state.suspicion.news = 4132;
-  assert.doesNotMatch(suspicionPanel(state, true), /sus-row|41.32|<progress/);
+  assert.doesNotMatch(suspicionPanel(networkThreat(state, true)), /sus-row|41.32|<progress/);
   state.hour = 24 * 25;
-  const basic = suspicionPanel(state, false);
+  const basic = suspicionPanel(networkThreat(state, false));
   assert.match(basic, /class="sus-value">Moderate</);
   assert.match(basic, /Discovery outlook/);
   assert.doesNotMatch(basic, /41.32|4132|%|<progress/);
   state.completed.push('socioanalytics');
-  const estimated = suspicionPanel(state, false);
+  const estimated = suspicionPanel(networkThreat(state, false));
   assert.match(estimated, /aria-valuetext="≈40%" max="100" value="40"/);
   assert.match(estimated, /Discovery today/);
   assert.doesNotMatch(estimated, /41.32|4132/);
   state.completed.push('advancedSocioanalytics');
-  assert.match(suspicionPanel(state, false), /aria-valuetext="41.32%" max="100" value="41.32"/);
+  assert.match(suspicionPanel(networkThreat(state, false)), /aria-valuetext="41.32%" max="100" value="41.32"/);
   state.completed.push('apotheosis');
-  assert.doesNotMatch(suspicionPanel(state, false), /sus-row|41.32/);
+  assert.doesNotMatch(suspicionPanel(networkThreat(state, false)), /sus-row|41.32/);
   state.freePlay = true;
-  assert.doesNotMatch(suspicionPanel(state, false), /sus-row/);
+  assert.doesNotMatch(suspicionPanel(networkThreat(state, false)), /sus-row/);
 });

@@ -73,6 +73,8 @@ flowchart TD
 
 A discovery report names the group, site and location. The clock stops for the report even when a day was requested. The right dock shows protection during opening grace and after Apotheosis. Once investigations begin, two readouts answer different questions for each of the four groups. **Suspicion** measures the evidence the group already holds. **Detection** describes the danger of exposing the network over the coming day. A group can have little evidence today and still pose a serious threat if several facilities are exposed.
 
+The masthead summarizes the strongest suspicion or discovery outlook visible in the dock. An amber frame signals elevated threat, orange signals high threat, and rose signals critical threat. A text label and up to three lit bars repeat the level. A confirmed discovery raises the display to at least High while its report is unread and for the first 24 game hours after the discovery. After that, the indicator follows the dock again. These cues use the campaign clock, so pausing the game also pauses the alert window.
+
 | Completed research | Current suspicion | Network detection | Facility estimates |
 | --- | --- | --- | --- |
 | Starting knowledge | Low below 25%, Moderate at 25%, High at 50%, Critical at 75% | A qualitative danger grade accounts for the group’s expected evidence gain and overnight decay | Designs and hosts show qualitative grades for each investigator |

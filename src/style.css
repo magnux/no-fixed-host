@@ -122,7 +122,6 @@ main {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  margin-right: auto;
 }
 .brand img {
   width: 2.18rem;
@@ -133,6 +132,68 @@ main {
   font-weight: 700;
   font-size: 1.32rem;
   letter-spacing: -0.055em;
+}
+/* Investigation pressure changes the dashboard frame while resource and action colors retain their meaning. */
+.threat-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: .45rem;
+  padding-inline-start: .85rem;
+  margin-inline-end: auto;
+  border-inline-start: 1px solid var(--line);
+  color: var(--threat-color, var(--quiet));
+  font: 600 .73rem/1.2 var(--mono);
+  white-space: nowrap;
+}
+.threat-signal {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 12px;
+}
+.threat-signal i {
+  width: 3px;
+  height: 4px;
+  background: currentColor;
+  border-radius: 1px;
+  opacity: .3;
+}
+.threat-signal i:nth-child(2) { height: 8px; }
+.threat-signal i:nth-child(3) { height: 12px; }
+
+html[data-threat="guarded"] {
+  --threat-color: #f1cb7f;
+  --threat-wash: 14%;
+  --threat-frame: 25%;
+}
+html[data-threat="high"] {
+  --threat-color: #ffa478;
+  --threat-wash: 21%;
+  --threat-frame: 36%;
+}
+html[data-threat="critical"] {
+  --threat-color: #ff8b9e;
+  --threat-wash: 28%;
+  --threat-frame: 48%;
+}
+html:is([data-threat="guarded"], [data-threat="high"], [data-threat="critical"]) .threat-signal i:first-child,
+html:is([data-threat="high"], [data-threat="critical"]) .threat-signal i:nth-child(2),
+html[data-threat="critical"] .threat-signal i:nth-child(3) { opacity: 1; }
+
+html:is([data-threat="guarded"], [data-threat="high"], [data-threat="critical"]) body > .mast {
+  background: linear-gradient(105deg,
+    color-mix(in srgb, var(--threat-color) var(--threat-wash), var(--panel)), var(--panel) 85%);
+  border-bottom-color: color-mix(in srgb, var(--threat-color) 65%, var(--line));
+}
+html:is([data-threat="guarded"], [data-threat="high"], [data-threat="critical"]) :is(.layout .panel, .stats) {
+  border-color: color-mix(in srgb, var(--threat-color) var(--threat-frame), var(--line));
+}
+html:is([data-threat="guarded"], [data-threat="high"], [data-threat="critical"]) #suspicion .card-header {
+  box-shadow: inset 3px 0 var(--threat-color);
+  background-color: color-mix(in srgb, var(--threat-color) var(--threat-wash), var(--panel));
+}
+@media (forced-colors: active) {
+  .threat-signal i { border: 1px solid currentColor; }
 }
 .clock-controls {
   display: flex;
@@ -843,8 +904,12 @@ select {
 .event-list li[data-kind="news"] strong, #newswire .card-header > svg { color: var(--mint); }
 .event-list li[data-kind="discovery"] strong { color: #f0ad92; }
 #suspicion .card-header { flex-wrap: wrap; gap: 0.35rem; }
-#incident-dialog { border-color: #a57159; width: min(30rem, 92vw); }
-#incident-dialog .incident-label { font: 0.72rem/1.5 var(--mono); text-transform: uppercase; color: #ffbd9d; letter-spacing: 0.08em; }
+#incident-dialog {
+  width: min(30rem, 92vw);
+  border-color: var(--threat-color, #a57159);
+  border-top-width: 3px;
+}
+#incident-dialog .incident-label { font: 0.72rem/1.5 var(--mono); text-transform: uppercase; color: var(--threat-color, #ffbd9d); letter-spacing: 0.08em; }
 #incident-dialog h2 { margin: 0.45rem 0; font-size: 1.5rem; line-height: 1.2; }
 #incident-dialog .incident-source { color: var(--quiet); font: 0.75rem/1.4 var(--mono); }
 #incident-text { margin: 1rem 0; line-height: 1.5; }
@@ -945,10 +1010,16 @@ select {
   .card-header { padding-inline: 0.9rem; }
 }
 
-@media (max-width: 25rem) {
-  .mast-inner { flex-wrap: wrap; gap: 0.3rem 0.6rem; padding-block: 0.4rem; }
-  .clock-controls { order: 1; width: 100%; }
+@media (max-width: 40rem) {
+  .mast-inner {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: .4rem .65rem;
+    padding-block: .4rem;
+  }
+  .clock-controls { grid-area: 2 / 1 / 3 / -1; }
   .clock-mode { display: inline-flex; margin-right: auto; }
+  .threat-indicator { padding-inline-start: .6rem; font-size: .69rem; white-space: normal; }
 }
 
 .menu-list { max-height: min(75vh, 36rem); overflow-y: auto; }

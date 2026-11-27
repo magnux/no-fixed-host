@@ -1,6 +1,16 @@
 // The shell and campaign navigation are available in English and Spanish.
 // Authored project names, reference material and campaign reports use English.
 const spanish = {
+  'Protected': 'Protección activa', 'Low threat': 'Amenaza baja', 'Elevated threat': 'Amenaza elevada',
+  'High threat': 'Amenaza alta', 'Critical threat': 'Amenaza crítica',
+  'Opening protection is active.': 'La protección inicial está activa.',
+  'Your network is beyond discovery.': 'Tu red está fuera del alcance de los investigadores.',
+  'Investigators show little evidence or activity.': 'Los investigadores tienen pocos indicios y muestran poca actividad.',
+  'A recent discovery put the network on alert.': 'Un descubrimiento reciente ha puesto la red en alerta.',
+  'Current suspicion determines the alert.': 'El nivel de alerta refleja la sospecha actual.',
+  'The discovery outlook determines the alert.': 'El nivel de alerta refleja el riesgo de descubrimiento.',
+  'Investigators ended this campaign.': 'Los investigadores pusieron fin a esta campaña.',
+  'Press': 'Prensa', 'Scientists': 'Científicos', 'Intelligence': 'Inteligencia', 'Public': 'Público',
   'Campaign': 'Campaña', 'Title screen': 'Pantalla de inicio', 'Save library': 'Partidas guardadas',
   'Options': 'Opciones', 'About': 'Acerca de', 'Close': 'Cerrar', 'Back': 'Volver',
   'Resume campaign': 'Continuar campaña', 'New campaign': 'Nueva campaña', 'Start new campaign': 'Iniciar nueva campaña',
