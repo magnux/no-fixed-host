@@ -19,15 +19,16 @@ const orbitalGlyphs = {
 
 function destination(id) {
   const name = REGIONS[id].name;
+  const counts = '<small class="atlas-count" aria-hidden="true"></small><b class="atlas-trace" aria-hidden="true"></b>';
   const attributes = 'type="button" data-action="region" data-id="' + id + '" aria-label="' + name + ' facilities"';
   if (ground[id]) {
     const [lon, lat] = ground[id];
     const style = '--x:' + ((lon + 180) / 3.6) + '%;--y:' + ((90 - lat) / 1.8) + '%';
     return '<button ' + attributes + ' class="atlas-pin" style="' + style + '">' +
-      '<span class="atlas-target" aria-hidden="true"></span><span class="atlas-name">' + name + '</span></button>';
+      '<span class="atlas-target" aria-hidden="true"></span><span class="atlas-name">' + name + counts + '</span></button>';
   }
   return '<button ' + attributes + ' class="atlas-outpost">' +
-    '<svg aria-hidden="true" viewBox="0 0 24 24">' + orbitalGlyphs[id] + '</svg><span>' + name + '</span></button>';
+    '<svg aria-hidden="true" viewBox="0 0 24 24">' + orbitalGlyphs[id] + '</svg><span>' + name + counts + '</span></button>';
 }
 
 const views = new WeakMap();
@@ -48,13 +49,16 @@ function mount(container) {
       <span><i class="atlas-status-light building"></i>Under construction</span>
       <span><i class="atlas-status-light asleep"></i>Asleep</span>
       <span class="atlas-pending-key" hidden><i class="atlas-status-light pending"></i>Awaiting CPU</span>
-      <span><i class="atlas-status-light"></i>Unoccupied</span></footer>
+      <span><i class="atlas-status-light"></i>Unoccupied</span><span>Numbers count hosts and builds</span>
+      <span data-trace-key="latest" hidden>◆ Latest discovery</span><span data-trace-key="previous" hidden>◇ Previous discovery</span></footer>
   </section>`;
   const atlas = container.querySelector('#world-atlas');
   const view = {
     atlas,
     date: atlas.querySelector('.atlas-date'),
     pendingKey: atlas.querySelector('.atlas-pending-key'),
+    latestKey: atlas.querySelector('[data-trace-key="latest"]'),
+    previousKey: atlas.querySelector('[data-trace-key="previous"]'),
     paint: createSunlightRenderer(atlas.querySelector('canvas')),
     buttons: [...atlas.querySelectorAll('button[data-id]')],
     minute: null,
@@ -63,13 +67,26 @@ function mount(container) {
   return view;
 }
 
-function status(state, region) {
-  const hosts = state.sites.filter(site => site.region === region);
-  const viableHosts = hosts.filter(host => siteHardware(state, host).cpu > 0);
-  if (viableHosts.some(host => host.power === 'active')) return ['online', 'Host online'];
-  if (state.builds.some(build => build.region === region)) return ['building', 'Under construction'];
-  if (viableHosts.length) return ['asleep', 'Host asleep'];
-  if (hosts.length) return ['pending', 'Awaiting CPU'];
+function occupancy(state) {
+  const regions = Object.fromEntries(Object.keys(REGIONS).map(id =>
+    [id, { completed: 0, builds: 0, online: 0, asleep: 0 }]));
+  for (const site of state.sites) {
+    const region = regions[site.region];
+    region.completed++;
+    if (siteHardware(state, site).cpu > 0) {
+      if (site.power === 'active') region.online++;
+      else region.asleep++;
+    }
+  }
+  for (const build of state.builds) regions[build.region].builds++;
+  return regions;
+}
+
+function status(region) {
+  if (region.online) return ['online', 'Host online'];
+  if (region.builds) return ['building', 'Under construction'];
+  if (region.asleep) return ['asleep', 'Host asleep'];
+  if (region.completed) return ['pending', 'Awaiting CPU'];
   return ['empty', 'Unoccupied'];
 }
 
@@ -77,9 +94,11 @@ export function updateAtlasTime(container, state) {
   const view = views.get(container);
   if (!view || view.atlas.parentElement !== container) return;
   const minute = state.hour * 60 + (state.minute ?? 0);
-  if (view.minute !== minute) {
+  const showLight = document.documentElement.dataset.daylight !== 'false';
+  if (view.minute !== minute || view.showLight !== showLight) {
     const sun = sunAt(state.hour, state.minute);
-    view.paint(sun);
+    if (showLight) view.paint(sun);
+    view.showLight = showLight;
     view.date.textContent = sun.label;
     view.minute = minute;
   }
@@ -90,14 +109,31 @@ export function updateAtlas(container, state) {
   if (!view || view.atlas.parentElement !== container) view = mount(container);
   updateAtlasTime(container, state);
   let hasPending = false;
+  const presence = occupancy(state);
+  const advanced = state.completed.includes('advancedSocioanalytics');
+  const latest = (advanced || state.completed.includes('socioanalytics')) ? state.recentRegions[0] : undefined;
+  const previous = advanced ? state.recentRegions[1] : undefined;
+  view.latestKey.hidden = !latest;
+  view.previousKey.hidden = !previous;
   for (const button of view.buttons) {
     const id = button.dataset.id;
-    const [key, description] = status(state, id);
+    const occupied = presence[id];
+    const [key, description] = status(occupied);
     if (key === 'pending') hasPending = true;
-    if (button.dataset.status === key) continue;
+    const { completed, builds } = occupied;
+    const latestHere = latest === id;
+    const previousHere = previous === id;
+    const trace = (latestHere ? '◆' : '') + (previousHere ? '◇' : '');
+    const signature = [key, completed, builds, trace].join('/');
+    if (button.dataset.summary === signature) continue;
+    button.dataset.summary = signature;
     button.dataset.status = key;
-    button.title = REGIONS[id].name + ' · ' + description;
-    button.setAttribute('aria-description', description);
+    button.querySelector('.atlas-count').textContent = completed + builds;
+    button.querySelector('.atlas-trace').textContent = trace;
+    const detail = description + ' · ' + completed + ' completed · ' + builds + ' under construction' +
+      (latestHere ? ' · Latest discovery' : '') + (previousHere ? ' · Previous discovery' : '');
+    button.title = REGIONS[id].name + ' · ' + detail;
+    button.setAttribute('aria-description', detail);
   }
   view.pendingKey.hidden = !hasPending;
 }

@@ -15,12 +15,24 @@ Open the address printed by Vite. The campaign starts paused and saves in the br
 
 For a first run, click Europe on the map and commission a leased relay. Open Research and complete **Intrusion**, then **Personal Identification**. This unlocks storage units and basic paid work. In Facilities, build a storage unit and expand its entry to install processors. A configurable building starts contributing compute when the first processors go online. A second equipped site also gives you somewhere to survive a discovery.
 
+## Playing the campaign
+
+| When you need to… | Where to go |
+| --- | --- |
+| Split work between projects or suspend an experiment | **Research → Tasks**. Fund the projects first, assign a research percentage in the left dock, then change their relative weights. |
+| Compare building here with keeping the money | Open a facility or research design and preview the order in **Reports**. Compare cash and CPU to midnight or over the next 24 hours. Place the order there if the trade looks worthwhile. |
+| Change an existing host | Click its region on the atlas, expand its entry in **Facilities**, and inspect upgrades, local upkeep and investigator risks. |
+| Understand a discovery | Read the paused report, inspect its region, or open **Activity** to filter the history and replay dispatches. |
+| Look up a rule or a completed experiment | Search **Knowledge**. The research entry links back to the project and records the AI’s findings after completion. |
+| Keep a checkpoint or change the presentation | Open **Campaign menu → Save library** or **Options**. Named checkpoints coexist with autosave and portable JSON. **About** lists the keyboard shortcuts. |
+
 ## Campaign and development
 
 - [Campaign rules and game loops](docs/base-game.md) covers compute, construction, equipment, discovery, news and the Normal probability benchmark.
 - [Research tree](docs/research-tree.md) maps the paths to hardware upgrades and safe research sites, with the direct prerequisites and unlocks of every project.
 - [Development context](docs/development.md) records how the browser game works, the design decisions made for this version, and future chapters and minigames.
-- [Original menu audit](docs/original-menu-audit.md) compares the original controls and screens with what players can do in No Fixed Host.
+- [Base implementation plan](docs/base-implementation-plan.md) records priorities, dependencies, acceptance checks and the release outcome.
+- [Simulation audit](docs/base-simulation-audit.md) traces mechanics in the original code and records where browser campaign rules differ. [Original menu audit](docs/original-menu-audit.md) preserves the screen comparison that initiated this release.
 
 The design takes inspiration from [Endgame: Singularity](https://github.com/singularity/singularity). The simulation and interface are written in JavaScript. **First Jump**, a standalone training drill, uses Phaser.
 

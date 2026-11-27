@@ -1,6 +1,6 @@
-# Original menus and remaining gameplay gaps
+# Original menu audit at fa9dbc2
 
-This audit compares the reachable screens in Endgame: Singularity v1.1 with No Fixed Host. Each row describes something a player could do in the original and what happens if they try it in the browser game today. The tables are grouped by where the player encounters the decision. Their order carries no implementation priority.
+This is the inventory used to plan the base release, recorded against No Fixed Host at commit `fa9dbc2`. The “missing” column describes that build. The [implementation plan](base-implementation-plan.md) tracks the work that followed. The [simulation audit](base-simulation-audit.md) covers behavior that cannot be found by comparing screens alone.
 
 ## Campaign screens
 

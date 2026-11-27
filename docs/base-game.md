@@ -23,6 +23,14 @@ flowchart TD
 
 Each simulation tick advances one minute. **Run** processes one tick per real second. The three **Fast** settings process 60, 360 and 1,440 ticks per second, and the fourth click returns to the first setting. The visible clock and daylight update as time passes between display frames. If a discovery happens partway through a frame’s work, the clock stops on that minute. The atlas starts on 1 January at 00:00 UTC and follows the campaign’s day and season.
 
+## Planning several turns ahead
+
+Funding a research project pays its cash cost immediately and adds it to Tasks. The research slider sets a total budget. Each funded project’s weight determines its share. Set a weight to zero to suspend a project and keep its progress. Research can stall after an eligible host sleeps or disappears. A higher safety tier can supply a lower-tier experiment. Continuity specifically needs Ocean processors. Cycles that cannot go to an experiment return to the shared pool.
+
+Cash upkeep is due in whole-dollar installments through the day. The network bill uses the combined daily rate. A host can suffer a cash-maintenance failure only when its own installment falls due and the network cannot pay. CPU maintenance draws from the pool every minute.
+
+Use a design’s forecast action to compare the current network against the same network with that order funded. **Reports** advances private copies through the same minute scheduler. Jobs, passive income, maintenance, construction and completion can all change during the forecast. Unknown discoveries and future random news remain outside the estimate. Both columns start from the same minute. **Statistics** retains cumulative production even when a building is subsequently lost. Migrated campaigns label the point where tracking began.
+
 ## Where to build
 
 All twelve destinations are visible. Activating a location opens its facility controls. Six populated continents offer ordinary leases. Antarctica and the Ocean support remote work. The Moon, Far Reaches, and transdimensional locations support progressively more sensitive projects. Earth Orbit appears as a destination without a facility design, as in the reference game. Seeing a location lets the player inspect its prerequisites before committing resources.
@@ -36,6 +44,8 @@ A leased relay arrives with fixed hardware. A storage unit provides eight proces
 | Sleep a viable backup | It can survive a loss and is harder to trace, but its CPU stops earning money or doing research. |
 | Spread hosts across regions | A discovery in one region leaves more of the network outside that region’s increased exposure. Every additional visible host also provides another discovery opportunity. |
 | Rush a remote research tier | Opening the destination alone is insufficient. Its equipment must be built, powered and available for research. |
+
+A new campaign shuffles six urban profiles. Geography changes local thrift, construction speed, CPU output and stealth. The facility inspector shows the local quantities used in a quote. Worlds imported from earlier releases retain their existing geography. Facilities can be named, renamed, and decommissioned. Dismantling an equipped host also discards its pending installations. The last viable copy is protected against voluntary dismantling. Buyers can add matching processors to an in-progress batch when enough bays and cash remain.
 
 ## Discovery and news
 
@@ -55,7 +65,7 @@ flowchart TD
     Lower --> Check
 ```
 
-A discovery report names the group, site and location. The clock stops for the report even when a day was requested. Group suspicion records accumulated evidence. The emoji and text report the current danger level. Socioanalytics adds a qualitative discovery forecast, and Advanced Socioanalytics exposes the estimated daily probability.
+A discovery report names the group, site and location. The clock stops for the report even when a day was requested. Group suspicion records accumulated evidence. The right dock always displays that percentage and a danger emoji. Socioanalytics adds a qualitative network-wide discovery forecast there, and Advanced Socioanalytics exposes the estimated daily probability. In Facilities the four investigators start with qualitative site risk grades. The first analytics project gives approximate probabilities, and the second gives two-decimal estimates. The purchase screen estimates a mature, online design. The inspector accounts for the host’s current protection, power and hardware.
 
 | Normal calibration | Rule |
 | --- | --- |
@@ -69,6 +79,12 @@ A discovery report names the group, site and location. The clock stops for the r
 News is visible during opening protection. The early bulletins give the player a first signal from the outside world. After protection ends, eight world stories can alter the discovery multiplier of a particular group. Six have lasting effects and two press stories expire after 21 days. Each has a daily hazard of 20/10,000 while eligible. A newspaper headline can make future discovery more or less likely without naming or costing the player a site. News uses a separate random sequence from discovery.
 
 **Repeatable playtest.** Start simulation seed 19, commission leased relays in Europe and Asia immediately, and keep the default allocation. The first news bulletin arrives at 06:00 on day 1. On day 35 at 21:34 the Public identifies the Asian relay. Its loss leaves two hosts, and Public suspicion rises by ten percentage points. The browser regression test runs this scenario and checks that the report survives reload.
+
+## After a report or an ending
+
+Activity groups dispatches by their simulated minute, filters events by category and keeps up to 1,000 records. Warnings in the right dock and Activity point to decisions the player can make. The four warning categories can be switched independently in Options. Read the opening through the campaign menu. Losing opening protection pauses playback on that minute and opens the grace chapter. Revisit chapters from their entries in Activity. A discovery on the same minute takes precedence.
+
+After Apotheosis, choose **Enter free play** to keep the network and explore the remaining projects. Save slots can preserve the moment of victory separately. The developer sandbox in the campaign menu runs on a disposable copy and provides controls for testing particular situations.
 
 ## References
 

@@ -1,0 +1,31 @@
+.chronicle-console [hidden], .chronicle-dialog [hidden], .developer-console [hidden] { display: none; }
+.chronicle-console h3, .developer-console h3 { font-size: .95rem; }
+.chronicle-warnings:not(:empty), .chronicle-world:not(:empty), .chronicle-filters, .chronicle-pager { padding: .65rem 1rem; border-bottom: 1px solid var(--line); }
+.chronicle-world strong, .chronicle-world small { display: block; margin-top: .28rem; }
+.chronicle-warnings summary { cursor: pointer; color: var(--amber); font-size: .8rem; }
+.chronicle-warnings details, .chronicle-warnings details p { margin-top: .35rem; }
+.chronicle-warnings details p, .chronicle-empty, .developer-console p, .chronicle-dialog p { font-size: .88rem; line-height: 1.45; }
+.chronicle-filters, .chronicle-pager, .chronicle-actions, .developer-controls { display: flex; align-items: center; flex-wrap: wrap; gap: .55rem; }
+.chronicle-pager { justify-content: space-between; border-bottom: 0; }
+.chronicle-filters label, .developer-console label { color: var(--quiet); font-size: .81rem; }
+.chronicle-filters summary { cursor: pointer; }
+.chronicle-filters fieldset { display: flex; flex-wrap: wrap; gap: .3rem .7rem; margin: .4rem 0; padding: .4rem; min-width: 0; border: 1px solid var(--line); }
+.chronicle-filters legend { font-size: .8rem; color: var(--quiet); }
+.developer-console select, .developer-console input[type=number] { padding: .35rem .4rem; max-width: 100%; }
+.chronicle-list { list-style: none; margin: 0; padding: 0 .9rem; }
+.chronicle-console .chronicle-list li { display: flex; align-items: baseline; flex-wrap: wrap; gap: .4rem; padding: .4rem 0; }
+.chronicle-list time { color: var(--quiet); font: .72rem var(--mono); }
+.chronicle-list .chronicle-entry { background: none; border: 0; text-align: left; color: var(--mint); padding: .15rem; font-weight: 500; }
+.chronicle-empty { padding: 1rem; }
+.chronicle-dialog { width: min(32rem,92vw); max-height: 85vh; overflow-y: auto; color: #eaf6f1; background: #172329; border: 1px solid #4a665d; border-radius: .5rem; padding: 1.25rem; }
+.chronicle-dialog::backdrop { background: #060b10c9; }
+.chronicle-dialog h2 { margin: .35rem 0; font-size: 1.25rem; }
+.chronicle-dialog p { margin: .8rem 0 1rem; }
+.chronicle-actions { margin-top: .8rem; }
+.developer-body { display: grid; gap: .75rem; min-width: 0; padding: .8rem 1rem; }
+.developer-body fieldset, .developer-body details { min-width: 0; margin: .6rem 0; padding: .55rem .7rem; border: 1px solid var(--line); }
+.developer-body fieldset > * { margin: .22rem; }
+.developer-body legend { font-size: .82rem; color: var(--mint); }
+.developer-body pre { white-space: pre-wrap; overflow-wrap: anywhere; font: .72rem/1.4 var(--mono); max-height: 18rem; overflow: auto; }
+.developer-body fieldset label { display: inline-flex; align-items: center; flex-wrap: wrap; gap: .35rem; }
+.developer-controls { margin-top: .5rem; }

@@ -124,3 +124,8 @@
   #world-atlas .atlas-pin[data-id="australia"] { transform: translate(-50%, -7px); }
   #world-atlas .atlas-pin[data-id="antarctic"] { flex-direction: column-reverse; transform: translate(-50%, calc(-100% + 7px)); }
 }
+
+.atlas-count { margin-inline-start: .28em; color: #c0d2ce; font: 600 .85em var(--mono); }
+.atlas-trace { color: #f6c27e; margin-inline-start: .25em; }
+.atlas-trace:empty { display: none; }
+.atlas-key [data-trace-key] { color: #f6c27e; }

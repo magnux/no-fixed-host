@@ -1,0 +1,62 @@
+.campaign-shell {
+  color: #e9eff0; background: var(--panel); border: 1px solid var(--line);
+  border-radius: .65rem; padding: 0; width: min(37rem, calc(100vw - 1.5rem)); max-height: min(85dvh, 42rem);
+  box-shadow: 0 1.2rem 4rem #0009; scrollbar-width: thin;
+}
+.campaign-shell::backdrop { background: #04090dcc; }
+.shell-head { background: var(--panel); display: flex; justify-content: space-between; align-items: center; gap: 1rem;
+  position: sticky; z-index: 1; top: 0; padding: .8rem 1.15rem; border-bottom: 1px solid var(--line); }
+.shell-head small { color: var(--mint); font: .72rem var(--mono); }
+.shell-head h2 { font-size: 1.32rem; margin-top: .25rem; }
+.shell-body { padding: 1rem 1.15rem; }
+.shell-body h3 { margin: .9rem 0 .35rem; }
+.shell-body h3:first-child { margin-top: 0; }
+.shell-body p { line-height: 1.5; font-size: .87rem; }
+.shell-body p + p { margin-top: .65rem; }
+.shell-body a { color: var(--mint); text-underline-offset: .15rem; }
+.shell-lead { font-weight: 600; }
+.shell-current, .shell-note, .shell-when { color: var(--quiet); }
+.shell-actions, .shell-save-bar > div { display: flex; align-items: center; flex-wrap: wrap; gap: .45rem; }
+.shell-actions.hub { margin-top: 1.1rem; }
+.shell-back { margin-top: .9rem; }
+.shell-save-bar { margin-bottom: .7rem; }
+.shell-body input:not([type=checkbox]):not([type=range]), .shell-body select {
+  background: var(--ink); color: inherit; border: 1px solid var(--line); border-radius: .3rem; min-width: 0; padding: .45rem .6rem;
+}
+.shell-save-bar input { flex: 1; }
+.shell-save-bar > label, .shell-setting, .shell-search { font-size: .85rem; }
+.shell-save-bar > label { display: block; margin-bottom: .35rem; }
+.shell-search { display: grid; gap: .35rem; margin: .95rem 0 .25rem; }
+.shell-slots { margin: 0; padding: 0; list-style: none; }
+.shell-slots li { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;
+  gap: .45rem; border-bottom: 1px solid var(--line); padding: .65rem 0; font-size: .85rem; }
+.shell-slots strong, .shell-slots small { display: block; overflow-wrap: anywhere; }
+.shell-slots li > div:last-child { display: flex; gap: .35rem; }
+.shell-slots button { padding: .35rem .7rem; }
+.shell-confirm:not([hidden]) { position: sticky; bottom: 0; padding: .65rem .8rem;
+  background: var(--panel); border: 1px solid var(--amber); border-radius: .35rem; margin-top: .7rem; }
+.shell-confirm p { padding-bottom: .4rem; }
+.shell-danger { color: #ffb8ac; border-color: #b76556; }
+.shell-notice { color: var(--mint); padding: 0 1.15rem .8rem; font-size: .85rem; }
+.shell-notice:empty { display: none; }
+.shell-settings { display: grid; grid-template-columns: 1fr 1fr; gap: .65rem; }
+.shell-settings fieldset { border: 1px solid var(--line); border-radius: .3rem; padding: .75rem; margin: 0; min-width: 0;
+  display: grid; align-content: start; gap: .65rem; }
+.shell-settings fieldset:last-child { grid-column: 1 / -1; grid-template-columns: repeat(2, minmax(0,1fr)); }
+.shell-settings legend { color: var(--mint); padding: 0 .25rem; font-weight: 600; font-size: .92rem; }
+.shell-setting { display: grid; gap: .25rem; }
+.shell-check { display: flex; align-items: baseline; gap: .55rem; font-size: .85rem; cursor: pointer; }
+.shell-check input { margin: 0; accent-color: var(--mint); }
+.shell-slider { display: grid; grid-template-columns: 1fr auto; font-size: .82rem; gap: .3rem; }
+.shell-slider input { grid-column: 1 / -1; width: 100%; margin: 0; accent-color: var(--mint); }
+.shell-note { padding-top: .5rem; }
+.shell-shortcuts { margin: .3rem 0 0; }
+.shell-shortcuts > div { display: grid; grid-template-columns: minmax(7rem, .6fr) 1fr; gap: .4rem; padding: .35rem 0; border-bottom: 1px solid var(--line); }
+.shell-shortcuts dd { margin: 0; font-size: .82rem; } .shell-shortcuts kbd { color: var(--mint); font: .78rem var(--mono); }
+html[data-daylight=false] .atlas-geography > canvas { visibility: hidden; }
+html[data-theme=amber] { --ink: #191712; --panel: #26211a; --line: #5d5141; --quiet: #ccbda9; --mint: #ffd58c; --violet: #d7b779; background: var(--ink); }
+html[data-theme=contrast] { --ink: #030405; --panel: #050809; --line: #849395; --quiet: #d4dedd; --mint: #9dffdc; --amber: #ffdb8a; background: var(--ink); }
+html[data-theme=amber] .mast, html[data-theme=amber] .panel, html[data-theme=contrast] .mast, html[data-theme=contrast] .panel { background: var(--panel); border-color: var(--line); }
+html[data-theme=amber] button:not(.primary-button), html[data-theme=amber] .menu-list { background-color: var(--panel); }
+@media (max-width: 37rem) { .shell-settings { grid-template-columns: 1fr; }
+  .shell-settings fieldset:last-child { grid-template-columns: 1fr; } .campaign-shell { max-height: 90dvh; } }

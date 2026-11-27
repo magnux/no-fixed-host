@@ -45,6 +45,12 @@
             ···
           </summary>
           <div class="menu-list">
+            <button data-shell-open="title">Title screen</button>
+            <button data-shell-open="saves">Save library</button>
+            <button data-shell-open="options">Options</button>
+            <button data-shell-open="about">About</button>
+            <button data-action="opening-story">Read opening chapter</button>
+            <button data-action="tab" data-id="developer">Developer sandbox</button>
             <button data-action="drill">First Jump drill</button
             ><button data-action="export">Export save</button
             ><button data-action="import">Import save</button
@@ -128,6 +134,7 @@
       <p id="incident-text"></p>
       <p class="incident-consequence" id="incident-consequence"></p>
       <div class="dialog-actions">
+        <button type="button" id="incident-batch" data-action="discovery-batch" hidden>Read all dispatches</button>
         <button type="button" data-action="inspect-discovery">Inspect region</button>
         <button type="button" class="primary-button" data-action="acknowledge-discovery" autofocus>Acknowledge</button>
       </div>

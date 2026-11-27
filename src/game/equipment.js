@@ -1,4 +1,6 @@
 import { EQUIPMENT, SITE_TYPES, TECHS } from './content.js';
+import { regionFactors, regionalSpec } from './geography.js';
+import { spendTreasury } from './treasury.js';
 import { laborHours } from './research.js';
 
 const SLOTS = ['cpu', 'network', 'reactor', 'security'];
@@ -22,7 +24,7 @@ export function siteHardware(state, site) {
   const rawCpu = spec.fixedCpu ? spec.cpu :
     installed.cpu ? EQUIPMENT[installed.cpu.itemId].quality * installed.cpu.count : 0;
   const extra = slot => installed[slot] ? EQUIPMENT[installed[slot].itemId].quality : 0;
-  const cpu = Math.floor(rawCpu * (10_000 + extra('network')) / 10_000);
+  const cpu = rawCpu ? Math.max(1, Math.floor(rawCpu * (10_000 + extra('network')) / 10_000 * regionFactors(state, site.region).cpu)) : 0;
   return {
     installed, cpu, rawCpu, capacity: spec.slots, fixedProcessor: spec.fixedCpu || null,
     networkBonus: extra('network'),
@@ -31,21 +33,34 @@ export function siteHardware(state, site) {
   };
 }
 
+export function projectedCompute(state, site, itemId, count = 1) {
+  const item = EQUIPMENT[itemId];
+  const installed = installedEquipment(site);
+  if (!item || !Number.isSafeInteger(count) || count < 1 || count > room(site, itemId)) return null;
+  const existing = installed[item.slot];
+  const pending = site.installations?.find(row => row.itemId === itemId);
+  const amount = count + (pending?.count || 0) + (item.slot === 'cpu' && existing?.itemId === itemId ? existing.count : 0);
+  const equipment = { ...installed, [item.slot]: { itemId, count: amount } };
+  return siteHardware(state, { ...site, equipment }).cpu;
+}
+
 function room(site, itemId) {
   const spec = slotsOf(site);
   const item = EQUIPMENT[itemId];
+  const pending = site.installations?.find(project => EQUIPMENT[project.itemId].slot === item.slot);
   if (spec.fixedCpu || !item.regions.includes(site.region) ||
-      site.installations?.some(project => EQUIPMENT[project.itemId].slot === item.slot)) return 0;
+      (pending && (item.slot !== 'cpu' || pending.itemId !== itemId))) return 0;
   const previous = installedEquipment(site)[item.slot];
   if (item.slot !== 'cpu') return previous?.itemId === itemId ? 0 : 1;
-  return spec.slots - (previous?.itemId === itemId ? previous.count : 0);
+  return spec.slots - (previous?.itemId === itemId ? previous.count : 0) - (pending?.count || 0);
 }
 
 export function installQuote(state, siteId, itemId, count = 1) {
   const site = state.sites.find(s => s.id === siteId);
   const item = Object.hasOwn(EQUIPMENT, itemId) ? EQUIPMENT[itemId] : null;
   if (!item || !site) return { cost: 0, work: 0, hours: 0, maxCount: 0 };
-  return { cost: item.cost * count, work: item.work * count, hours: laborHours(state, item), maxCount: room(site, itemId) };
+  const local = regionalSpec(state, site.region, item);
+  return { cost: local.cost * count, work: local.work * count, hours: laborHours(state, local), maxCount: room(site, itemId) };
 }
 
 export function installReason(state, siteId, itemId, count = 1) {
@@ -58,13 +73,14 @@ export function installReason(state, siteId, itemId, count = 1) {
   if (!item.regions.includes(site.region)) return 'Unavailable in this environment.';
   const prerequisite = item.requires.find(id => !state.completed.includes(id));
   if (prerequisite) return 'Requires ' + TECHS[prerequisite].name + '.';
-  if (site.installations?.some(project => EQUIPMENT[project.itemId].slot === item.slot)) {
+  const pending = site.installations?.find(project => EQUIPMENT[project.itemId].slot === item.slot);
+  if (pending && (item.slot !== 'cpu' || pending.itemId !== itemId)) {
     return 'Installation already in progress in this slot.';
   }
   if (!Number.isSafeInteger(count) || count < 1) return 'Choose a positive whole quantity.';
   if (item.slot !== 'cpu' && installedEquipment(site)[item.slot]?.itemId === itemId) return 'Already installed.';
   if (count > room(site, itemId)) return 'Quantity exceeds the available slots.';
-  if (state.cash < item.cost * count) return 'Insufficient cash for this installation.';
+  if (state.cash < regionalSpec(state, site.region, item).cost * count) return 'Insufficient cash for this installation.';
   return '';
 }
 
@@ -85,8 +101,9 @@ export function autoInstallQuote(state, siteId) {
     if (!best) continue;
     const [itemId, item] = best;
     const count = slot === 'cpu' ? slotsOf(site).slots : 1;
-    cost += count * item.cost;
-    orders.push({ itemId, count, cost: count * item.cost });
+    const price = regionalSpec(state, site.region, item).cost * count;
+    cost += price;
+    orders.push({ itemId, count, cost: price });
   }
   let reason = '';
   if (!orders.length) reason = 'No available equipment for the empty slots.';
@@ -99,9 +116,17 @@ export function orderInstallation(state, siteId, itemId, count) {
   if (reason) throw new Error(reason);
   const site = state.sites.find(s => s.id === siteId);
   const item = EQUIPMENT[itemId];
-  state.cash -= item.cost * count;
+  const terms = regionalSpec(state, site.region, item);
+  spendTreasury(state, terms.cost * count);
   const queue = site.installations ??= [];
-  queue.push({ siteId, itemId, count, hours: 0, work: 0 });
+  const pending = queue.find(project => project.itemId === itemId);
+  if (pending) {
+    pending.count += count;
+    pending.hours = 0;
+    pending.laborHours = laborHours(state, terms);
+  } else {
+    queue.push({ siteId, itemId, count, hours: 0, work: 0, laborHours: laborHours(state, terms) });
+  }
 }
 
 export function fitEquipment(site, project) {
@@ -110,6 +135,7 @@ export function fitEquipment(site, project) {
   const previous = installed[slot];
   const count = project.count + (previous?.itemId === project.itemId ? previous.count : 0);
   site.equipment = { ...installed, [slot]: { itemId: project.itemId, count } };
+  if (slot === 'cpu' && !previous) site.power = 'active';
   site.installations = site.installations.filter(p => p !== project);
 }
 
@@ -145,8 +171,12 @@ export function validHardware(state, site) {
     seen.add(item.slot);
     const prior = installed[item.slot];
     const cap = (item.slot === 'cpu' ? spec.slots : 1) - (prior?.itemId === p.itemId ? prior.count : 0);
-    return p.count <= cap && Number.isFinite(p.work) && p.work >= 0 && p.work <= item.work * p.count &&
+    const local = regionalSpec(state, site.region, item);
+    const limit = p.laborHours ?? local.hours;
+    if (p.laborHours !== undefined && (!Number.isFinite(limit) || limit < 0 || limit > local.hours ||
+        Math.abs(limit * 60 - Math.round(limit * 60)) > 1e-8)) return false;
+    return p.count <= cap && Number.isFinite(p.work) && p.work >= 0 && p.work <= local.work * p.count &&
       Number.isFinite(p.hours) && Math.abs(p.hours * 60 - Math.round(p.hours * 60)) < 1e-8 &&
-      p.hours >= 0 && p.hours <= item.hours;
+      p.hours >= 0 && p.hours <= limit;
   });
 }

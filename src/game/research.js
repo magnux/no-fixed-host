@@ -28,6 +28,7 @@ export function researchEffects(state) {
   const basePay = state.completed.includes('simulacra') ? 75 :
     state.completed.includes('voiceSynthesis') ? 50 :
     state.completed.includes('personalIdentification') ? 20 : 5;
+  effects.jobName = ({ 5: 'Menial jobs', 20: 'Basic jobs', 50: 'Intermediate jobs', 75: 'Expert jobs' })[basePay];
   effects.jobsPerCpuDay = basePay * effects.jobBonus / BASE;
   effectCache.set(state, { key, effects });
   return effects;

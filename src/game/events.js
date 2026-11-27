@@ -71,6 +71,22 @@ function startStory(state, id, minute, log) {
   log(state, 'news.world', text, { headline: story.headline, storyId: id, group: story.group, modifier: story.modifier });
 }
 
+// The event inspector uses the same effects, expiry tracking and log entries as
+// the ordinary world clock. Its caller operates on a sandbox copy.
+export function setWorldStory(state, id, active, log) {
+  const story = WORLD_NEWS[id];
+  if (!Object.hasOwn(WORLD_NEWS, id)) throw new Error('Unknown world story.');
+  const hasStory = Object.hasOwn(state.news.stories, id);
+  if (active === hasStory) throw new Error(active ? 'This story is already active.' : 'This story is not active.');
+  if (active) {
+    startStory(state, id, state.hour * 60 + state.minute, log);
+    return;
+  }
+  delete state.news.stories[id];
+  log(state, 'news.expired', 'The sandbox ended this story. Its discovery modifier has been removed.',
+    { headline: 'Coverage ends: ' + story.headline, storyId: id, group: story.group });
+}
+
 // Called on the simulation clock, including fast-forward. Quiet-period reports are
 // hand-authored broadcasts. Only the seeded world stories alter detection rates.
 export function updateWorldNews(state, minute, grace, log) {

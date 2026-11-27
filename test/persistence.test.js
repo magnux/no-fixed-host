@@ -36,7 +36,7 @@ test('version 2 preserves paid campaign work and grants only its newly required 
   state.research = { id: 'robotics', work: 27.5, hours: 5.5 };
   const pack = () => JSON.stringify({ game: 'no-fixed-host', format: 2, campaign: state });
   const migrated = decodeCampaign(pack());
-  assert.equal(migrated.version, 3);
+  assert.equal(migrated.version, 4);
   assert.equal(migrated.cash, state.cash);
   assert.deepEqual(migrated.research, state.research);
   assert.deepEqual(new Set(migrated.completed), new Set(['contracts', 'intrusion', 'personalIdentification',

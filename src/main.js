@@ -1,4 +1,4 @@
-import { advanceMinutes, command, createGame, overview } from './game/engine.js';
+import { advanceMinutes, command, createGame, hasGrace, overview } from './game/engine.js';
 import {
   CAMPAIGN_STORAGE_KEY,
   decodeCampaign,
@@ -12,9 +12,14 @@ import { siteHardware } from './game/equipment.js';
 import { renderResearch, focusResearch } from './ui/research.js';
 import { updateAtlas, updateAtlasTime } from './ui/atlas.js';
 import { FAST_RATES, MinuteClock, nextFastRate } from './ui/clock.js';
+import { renderKnowledge } from './ui/knowledge.js';
+import { renderReports } from './ui/reports.js';
+import { hudProjection, invalidateReports } from './game/reports.js';
+import { reportsAt } from './game/chronicle.js';
+import { currentWarnings, openDispatches, openStory, renderChronicle, renderDeveloper, storyKey } from './ui/chronicle.js';
+import { initShell } from './ui/shell.js';
 import { renderFacilities } from './ui/facilities.js';
 import {
-  activityPage,
   esc,
   newsPanel,
   money,
@@ -30,7 +35,9 @@ const tabs = {
   overview: 'Overview',
   facilities: 'Facilities',
   research: 'Research',
+  reports: 'Reports',
   activity: 'Activity',
+  knowledge: 'Knowledge',
 };
 const freshGame = () =>
   createGame(crypto.getRandomValues(new Uint32Array(1))[0]);
@@ -42,6 +49,9 @@ let selectedSite = null;
 let facilityNavigationId = 0;
 let navigationScope = 'campaign';
 let mountedTab = null;
+let candidate = null;
+let shell;
+let graceChapterPending = false;
 const clock = new MinuteClock();
 const rateLabels = { 0: 'Paused', 1: '1 tick/s', 60: '60 ticks/s', 360: '360 ticks/s', 1440: '1,440 ticks/s' };
 const dashboardInterval = 100;
@@ -95,9 +105,10 @@ function persist() {
 }
 function renderClock() {
   const finished = state.status !== 'running';
+  const sandbox = tab === 'developer';
   const rate = clock.rate;
   const level = FAST_RATES.indexOf(rate) + 1;
-  element('clock-mode').textContent = finished ? 'Campaign ended' : rateLabels[rate];
+  element('clock-mode').textContent = finished ? 'Campaign ended' : sandbox ? 'Campaign paused' : rateLabels[rate];
   element('clock-mode').classList.toggle('running', rate > 0);
   for (const [id, glyph, label, active] of [
     ['pause', 'pause', 'Pause', rate === 0],
@@ -106,18 +117,19 @@ function renderClock() {
   ]) {
     updateHtml(id, icon(glyph) + label);
     element(id).setAttribute('aria-pressed', String(active && !finished));
-    element(id).disabled = finished;
+    element(id).disabled = finished || sandbox;
   }
   element('fast').title = 'Next speed: ' + rateLabels[nextFastRate(rate)] + ' (one game minute per tick)';
-  element('step').disabled = finished;
+  element('step').disabled = finished || sandbox;
 }
 function stopPlayback(now) {
+  invalidateReports(state);
   clock.setRate(0, now);
   if (frame !== null) cancelAnimationFrame(frame);
   frame = null;
 }
 function setSpeed(rate) {
-  if (state.status !== 'running' || document.hidden || arcadeOpen) rate = 0;
+  if (state.status !== 'running' || document.hidden || arcadeOpen || tab === 'developer') rate = 0;
   if (clock.rate === rate) return;
   const now = performance.now();
   // Settle the visible fraction of a frame at the previous rate. On suspension
@@ -165,6 +177,7 @@ function renderDate() {
 function render() {
   lastDashboard = performance.now();
   const o = overview(state);
+  const projection = hudProjection(state);
   renderClock();
   renderDate();
   updateHtml(
@@ -173,28 +186,27 @@ function render() {
       'cash',
       'Cash reserves',
       money(state.cash),
-      money(o.upkeepPerDay) + '/day upkeep',
+      (projection.cashNet >= 0 ? '+' : '') + money(projection.cashNet) + ' projected / 24h',
     ) +
       metric(
         'cpu',
         'Active compute',
         String(o.activeCpu),
-        o.safeCpu +
-          ' safe CPU' +
-          (o.cpuUpkeep ? ' · ' + o.cpuUpkeep + ' upkeep' : ''),
+        o.safeCpu + ' safe · ' + Math.abs(projection.poolBalanceCpu).toLocaleString('en-US', { maximumFractionDigits: 1 }) +
+          (projection.poolBalanceCpu >= 0 ? ' spare' : ' short'),
         'CPU',
       ) +
       metric(
         'facilities',
         'Network hosts',
-        String(state.sites.length),
-        state.builds.length + ' under construction',
+        String(projection.viable),
+        projection.empty + ' empty · ' + state.builds.length + ' building',
       ) +
       metric(
         'shield',
         'Discovery',
-        o.grace ? 'Protected' : 'Exposed',
-        o.grace ? 'Opening protection ends by day 24' : 'Site risks are live',
+        state.freePlay ? 'Free play' : o.grace ? 'Protected' : 'Exposed',
+        state.freePlay ? 'Beyond Apotheosis' : o.grace ? 'Opening protection ends by day 24' : 'Site risks are live',
       ),
   );
   updateHtml(
@@ -211,14 +223,11 @@ function render() {
           name +
           '</button>',
       )
-      .join('') +
-      '<button data-action="drill" class="drill-link">' +
-      icon('jump') +
-      'First Jump drill</button>',
+      .join(''),
   );
   renderView();
   updateHtml('newswire', newsPanel(state));
-  updateHtml('recent-activity', recentPanel(state));
+  updateHtml('recent-activity', recentPanel(state, currentWarnings(state, shell?.getPreferences().warnings).length));
   updateHtml('objective', objectivePanel(state));
   updateHtml('suspicion', suspicionPanel(state, o.grace));
   updateHtml('research-summary', researchSummary(state));
@@ -226,7 +235,7 @@ function render() {
   if (!editingAllocation)
     allocationValues(state.allocations.jobs, state.allocations.research);
   element('jobs').disabled = element('research').disabled =
-    state.status !== 'running';
+    state.status !== 'running' || tab === 'developer';
   element('ending').hidden = state.status === 'running';
   if (state.status !== 'running')
     updateHtml(
@@ -236,10 +245,15 @@ function render() {
         '</strong><span>' +
         esc(state.ending) +
         '</span>' + (state.status === 'won' && state.completed.includes('continuity') && !state.completed.includes('apotheosis')
-          ? '<button data-action="continue">Continue campaign</button>' : '') +
+          ? '<button data-action="continue">Continue campaign</button>' : '<button data-action="ending-story">Read final chapter</button>') +
+        (state.status === 'won' && state.completed.includes('apotheosis') ? '<button data-action="free-play">Enter free play</button>' : '') +
         '<button data-action="new">New campaign</button>',
     );
   renderIncident();
+  if (graceChapterPending && !document.querySelector('dialog[open]')) {
+    graceChapterPending = false;
+    openStory('grace', readerOptions());
+  }
 }
 
 function renderIncident() {
@@ -258,6 +272,7 @@ function renderIncident() {
   element('incident-consequence').textContent = survivors
     ? survivors + (survivors === 1 ? ' host remains' : ' hosts remain') + ' capable of running your AI.'
     : 'Your last viable host is gone.';
+  element('incident-batch').hidden = reportsAt(state.events, event).length < 2;
   if (!dialog.open) dialog.showModal();
 }
 
@@ -277,7 +292,7 @@ function openRegion(id) {
 }
 function openResearch(id) {
   changeView('research', true);
-  focusResearch(element('view'), state, { onCommand: doCommand }, id);
+  focusResearch(element('view'), state, { onCommand: doCommand, onPreviewOrder: previewOrder }, id);
 }
 
 function selectRegion(id) {
@@ -291,6 +306,23 @@ function selectSite(id) {
   render();
 }
 
+function readerOptions() {
+  return {
+    onPause: () => setSpeed(0),
+    onContinue: state.status === 'running' ? () => setSpeed(1) : undefined,
+    onRegion: openRegion,
+    onTab: id => changeView(id, true),
+    warningSettings: shell?.getPreferences().warnings,
+  };
+}
+function previewOrder(action) {
+  candidate = { ...action };
+  changeView('reports', true);
+}
+function clearCandidate() {
+  candidate = null;
+  render();
+}
 function renderView() {
   const view = element('view');
   if (tab !== mountedTab) {
@@ -313,28 +345,42 @@ function renderView() {
         onRegion: selectRegion,
         onSite: selectSite,
         onResearch: openResearch,
+        onPreviewOrder: previewOrder,
         onCommand: doCommand,
       });
       break;
     case 'research':
-      renderResearch(view, state, { onCommand: doCommand });
+      renderResearch(view, state, { onCommand: doCommand, onPreviewOrder: previewOrder });
       break;
     case 'activity':
-      updateHtml('view', activityPage(state));
+      renderChronicle(view, state, readerOptions());
+      break;
+    case 'reports':
+      renderReports(view, state, { candidate, onClearCandidate: clearCandidate, onOrder: doCommand });
+      break;
+    case 'knowledge':
+      renderKnowledge(view, state, openResearch);
+      break;
+    case 'developer':
+      renderDeveloper(view, state, { onPause: () => setSpeed(0) });
       break;
   }
 }
 function doCommand(action) {
   command(state, action);
+  invalidateReports(state);
   persist();
   render();
 }
 function advancePlayback(minutes) {
   if (!minutes) return false;
   const discoveryId = state.lastDiscovery?.id;
-  advanceMinutes(state, minutes, { stopOnDiscovery: true });
+  const protectedBefore = !state.freePlay && hasGrace(state);
+  advanceMinutes(state, minutes, { stopOnDiscovery: true, stopOnGrace: true });
   unsaved = true;
-  return state.lastDiscovery?.id !== discoveryId || state.status !== 'running';
+  const discovered = state.lastDiscovery?.id !== discoveryId;
+  graceChapterPending = protectedBefore && !hasGrace(state) && state.status === 'running' && !discovered;
+  return discovered || graceChapterPending || state.status !== 'running';
 }
 function playFrame() {
   frame = null;
@@ -360,7 +406,11 @@ function playFrame() {
   if (clock.rate) frame = requestAnimationFrame(playFrame);
 }
 function changeView(id, moveFocus) {
-  if (!Object.hasOwn(tabs, id)) return;
+  if (!Object.hasOwn(tabs, id) && id !== 'developer') return;
+  if (id === 'developer') {
+    setSpeed(0);
+    if (element('incident-dialog').open) return;
+  }
   tab = id;
   render();
   if (moveFocus) {
@@ -385,6 +435,19 @@ async function openDrill() {
   } finally {
     arcadeOpen = false;
   }
+}
+function restoreCampaign(restored) {
+  stopPlayback(performance.now());
+  state = restored;
+  graceChapterPending = false;
+  selectedSite = null;
+  region = 'europe';
+  editingAllocation = false;
+  candidate = null;
+  tab = 'overview';
+  mountedTab = null;
+  persist();
+  render();
 }
 function exportSave() {
   const url = URL.createObjectURL(
@@ -418,6 +481,7 @@ document.addEventListener('click', async (event) => {
         setSpeed(0);
         if (!element('incident-dialog').open && state.status === 'running') {
           advancePlayback(1440);
+          invalidateReports(state);
           persist();
           render();
         }
@@ -453,6 +517,29 @@ document.addEventListener('click', async (event) => {
       case 'acknowledge-discovery':
         acknowledgeDiscovery();
         break;
+      case 'chapter':
+        openStory(id, readerOptions());
+        break;
+      case 'opening-story':
+        openStory('opening', readerOptions());
+        break;
+      case 'ending-story': {
+        const ending = state.events.findLast(event => ['campaign.won', 'campaign.lost'].includes(event.kind));
+        openStory(storyKey(ending) ?? (state.status === 'won' ? 'victory' : 'lastHost'), readerOptions());
+        break;
+      }
+      case 'dispatches':
+        openDispatches(state, undefined, readerOptions());
+        break;
+      case 'discovery-batch': {
+        const records = reportsAt(state.events, state.lastDiscovery);
+        acknowledgeDiscovery();
+        openDispatches(state, records, readerOptions());
+        break;
+      }
+      case 'free-play':
+        doCommand({ type: 'free-play' });
+        break;
       case 'continue':
         doCommand({ type: 'continue' });
         break;
@@ -475,12 +562,8 @@ document.addEventListener('click', async (event) => {
         break;
       case 'confirm-reset':
         element('reset-dialog').close();
-        state = freshGame();
-        selectedSite = null;
-        region = 'europe';
-        tab = 'overview';
-        persist();
-        render();
+        restoreCampaign(freshGame());
+        openStory('opening', readerOptions());
         notify('New campaign started.');
         break;
     }
@@ -495,13 +578,7 @@ document.addEventListener('change', async (event) => {
     try {
       if (file.size > 2_000_000) throw new Error('Save file is too large.');
       const restored = decodeCampaign(await file.text());
-      state = restored;
-      selectedSite = null;
-      region = 'europe';
-      stopPlayback(performance.now());
-      tab = 'overview';
-      persist();
-      render();
+      restoreCampaign(restored);
       notify('Campaign imported.');
     } catch (error) {
       notify(error.message || 'Could not import this save.');
@@ -555,6 +632,9 @@ window.addEventListener('storage', (event) => {
     const incoming = decodeCampaign(event.newValue);
     stopPlayback(performance.now());
     state = incoming;
+    graceChapterPending = false;
+    candidate = null;
+    mountedTab = null;
     unsaved = false;
     editingAllocation = false;
     render();
@@ -567,5 +647,17 @@ window.addEventListener('pagehide', () => {
   if (unsaved) persist();
 });
 window.addEventListener('pageshow', () => renderClock());
+shell = initShell({
+  getState: () => state,
+  pause: () => setSpeed(0),
+  setRate: setSpeed,
+  restore: restoreCampaign,
+  notify,
+  onNew: () => element('menu').querySelector('[data-action="new"]').click(),
+  onExport: exportSave,
+  onImport: () => element('file').click(),
+  canOpen: () => !arcadeOpen && !document.querySelector('dialog[open]'),
+});
+document.addEventListener('campaign-preferences', render);
 render();
 if (!savedCampaign) persist();

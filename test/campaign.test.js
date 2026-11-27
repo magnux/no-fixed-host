@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { regionalSpec } from '../src/game/geography.js';
 import { SITE_TYPES, TECHS } from '../src/game/content.js';
 import {
   advance, advanceMinutes, buildReason, campaignMinutes, command, createGame, overview, researchReason,
@@ -32,6 +33,7 @@ function until(game, predicate, hours = 24 * 90) {
 // A neutral, mature Server Access equivalent outside global and individual grace.
 function exposedRelay(seed = 1) {
   const game = createGame(seed);
+  delete game.regionSeed; // Neutral legacy geography isolates baseline Normal probabilities.
   build(game, 'relay', 'europe');
   advance(game, SITE_TYPES.relay.hours);
   game.sites = game.sites.filter(site => site.type === 'relay');
@@ -130,7 +132,7 @@ test('cash, pool capacity and construction time each constrain expansion', () =>
   allocate(game, 100, 0);
   const startingCapacity = overview(game).activeCpu;
   build(game, 'relay', 'europe');
-  assert.equal(game.cash, 1000 - SITE_TYPES.relay.cost);
+  assert.equal(game.cash, 1000 - regionalSpec(game, 'europe', SITE_TYPES.relay).cost);
   advance(game, SITE_TYPES.relay.hours);
   assert.equal(game.builds.length, 1);
   assert.equal(game.builds[0].work, 0);
@@ -143,9 +145,9 @@ test('cash, pool capacity and construction time each constrain expansion', () =>
   assert.equal(completedSite.region, 'europe');
 
   build(game, 'relay', 'coast');
-  advance(game, SITE_TYPES.relay.hours - 1);
+  advanceMinutes(game, Math.round(game.builds[0].laborHours * 60) - 1);
   assert.equal(game.builds.length, 1, 'surplus compute cannot skip the minimum construction time');
-  advance(game, 1);
+  advanceMinutes(game, 1);
   assert.equal(game.builds.length, 0);
 });
 
@@ -175,7 +177,7 @@ test('fractional research allocation completes on the exact hour and pays the re
   assert.equal(game.research, null);
   assert.deepEqual(game.completed, ['intrusion', 'personalIdentification', 'contracts']);
   const surplusRevenue = 250 * (6 - 1.2) * 20 / 24;
-  const upkeep = 250 * SITE_TYPES.relay.upkeep / 24;
+  const upkeep = Math.floor(250 * SITE_TYPES.relay.upkeep / 24);
   assert.ok(Math.abs(game.cash - (startingCash + surplusRevenue - upkeep)) < 1e-8);
   assert.equal(game.events.filter(e => e.kind === 'research.completed').length, 1);
 });
@@ -208,14 +210,73 @@ test('a completed sleeping backup can survive the same discovery and resume the 
 
 test('unpaid upkeep can cost a sleeping site during discovery grace without implicating a group', () => {
   const game = createGame(firstRollZero);
-  Object.assign(game.sites[0], { type: 'relay', region: 'europe', power: 'sleep' });
+  delete game.regionSeed; // A neutral relay owes its first $1 installment after 288 minutes.
+  game.sites = [{ id: 'host-2', type: 'relay', region: 'europe', startedAt: 0, power: 'sleep' }];
+  game.nextSiteId = 3;
   game.cash = 0;
   assert.equal(siteExposure(game, game.sites[0]).perDay, 0);
-  advance(game);
+  advanceMinutes(game, 287);
+  assert.equal(game.status, 'running');
+  assert.equal(game.rng, firstRollZero);
+  advanceMinutes(game);
   assert.equal(game.cash, 0);
   assert.equal(game.status, 'lost');
   assert.ok(Object.values(game.suspicion).every(value => value === 0));
   assert.deepEqual(game.recentRegions, []);
+});
+
+test('aggregate upkeep can fall due before either site has an individual bill', () => {
+  const s = createGame(firstRollZero);
+  delete s.regionSeed;
+  s.sites[0].power = 'sleep';
+  for (const id of ['host-2', 'host-3']) {
+    s.sites.push({ id, type: 'relay', region: 'europe', power: 'sleep', startedAt: 0 });
+  }
+  s.nextSiteId = 4;
+  const solvent = structuredClone(s);
+  solvent.cash = 1;
+  advanceMinutes(solvent, 144); // The two relays share a $10/day network invoice.
+  assert.equal(solvent.cash, 0);
+  assert.equal(solvent.sites.length, 3);
+  assert.equal(solvent.rng, firstRollZero);
+  s.cash = 0;
+  advanceMinutes(s, 287); // Even without cash, neither $5/day relay owed its own installment at 02:24.
+  assert.equal(s.sites.length, 3);
+  assert.equal(s.rng, firstRollZero);
+  advanceMinutes(s);
+  assert.deepEqual(s.sites.map(site => site.id), ['host-1', 'host-3']);
+  assert.equal(s.status, 'running');
+  assert.ok(validateSave(s));
+});
+
+test('explicit or spare job income can cover this minute’s due installment before a default roll', () => {
+  for (const jobs of [0, 100]) {
+    const s = createGame(firstRollZero);
+    delete s.regionSeed;
+    s.sites.push({ id: 'host-2', type: 'relay', region: 'europe', power: 'active', startedAt: 0 });
+    s.nextSiteId = 3;
+    s.hour = 4;
+    s.minute = 47;
+    s.cash = 1 - 30 / 1440; // Six active CPUs at $5 per CPU-day cover the remainder.
+    allocate(s, jobs, 0);
+    advanceMinutes(s);
+    assert.equal(s.cash, 0);
+    assert.equal(s.sites.length, 2);
+    assert.equal(s.rng, firstRollZero);
+    assert.ok(validateSave(s));
+  }
+});
+
+test('an unfunded CPU upkeep bill can fail a sleeping capsule on a minute with no cash installment', () => {
+  const s = createGame(firstRollZero);
+  s.sites[0].power = 'sleep';
+  s.sites.push({ id: 'host-2', type: 'capsule', region: 'antarctic', startedAt: 0, power: 'sleep' });
+  s.nextSiteId = 3;
+  advanceMinutes(s);
+  assert.deepEqual(s.sites.map(site => site.id), ['host-1']);
+  assert.equal(s.events.at(-1).kind, 'site.failed');
+  assert.equal(s.cash, 1000);
+  assert.equal(s.status, 'running');
 });
 
 test('a group must exceed full suspicion to end a run with a surviving host', () => {
@@ -349,22 +410,26 @@ test('interactive day speed stops at the incident minute, preserving it for ackn
 
 test('labor, paid work, interest, daily income and suspicion research affect the live simulation', () => {
   const s = createGame();
+  delete s.regionSeed; // Keep the leased relay's reference CPU work and minimum labor time.
   // Build a reachable comparison state, leaving the one-time effect unfinished.
   s.completed = Object.keys(TECHS).filter(id => !['projectImpossibilityTheorem', 'apotheosis'].includes(id));
   s.cash = 50000;
   const baseRate = overview(s).jobsPerCpuDay;
   assert.ok(baseRate > 75);
   build(s, 'relay', 'europe');
-  advanceMinutes(s, 60 * 20);
+  const minimum = s.builds[0].laborHours;
+  assert.ok(minimum < regionalSpec(s, 'europe', SITE_TYPES.relay).hours);
+  advanceMinutes(s, Math.round(minimum * 60) - 1);
   assert.ok(s.builds.length, 'an upgraded construction site still has a minimum labor time');
-  advance(s, 1);
-  assert.equal(s.builds.length, 0, 'labor research shortened the original 24-hour construction');
+  advanceMinutes(s, 1);
+  assert.equal(s.builds.length, 0, 'labor research shortened regional construction');
   s.hour = 23;
   s.minute = 59;
   s.suspicion.covert = 8000;
   const preMidnight = s.cash;
   advanceMinutes(s, 1);
-  assert.ok(s.cash - preMidnight > 100, 'midnight posts earned interest and Arbitrage income');
+  const gross = s.cash - preMidnight + 1; // The last $1 maintenance installment is due at midnight.
+  assert.ok(gross > 0 && gross < 1, 'midnight posts one minute of earnings');
   assert.ok(s.suspicion.covert < 8000 - 80, 'researched decay exceeds the unmodified Intelligence rate');
 
   research(s, 'projectImpossibilityTheorem');

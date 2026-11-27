@@ -911,6 +911,7 @@ select {
   .layout {
     display: flex;
     flex-direction: column;
+    align-items: stretch;
   }
   .command-dock { display: contents; }
   .primary { order: 1; }
@@ -947,3 +948,11 @@ select {
   .clock-controls { order: 1; width: 100%; }
   .clock-mode { display: inline-flex; margin-right: auto; }
 }
+
+.menu-list { max-height: min(75vh, 36rem); overflow-y: auto; }
+.dock-shortcuts { display: flex; align-items: center; justify-content: space-between; margin: 0 .8rem .35rem; }
+.knowledge-console input[type=search] { min-width: 0; width: 100%; }
+.knowledge-console .research-directory > button { display: block; text-align: left; width: 100%; }
+.knowledge-console .research-directory > [aria-pressed=true] { border-color: var(--mint); color: var(--mint); }
+.knowledge-console .research-dossier h4 { margin-bottom: .35rem; }
+@media (max-width: 90rem) { #nav .icon { display: none; } }

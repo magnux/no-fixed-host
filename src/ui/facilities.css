@@ -115,3 +115,32 @@
   .hardware-selectors input { max-width: 6rem; }
   .facility-progress { grid-template-columns: 1fr; }
 }
+
+.facility-name-field, .facility-quantity { display: grid; gap: .25rem; font-size: .8rem; color: var(--quiet); }
+.facility-name-field input {
+  box-sizing: border-box; width: 100%; min-width: 0; border: 1px solid var(--line);
+  border-radius: .28rem; padding: .4rem .55rem; background: #192329; color: #e9eff0; font: inherit;
+}
+.facility-quantity input { width: 100%; accent-color: var(--mint); }
+.facility-site-nav { display: flex; justify-content: space-between; gap: .5rem; }
+.facility-site-nav button, .facility-removal button { font-size: .8rem; }
+.facility-comparison, .facility-identity { min-width: 0; font-size: .8rem; }
+.facility-comparison { overflow-x: auto; }
+.facility-comparison summary, .facility-identity summary { cursor: pointer; color: var(--mint); }
+.facility-comparison table { width: 100%; border-collapse: collapse; margin: .45rem 0; font: .75rem var(--mono); }
+.facility-comparison th, .facility-comparison td { padding: .2rem; text-align: right; }
+.facility-comparison caption, .facility-comparison td:first-child, .facility-comparison th:first-child { text-align: left; }
+.facility-comparison td:first-child button { text-align: left; font: inherit; }
+.facility-comparison tr { border-bottom: 1px solid var(--line); }
+.facility-identity[open] summary { margin-bottom: .4rem; }
+.facility-removal { max-width: min(90vw, 26rem); border: 1px solid var(--line); border-radius: .5rem; background: #192329; color: var(--text); padding: 1.1rem; }
+.facility-removal::backdrop { background: #071017b5; }
+.facility-removal p { margin: .75rem 0 1rem; }
+.facility-progress > .text-button { grid-column: 1 / -1; justify-self: start; }
+.facility-host-title strong { overflow-wrap: anywhere; }
+
+.facility-risk { display: grid; gap: .3rem; padding: .55rem .7rem; border: 1px solid var(--line); border-radius: .32rem; }
+.facility-risk h4 { margin: 0; font-size: .8rem; }
+.facility-risk dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(5rem, 1fr)); gap: .25rem .5rem; margin: 0; }
+.facility-risk dt { color: var(--quiet); font-size: .7rem; }
+.facility-risk dd { margin: .1rem 0 0; font: .78rem var(--mono); }

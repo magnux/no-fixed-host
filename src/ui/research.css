@@ -26,3 +26,14 @@
   .research-directory { max-height: 10rem; }
   .research-dossier { border-left: 0; border-top: 1px solid var(--line); }
 }
+
+.research-tasks { padding: .55rem 1rem; border-bottom: 1px solid var(--line); }
+.research-tasks summary { cursor: pointer; font-weight: 650; }
+.research-tasks p { font-size: .78rem; color: var(--quiet); margin: .35rem 0; }
+.research-task { display: grid; grid-template-columns: minmax(7rem,1fr) minmax(4rem,.6fr) auto auto; align-items: center; gap: .5rem; margin-top: .35rem; }
+.research-task button { font-size: .76rem; padding: .28rem .5rem; }
+.research-task input { width: 100%; accent-color: var(--mint); }
+.research-task span { font: .72rem var(--mono); }
+@media (max-width: 41rem) {
+  .research-task { grid-template-columns: 1fr 1fr; }
+}

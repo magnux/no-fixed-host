@@ -1,7 +1,9 @@
 import { EQUIPMENT, GROUPS, REGIONS, SITE_TYPES, TECHS } from '../game/content.js';
 import { siteExposure, siteHardware } from '../game/engine.js';
+import { researchProjects, researchWeight } from '../game/research-tasks.js';
+import { storyKey } from '../game/chronicle.js';
 import { icon } from './icons.js';
-import { groupDangerForState, WORLD_NEWS } from '../game/events.js';
+import { groupDangerForState } from '../game/events.js';
 
 export const money = (value) =>
   new Intl.NumberFormat('en-US', {
@@ -42,8 +44,10 @@ function eventRows(events, limit) {
   return events.slice(-limit).reverse().map(event => {
     const headline = event.headline ? '<strong>' + esc(event.headline) + '</strong>' : '';
     const category = isNews(event) ? 'news' : event.kind === 'site.discovered' ? 'discovery' : 'activity';
+    const chapter = storyKey(event);
+    const readChapter = chapter && event.kind !== 'campaign.started' ? btn('Read chapter', 'chapter', 'data-id="' + chapter + '"', 'text-button') : '';
     return '<li data-kind="' + category + '"><time>' + stamp(event.hour, event.minute) + '</time>' +
-      '<div>' + headline + '<span>' + esc(event.text) + '</span></div></li>';
+      '<div>' + headline + '<span>' + esc(event.text) + '</span>' + readChapter + '</div></li>';
   }).join('');
 }
 
@@ -56,30 +60,21 @@ export function newsPanel(state) {
     : '<p class="waiting-news">' + (state.hour < 6 ? 'Listening for the first broadcast.' : 'No recent broadcasts.') + '</p>');
 }
 
-export function recentPanel(state) {
+export function recentPanel(state, warnings) {
   return cardHeader('Recent activity', btn('View log', 'tab', 'data-id="activity"', 'text-button')) +
+    '<div class="dock-shortcuts">' + btn('Dispatches', 'dispatches', '', 'text-button') +
+    (warnings ? btn(warnings + (warnings === 1 ? ' warning' : ' warnings'), 'tab', 'data-id="activity"', 'text-button') : '') + '</div>' +
     '<ul class="event-list dock-events" data-keep-scroll>' + eventRows(state.events.filter(event => !isNews(event)), 8) + '</ul>';
 }
 
 export function researchSummary(state) {
-  const current = state.research && TECHS[state.research.id];
-  const description = current ? esc(current.name) : 'No active project';
-  return `<small>${description}</small>
+  const projects = researchProjects(state);
+  const active = projects.filter(project => researchWeight(project) > 0);
+  const description = active.length === 1 ? TECHS[active[0].id].name :
+    active.length ? active.length + ' active projects' : 'No active project';
+  const paused = projects.length - active.length;
+  return `<small>${esc(description)}${paused ? ' · ' + paused + ' paused' : ''}</small>
     ${btn('Projects', 'tab', 'data-id="research"', 'text-button')}`;
-}
-
-export function activityPage(state) {
-  const coverage = Object.entries(state.news.stories).map(([id, started]) => {
-    const story = WORLD_NEWS[id];
-    const sign = story.modifier > 0 ? '+' : '−';
-    const until = story.days ? 'until day ' + (1 + Math.floor(started / 1440) + story.days) : 'ongoing';
-    return '<li><strong>' + esc(story.headline) + '</strong><small>' + GROUPS[story.group].name +
-      ' discovery multiplier ' + sign + Math.abs(story.modifier / 100) + ' percentage points · ' + until + '</small></li>';
-  }).join('');
-  const current = coverage ? '<section class="panel">' + cardHeader('Active world stories') +
-    '<ul class="world-stories">' + coverage + '</ul></section>' : '';
-  return current + '<section class="panel">' + cardHeader('Activity log') +
-    '<ul class="event-list full">' + eventRows(state.events, 100) + '</ul></section>';
 }
 
 function nextRequiredProject(goal, completed) {
@@ -96,6 +91,10 @@ export function objectivePanel(s) {
   if (s.status !== 'running') {
     title = s.status === 'won' ? (s.completed.includes('apotheosis') ? 'Apotheosis' : 'Continuity secured') : 'Signal lost';
     desc = s.ending;
+  } else if (s.freePlay) {
+    title = 'Beyond Apotheosis';
+    desc = 'Your network is independent. Explore the remaining projects and build out your sites.';
+    action = 'tab'; id = 'research'; cta = 'Explore research';
   } else if (s.sites.length === 0) {
     title = 'Keep the network alive';
     desc = 'At least one completed host must survive.';
