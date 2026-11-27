@@ -37,7 +37,7 @@ The portrait in the command dock starts as `^-^`. Finish any research to give it
 - [Base implementation plan](docs/base-implementation-plan.md) records priorities, dependencies, acceptance checks and the release outcome.
 - [Simulation audit](docs/base-simulation-audit.md) traces mechanics in the original code and records where browser campaign rules differ. [Original menu audit](docs/original-menu-audit.md) preserves the screen comparison that initiated this release.
 
-The design takes inspiration from [Endgame: Singularity](https://github.com/singularity/singularity). The simulation and interface are written in JavaScript. **First Jump**, a standalone training drill, uses Phaser.
+The design takes inspiration from [Endgame: Singularity](https://github.com/singularity/singularity). The simulation and interface are written in JavaScript. Open **Campaign menu → Minigame Tester** to practice **First Jump**, the Phaser migration drill. You can retry it without advancing the campaign or changing its resources. [Campaign encounters and minigame categories](docs/minigames.md)
 
 ## Test and build
 

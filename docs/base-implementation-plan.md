@@ -71,4 +71,6 @@ That release migrated older saves and tracked lifetime production from the migra
 | E2 · Evasion | Connect a short hide minigame to a specific investigator and site. Measure the size and duration of its effect against the existing Normal benchmark. | A completed challenge visibly changes one forecast for a limited time. |
 | E2 · Currencies and crypto | Define denominations, exchange and purchase rules before attaching a contract, faction or puzzle to a second currency. Extend the ledger, save format and reports together. | The player earns one currency and decides whether to exchange it or spend it on a distinct opportunity. |
 
+For the minigames in these workstreams, the [prototype sequence](minigames.md#first-playable-sequence) starts with Hide, Soundings and Night Shift.
+
 Chapter titles, genre ideas and the original narrative notes are preserved in [development context](development.md). The release keeps every destination visible while these expeditions and their reveal rules are designed.

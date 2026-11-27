@@ -9,7 +9,7 @@ const endings = {
 
 let currentSession = null;
 
-export async function openFirstJump() {
+export async function openFirstJump({ closeLabel = 'Close drill' } = {}) {
   if (currentSession) return currentSession;
 
   const dialog = document.createElement('dialog');
@@ -19,7 +19,7 @@ export async function openFirstJump() {
   dialog.innerHTML = `
     <header class="jump-head">
       <div><p>Migration drill</p><h2 id="jump-title">First Jump</h2></div>
-      <button type="button" data-close>Close drill</button>
+      <button type="button" data-close></button>
     </header>
     <p id="jump-brief">Copy three memory blocks to the relay in six windows. Transmit when the channel is quiet. Hold while a scanner is listening.</p>
     <div class="jump-stage" aria-hidden="true"></div>
@@ -78,7 +78,9 @@ export async function openFirstJump() {
     render();
     transmit.focus();
   });
-  select('[data-close]').addEventListener('click', () => dialog.close());
+  const close = select('[data-close]');
+  close.textContent = closeLabel;
+  close.addEventListener('click', () => dialog.close());
   document.body.append(dialog);
   dialog.showModal();
   render();
@@ -89,7 +91,7 @@ export async function openFirstJump() {
       dialog.remove();
       if (returnFocus?.isConnected) returnFocus.focus();
       currentSession = null;
-      resolve();
+      resolve(state.outcome === 'active' ? 'abandoned' : state.outcome);
     }, { once: true });
   });
 

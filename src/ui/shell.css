@@ -18,6 +18,12 @@
 .shell-current, .shell-note, .shell-when { color: var(--quiet); }
 .shell-actions, .shell-save-bar > div { display: flex; align-items: center; flex-wrap: wrap; gap: .45rem; }
 .shell-actions.hub { margin-top: 1.1rem; }
+.shell-games { list-style: none; padding: 0; margin: .8rem 0 0; display: grid; gap: .75rem; }
+.shell-games li { padding: .9rem; border: 1px solid var(--line); border-radius: .35rem; }
+.shell-games h3 { margin-bottom: .2rem; }
+.shell-games .shell-current { font: .75rem var(--mono); }
+.shell-games button { margin-top: .75rem; }
+.shell-games button[aria-disabled=true] { opacity: .7; }
 .shell-back { margin-top: .9rem; }
 .shell-save-bar { margin-bottom: .7rem; }
 .shell-body input:not([type=checkbox]):not([type=range]), .shell-body select {

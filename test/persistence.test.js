@@ -35,7 +35,7 @@ test('releases and schema revisions must match before reading any campaign data'
     assert.throws(() => decodeCampaign(JSON.stringify({ ...envelope, format, campaign: null })), UnsupportedCampaignError);
   }
   assert.equal(envelope.gameVersion, GAME_VERSION);
-  for (const gameVersion of [undefined, '0.2.1', '999.0.0']) {
+  for (const gameVersion of [undefined, '0.3.0', '999.0.0']) {
     assert.throws(() => decodeCampaign(JSON.stringify({ ...envelope, gameVersion })), UnsupportedCampaignError);
   }
   assert.throws(() => decodeCampaign(JSON.stringify({ ...envelope, campaign: {} })), /damaged/);

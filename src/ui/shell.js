@@ -3,6 +3,7 @@ import { DEFAULT_PREFS, PREF_KEY, QUICK_SLOT, SLOT_PREFIX, listSlots, loadSlot, 
 import { translate, localizeNavigation } from './localization.js';
 import { createAudio } from './audio.js';
 import { FAST_RATES } from './clock.js';
+import { minigames } from '../arcade/catalog.js';
 import { version } from '../../package.json';
 import './shell.css';
 
@@ -10,7 +11,7 @@ const warningLabels = {
   lastHost: 'Only one viable host', stalledBuild: 'Paused facility or equipment order',
   maintenance: 'CPU maintenance shortfall', spareCpu: 'Unused research assignment',
 };
-const screens = { title: 'Title screen', saves: 'Save library', options: 'Options', about: 'About' };
+const screens = { title: 'Title screen', tester: 'Minigame tester', saves: 'Save library', options: 'Options', about: 'About' };
 const errors = {
   invalidName: 'Choose a name of 1–60 characters.', invalidSlot: 'This checkpoint could not be read.',
   staleSlot: 'This checkpoint changed in another tab. Review the list and try again.',
@@ -109,7 +110,32 @@ export function initShell({ getState, pause, setRate, restore, restartUnsupporte
     return `<p class="shell-lead">${t('Keep a second copy alive before humanity finds the first.')}</p>
       <p class="shell-current">${t('Current campaign')} · ${prettyTime(elapsed)} · ${t({running:'Running',won:'Won',lost:'Lost'}[state.status])}</p>
       <div class="shell-actions hub">${button('close','Resume campaign','primary-button') + button('new','New campaign') +
-      button('saves','Save library') + button('options','Options') + button('about','About')}</div>`;
+      button('saves','Save library') + button('tester','Minigame tester') + button('options','Options') + button('about','About')}</div>`;
+  }
+  function testerPage() {
+    const cards = minigames.map(game => `<li>
+      <h3>${escape(game.title)}</h3><p class="shell-current">${t(game.category)}</p><p>${t(game.brief)}</p>
+      <button type="button" class="primary-button" data-shell-action="play" data-minigame="${game.id}">${t(game.playLabel)}</button>
+    </li>`).join('');
+    return `<p>${t('Practice while the campaign is paused. Results stay in the tester.')}</p><ul class="shell-games">${cards}</ul>`;
+  }
+  async function playPractice(trigger) {
+    if (trigger.getAttribute('aria-disabled') === 'true') return;
+    const game = minigames.find(entry => entry.id === trigger.dataset.minigame);
+    trigger.setAttribute('aria-disabled', 'true');
+    say(t('Loading minigame…'));
+    try {
+      const play = await game.load();
+      // The player can leave the tester while a game chunk is downloading.
+      if (!dialog.open || !trigger.isConnected) return;
+      trigger.focus();
+      const outcome = await play({ closeLabel: t('Back to tester') });
+      if (dialog.open && trigger.isConnected) say(`${game.title} · ${t(game.outcomes[outcome])}`);
+    } catch {
+      if (dialog.open && trigger.isConnected) say(t('Could not open the minigame. Try again.'));
+    } finally {
+      trigger.removeAttribute('aria-disabled');
+    }
   }
   function savesPage() {
     return `<form class="shell-save-bar"><label for="shell-slot-name">${t('Name this checkpoint')}</label>
@@ -173,24 +199,28 @@ export function initShell({ getState, pause, setRate, restore, restartUnsupporte
     title.textContent = t(screens[page]);
     dialog.querySelector('.shell-head button').textContent = t('Close');
     status.textContent = '';
-    body.innerHTML = { title:titlePage, saves:savesPage, options:optionsPage, about:aboutPage }[page]();
+    body.innerHTML = { title:titlePage, tester:testerPage, saves:savesPage, options:optionsPage, about:aboutPage }[page]();
     if (fromHub) body.insertAdjacentHTML('beforeend', '<div class="shell-back">' + button('title','Back') + '</div>');
     if (page === 'saves') { updateSlots(); renderConfirmation(false); }
     if (page === 'options') updatePreviewControl();
   }
-  function open(screen) {
+  function open(screen, origin = document.activeElement) {
     if (!Object.hasOwn(screens, screen)) return false;
+    const previousPage = dialog.open ? page : null;
     if (!dialog.open) {
       if (!canOpen()) return false;
       pause();
       if (!canOpen()) return false; // Pausing can settle a pending discovery.
-      returnFocus = document.activeElement;
-      document.querySelector('#menu')?.removeAttribute('open');
+      const menu = document.querySelector('#menu');
+      returnFocus = menu?.contains(origin) ? menu.querySelector('summary') : origin;
+      menu?.removeAttribute('open');
     }
     fromHub = dialog.open && screen !== 'title' && (page === 'title' || fromHub);
     page = screen; pending = null; search = ''; nameInput = '';
     render();
     if (!dialog.open) dialog.showModal();
+    if (page === 'tester') body.querySelector('[data-minigame]')?.focus();
+    if (page === 'title' && previousPage) body.querySelector(`[data-shell-action="${previousPage}"]`)?.focus();
     return true;
   }
   function close() { if (dialog.open) dialog.close(); }
@@ -290,6 +320,7 @@ export function initShell({ getState, pause, setRate, restore, restartUnsupporte
     try {
       const act = trigger.dataset.shellAction;
       if (Object.hasOwn(screens,act)) open(act);
+      else if (act === 'play') await playPractice(trigger);
       else if (act === 'close') close();
       else if (act === 'new') { close(); onNew(); }
       else if (act === 'import') { close(); onImport(); }
@@ -309,7 +340,7 @@ export function initShell({ getState, pause, setRate, restore, restartUnsupporte
   });
   document.addEventListener('click', event => {
     const trigger = event.target.closest?.('[data-shell-open]');
-    if (trigger) open(trigger.dataset.shellOpen);
+    if (trigger) open(trigger.dataset.shellOpen, trigger);
     if (event.target.closest?.('button, summary')) { audio.activate(); audio.click(); }
   });
   document.addEventListener('keydown', async event => {
