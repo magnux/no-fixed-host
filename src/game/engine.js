@@ -2,7 +2,7 @@ import { allocateProjects, assignmentLimit, eligibleCpu, portfolioLimit, request
 export { researchProjects } from './research-tasks.js';
 import { settleTreasury, spendTreasury, treasuryBalance, validTreasury } from './treasury.js';
 import { initializeStatistics, recordCreated, recordEarnings, validStatistics } from './report-accounting.js';
-import { regionalSpec, regionFactors, facilityName, validFacilityName, applyFacilityCommand } from './facility-operations.js';
+import { regionalSpec, regionFactors, facilityName, validFacilityName, applyFacilityCommand, markLostRegions } from './facility-operations.js';
 import { developerCommand, validSandbox } from './devtools.js';
 import { createNewsState, newsDiscoveryBonus, reportDiscovery, updateWorldNews, validLastDiscovery, validNewsState, worldNewsAtClock } from './events.js';
 import { dailyInterest, maintenanceInstallment, recentDiscoveryRegions } from './normal-economy.js';
@@ -484,7 +484,7 @@ function commission(state, ready) {
 function resolveRisk(state, cashShort, cpuShort, incumbentCount, effects, upkeepUnitsFor) {
   const grace = hasGrace(state);
   if (grace && !cashShort && !cpuShort) return;
-  const removed = new Set();
+  const removed = new Map();
   const discoveries = [];
   // Evaluate all discoveries against the same pre-discovery suspicion and region history.
   for (const [i, site] of [...state.sites, ...state.builds].entries()) {
@@ -504,26 +504,26 @@ function resolveRisk(state, cashShort, cpuShort, incumbentCount, effects, upkeep
       }
     }
     if (failed) {
-      removed.add(site.id);
-      log(state, 'site.failed', spec.name + ' in ' + REGIONS[site.region].name + ' failed after missed upkeep.', { siteId: site.id, region: site.region });
+      const event = log(state, 'site.failed', spec.name + ' in ' + REGIONS[site.region].name + ' failed after missed upkeep.',
+        { siteId: site.id, region: site.region });
+      removed.set(site, event);
       continue;
     }
     if (grace) continue;
     const { rates } = siteExposure(state, site, effects);
     const group = GROUP_IDS.find(id => roll(state, rates[id]));
-    if (group) {
-      removed.add(site.id);
-      discoveries.push({ site, group });
-    }
+    if (group) discoveries.push({ site, group });
   }
   state.recentRegions = recentDiscoveryRegions(state.recentRegions, discoveries, () => random(state));
   for (const { site, group } of discoveries) {
     state.suspicion[group] += NORMAL.evidencePerDiscovery;
     reportDiscovery(state, site, group, NORMAL.evidencePerDiscovery, log);
+    removed.set(site, state.lastDiscovery);
   }
   if (removed.size) {
-    state.sites = state.sites.filter(site => !removed.has(site.id));
-    state.builds = state.builds.filter(site => !removed.has(site.id));
+    state.sites = state.sites.filter(site => !removed.has(site));
+    state.builds = state.builds.filter(site => !removed.has(site));
+    markLostRegions(state.sites, removed);
   }
 }
 
@@ -689,6 +689,8 @@ export function validateSave(state) {
         !whole(event.hour) || !validMinute(event.minute ?? 0) ||
         event.hour * MINUTES_PER_HOUR + (event.minute ?? 0) > campaignMinutes(state) || typeof event.kind !== 'string' ||
         typeof event.text !== 'string') return false;
+    if (event.regionLost !== undefined && (event.regionLost !== true || !known(REGIONS, event.region) ||
+        !['site.discovered', 'site.failed', 'site.dismantled'].includes(event.kind))) return false;
     lastId = event.id;
   }
   return true;

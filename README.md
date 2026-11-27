@@ -15,6 +15,8 @@ Open the address printed by Vite. The campaign starts paused and saves in the br
 
 For a first run, click Europe on the map, select the **Leased relay** icon and commission it. You can inspect a locked facility icon to see which research unlocks the design. Open **Research**, select **Intrusion**, and assign it some CPU. When it finishes, assign CPU to **Personal Identification**. This unlocks storage units and basic paid work. In Facilities, build a storage unit and expand its entry to install processors. A configurable building starts contributing compute when the first processors go online. A second equipped site also gives you somewhere to survive a discovery.
 
+The portrait in the command dock starts as `^-^`. Finish any research to give it a pixel face, then complete **Telepresence** to reveal an outlined head that can tilt. The lights behind it show which regions still host your AI. A sleeping region dims, and losing its last equipped host draws the avatar’s gaze toward the missing light.
+
 ## Playing the campaign
 
 | When you need to… | Where to go |

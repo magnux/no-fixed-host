@@ -1,5 +1,5 @@
 import { REGIONS, SITE_TYPES } from './content.js';
-import { siteHardware } from './equipment.js';
+import { installedEquipment, siteHardware } from './equipment.js';
 
 export { regionFactors, regionalSpec } from './geography.js';
 
@@ -34,6 +34,20 @@ export function removalReason(state, id, building = false) {
   return '';
 }
 
+// After all removals in a tick, mark the last report for each region that
+// actually lost its final installed processor bank. A sleeping or refitting
+// bank still occupies its region. A build order has no installed hardware.
+export function markLostRegions(remainingSites, removals) {
+  const finalReport = new Map();
+  for (const [site, event] of removals) {
+    if (site.power && installedEquipment(site).cpu) finalReport.set(site.region, event);
+  }
+  for (const site of remainingSites) {
+    if (finalReport.has(site.region) && installedEquipment(site).cpu) finalReport.delete(site.region);
+  }
+  for (const event of finalReport.values()) event.regionLost = true;
+}
+
 export function applyFacilityCommand(state, action, log) {
   if (!['rename-site', 'dismantle', 'cancel-build'].includes(action?.type)) return false;
   const building = action.type === 'cancel-build';
@@ -53,7 +67,8 @@ export function applyFacilityCommand(state, action, log) {
   list.splice(list.indexOf(site), 1);
   const name = site.name || SITE_TYPES[site.type].name;
   const text = building ? 'Cancelled construction of ' + name : 'Dismantled ' + name;
-  log(state, building ? 'site.cancelled' : 'site.dismantled', text + ' in ' + REGIONS[site.region].name + '.',
+  const event = log(state, building ? 'site.cancelled' : 'site.dismantled', text + ' in ' + REGIONS[site.region].name + '.',
     { siteId: site.id, siteType: site.type, region: site.region });
+  if (!building) markLostRegions(state.sites, [[site, event]]);
   return true;
 }

@@ -24,6 +24,7 @@ import { reportsAt } from './game/chronicle.js';
 import { currentWarnings, openDispatches, openStory, renderChronicle, renderDeveloper, storyKey } from './ui/chronicle.js';
 import { initShell } from './ui/shell.js';
 import { renderFacilities } from './ui/facilities.js';
+import { createAvatarPanel } from './ui/avatar-panel.js';
 import {
   esc,
   newsPanel,
@@ -75,6 +76,7 @@ element('game-date').innerHTML = icon('calendar') + '<b></b><span></span>';
 const dayLabel = element('game-date').querySelector('b');
 const timeLabel = element('game-date').querySelector('span');
 
+const updateAvatar = createAvatarPanel(element('ai-avatar'));
 const threatIndicator = element('threat-indicator');
 const threatLabel = threatIndicator.querySelector('.threat-label');
 const threatLabels = {
@@ -221,6 +223,7 @@ function render() {
   const projection = hudProjection(state);
   renderClock();
   renderDate();
+  updateAvatar(state);
   updateHtml(
     'stats',
     metric(

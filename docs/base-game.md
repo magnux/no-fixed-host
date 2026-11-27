@@ -53,6 +53,14 @@ A leased relay arrives with fixed hardware. A storage unit provides eight proces
 
 A new campaign shuffles six urban profiles. Geography changes local thrift, construction speed, CPU output and stealth. The facility inspector shows the local quantities used in a quote. Facilities can be named, renamed, and decommissioned. Dismantling an equipped host also discards its pending installations. The last viable copy is protected against voluntary dismantling. Adding matching processors to an active batch uses free bays, retains its cash and CPU investment, and restarts the shared installation clock.
 
+## The AI avatar
+
+![The Terminal, Face and Presence forms in the command dock, with one, two and three connected regions.](images/avatar-forms.png)
+
+The command dock shows the AI in three forms. **Terminal** starts as `^-^` with a cursor. Completing the first research project reveals **Face**, a pixel expression that can blink and glance toward incoming news. Completing **Telepresence** unlocks **Presence**, a luminous outline around the same face. If Telepresence is the first completed project, the avatar goes directly to Presence.
+
+Each region has a fixed position behind the portrait. One or more operating hosts light a single point there. If the region’s available processors are all asleep, the point dims. Empty facilities and unfinished processor banks cannot sustain a light. Losing the last equipped host in a region leaves a brief trace, and the avatar looks toward it. A discovery holds the reaction while its report is open. On loading a save, the portrait reflects the saved network and research immediately.
+
 ## Discovery and news
 
 Normal gives a new player time to establish a backup. The opening grace ends at 23 elapsed days or when cumulative active capacity exceeds 5,000 CPU-days, whichever comes first. Individual sites also receive protection based on their construction time. Once exposed, hosts and construction projects face separate risks from the Press, Scientists, Intelligence and the Public.
