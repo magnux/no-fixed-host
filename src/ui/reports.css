@@ -1,15 +1,18 @@
 .report-console [hidden] { display: none; }
+.report-console .card-header { flex-wrap: wrap; justify-content: flex-start; }
 .report-switch, .report-tools, .report-order { display: flex; flex-wrap: wrap; align-items: center; gap: .42rem .7rem; }
 .report-switch { gap: .2rem; }
 .report-switch button { padding: .32rem .52rem; background: transparent; border-color: transparent; font-size: .8rem; }
 .report-switch button[aria-pressed="true"] { border-color: #48695c; background: #20342e; color: var(--mint); }
-.report-tools, .report-order { padding: .65rem 1rem; border-bottom: 1px solid var(--line); }
+.report-tools { flex: 1 1 auto; }
+.report-order { padding: .65rem 1rem; border-bottom: 1px solid var(--line); }
 .report-tools label, .report-note, .report-console [data-report="feedback"] { font-size: .82rem; line-height: 1.5; color: var(--quiet); }
 .report-tools select { font: inherit; padding: .3rem .4rem; margin-left: .3rem; }
 .report-tools button, .report-order button { font-size: .78rem; padding: .38rem .58rem; }
 .report-tools small { margin-left: auto; font-size: .71rem; }
 .report-order { background: #192a29; }
-.report-order > div { margin-right: auto; }
+.report-order > div { display: grid; grid-template-columns: auto 1fr; gap: 0 .5rem; align-items: baseline; margin-right: auto; }
+.report-order :is([data-report="package"], [data-report="refit"]) { grid-column: 1 / -1; }
 .report-order strong, .report-order small { display: block; }
 .report-order strong { font-size: .88rem; }
 .report-ledgers { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); align-items: start; gap: .85rem; padding: .72rem 1rem; }
@@ -33,8 +36,13 @@
   .report-tools small { margin-left: 0; }
 }
 @media (min-width: 65rem) and (max-height: 52rem) {
-  .report-console .card-header, .report-tools, .report-order { padding-block: .32rem; }
+  .report-console .card-header, .report-order { padding-block: .32rem; }
+  .report-console .card-header { min-height: 2.65rem; }
   .report-ledgers { padding-block: .42rem; }
   .report-ledgers th, .report-ledgers td { padding-block: .12rem; }
   .report-note { padding-block: .24rem; line-height: 1.36; }
+}
+@media (min-width: 65rem) and (max-height: 45rem) {
+  .report-console .card-header { min-height: 2.4rem; padding-block: .12rem; }
+  .report-ledgers { padding-block: .24rem; }
 }

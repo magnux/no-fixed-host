@@ -140,7 +140,7 @@ test('assign idle CPU to topics and resize their combined allocation proportiona
   await page.reload();
   await tab.click();
   await assign('stealth', 1);
-  assert.match(await page.locator('#research-allocation-note').textContent(), /Waiting for project funds/);
+  assert.match(await page.locator('#research-allocation-note').innerText(), /Waiting for project funds/);
   assert.equal((await saved()).research.cashPaid, 0);
   assert.deepEqual(errors, []);
 });

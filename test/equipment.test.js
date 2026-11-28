@@ -121,6 +121,62 @@ test('auto-build is quoted, atomic and leaves installed or already ordered categ
   assert.ok(autoInstallQuote(state, site.id).reason);
 });
 
+test('orbital builds need satellite access and the orbital capsule also needs preservation research', () => {
+  const state = createGame(47);
+  const build = siteType => command(state, { type: 'build', region: 'orbit', siteType });
+  assert.throws(() => build('orbitalServer'), /Leech Satellite/);
+  grantTechs(state, 'knowledgePreservation');
+  assert.throws(() => build('capsule'), /Leech Satellite/);
+  const accessible = createGame(47);
+  grantTechs(accessible, 'leechSatellite');
+  assert.throws(() => command(accessible, { type: 'build', region: 'orbit', siteType: 'capsule' }), /Knowledge Preservation/);
+  grantTechs(state, 'leechSatellite');
+  build('capsule');
+  assert.throws(() => command(state, { type: 'build', region: 'moon', siteType: 'orbitalServer' }), /compatible region/);
+  assert.equal(decodeCampaign(encodeCampaign(state)).builds[0].type, 'capsule');
+  state.sandbox = { analysis: false, detection: false };
+  command(state, { type: 'developer', operation: 'construction' });
+  advance(state);
+  const capsule = state.sites.find(site => site.region === 'orbit');
+  assert.equal(siteHardware(state, capsule).rawCpu, 1);
+  assert.match(installReason(state, capsule.id, 'server'), /fixed hardware/);
+  command(state, { type: 'power', id: capsule.id, power: 'sleep' });
+  assert.equal(decodeCampaign(encodeCampaign(state)).sites.find(site => site.id === capsule.id).power, 'sleep');
+});
+
+test('an orbital server commissions, accepts two processors and orbital gear, and rejects terrestrial fittings', () => {
+  const { state, site: workshop } = newWorkshop();
+  state.sandbox = { analysis: false, detection: false };
+  grantTechs(state, 'leechSatellite', 'clusterNetworking', 'solarCollectors', 'autonomousVehicles', 'advancedHeatSignatureReduction', 'quantumComputing');
+  workshop.equipment = { cpu: { itemId: 'quantumComputer', count: 4 }, network: null, reactor: null, security: null };
+  command(state, { type: 'build', siteType: 'orbitalServer', region: 'orbit' });
+  assert.ok(decodeCampaign(encodeCampaign(state)).builds.some(build => build.type === 'orbitalServer'));
+  advance(state, Math.ceil(state.builds[0].laborHours) + 1);
+  const site = state.sites.find(host => host.type === 'orbitalServer');
+  assert.ok(site);
+  assert.equal(siteHardware(state, site).rawCpu, 0);
+  const quote = autoInstallQuote(state, site.id);
+  assert.ok(quote.orders.every(order => EQUIPMENT[order.itemId].regions.includes('orbit')));
+  assert.equal(quote.orders.find(order => EQUIPMENT[order.itemId].slot === 'security').itemId, 'heatsink');
+  assert.throws(() => install(state, site, 'server', 3), /quantity exceeds/i);
+  for (const itemId of ['warningSigns', 'perimeterFencing', 'armedGuards', 'hypnosisField', 'groundSourceHeatsink', 'highSpeedInternet', 'networkBackbone', 'dieselGenerator']) {
+    assert.throws(() => install(state, site, itemId), /unavailable in this environment/i);
+  }
+  for (const itemId of ['server', 'interconnectionSwitch', 'solarCollector', 'passiveCamouflage']) {
+    install(state, site, itemId, itemId === 'server' ? 2 : 1);
+  }
+  advance(state, 120);
+  assert.equal(siteHardware(state, site).rawCpu, 20);
+  assert.equal(siteHardware(state, site).networkBonus, 200);
+  assert.equal(overview(state).tiers[1], siteHardware(state, site).cpu);
+  assert.equal(overview(state).tiers[2], 0);
+  const restored = decodeCampaign(encodeCampaign(state));
+  const refit = restored.sites.find(host => host.id === site.id);
+  assert.equal(siteHardware(restored, refit).installed.security.itemId, 'passiveCamouflage');
+  refit.equipment.security.itemId = 'groundSourceHeatsink';
+  assert.equal(validateSave(restored), false);
+});
+
 test('a new subsea lab has eight empty bays and rejects incompatible gear', () => {
   const { state } = newWorkshop();
   grantTechs(state, 'contracts', 'robotics', 'autonomousVehicles');

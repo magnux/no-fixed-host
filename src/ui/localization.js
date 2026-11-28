@@ -34,6 +34,8 @@ const spanish = {
   'Press': 'Prensa', 'Scientists': 'Científicos', 'Intelligence': 'Inteligencia', 'Public': 'Público',
   'Campaign': 'Campaña', 'Title screen': 'Pantalla de inicio', 'Save library': 'Partidas guardadas',
   'Options': 'Opciones', 'About': 'Acerca de', 'Close': 'Cerrar', 'Back': 'Volver',
+  'Start campaign': 'Iniciar campaña',
+  'This save belongs to a different version of No Fixed Host. A fresh campaign has started in version': 'Esta partida pertenece a otra versión de No Fixed Host. Se ha iniciado una campaña nueva en la versión',
   'Resume campaign': 'Continuar campaña', 'New campaign': 'Nueva campaña', 'Start new campaign': 'Iniciar nueva campaña',
   'Export save': 'Exportar partida', 'Import save': 'Importar partida', 'First Jump drill': 'Primer salto',
   'Minigame tester': 'Pruebas de minijuegos', 'Play First Jump': 'Jugar a First Jump', 'Back to tester': 'Volver a las pruebas',
@@ -85,11 +87,11 @@ const spanish = {
   'Pause / Run': 'Pausa / Continuar', 'Fast x1 / x2 / x3': 'Rápido x1 / x2 / x3',
   'Quicksave / Quickload': 'Guardado rápido / Carga rápida', 'Title / Save library / Options': 'Inicio / Partidas guardadas / Opciones',
   'Toggle fullscreen': 'Alternar pantalla completa', 'Close a dialog': 'Cerrar un diálogo',
-  'Campaign menu': 'Menú de campaña', 'Network operations': 'Operaciones de red',
+  'Menu': 'Menú', 'Campaign menu': 'Menú de campaña', 'Simulation controls': 'Controles de simulación', 'Network operations': 'Operaciones de red',
   'Overview': 'Resumen', 'Facilities': 'Instalaciones', 'Research': 'Investigación', 'Activity': 'Actividad',
   'Reports': 'Informes', 'Knowledge': 'Conocimiento', 'Statistics': 'Estadísticas', 'Library': 'Biblioteca',
   'Newswire': 'Noticias', 'Recent activity': 'Actividad reciente', 'Group suspicion': 'Sospecha por grupo',
-  'Developer tools': 'Herramientas de desarrollo', 'Developer': 'Desarrollo', 'Scenario lab': 'Laboratorio de escenarios',
+  'Developer sandbox': 'Entorno de pruebas', 'Developer tools': 'Herramientas de desarrollo', 'Developer': 'Desarrollo', 'Scenario lab': 'Laboratorio de escenarios',
   'Pause': 'Pausa', 'Run': 'Continuar', 'Fast': 'Rápido', 'Fast x1': 'Rápido x1', 'Fast x2': 'Rápido x2',
   'Fast x3': 'Rápido x3', '+1 day': '+1 día', 'Paused': 'Pausa', 'Campaign ended': 'Fin de la campaña',
   'Toggle sound': 'Alternar sonido', 'About / Keyboard shortcuts': 'Acerca de / Atajos',
@@ -97,10 +99,10 @@ const spanish = {
 export const translate = (language, english) => language === 'es' ? spanish[english] ?? english : english;
 
 export function localizeNavigation(language) {
-  const targets = ['#menu .menu-list', '#nav', '.clock-controls'];
+  const targets = ['#menu', '#nav', '.clock-controls'];
   const keys = new WeakMap();
   function update(root) {
-    for (const button of root.querySelectorAll('button, #clock-mode')) {
+    for (const button of root.querySelectorAll('button, summary, #clock-mode')) {
       for (const node of button.childNodes) {
         if (node.nodeType !== Node.TEXT_NODE) continue;
         const visible = node.nodeValue.trim();
@@ -126,6 +128,8 @@ export function localizeNavigation(language) {
       update(root);
     }
     const toggle = document.querySelector('#menu summary');
-    if (toggle) toggle.setAttribute('aria-label', translate(language(), 'Campaign menu'));
+    toggle.title = translate(language(), 'Campaign menu');
+    toggle.setAttribute('aria-label', toggle.title);
+    document.querySelector('.clock-controls').setAttribute('aria-label', translate(language(), 'Simulation controls'));
   };
 }

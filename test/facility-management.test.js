@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { EQUIPMENT, REGIONS, SITE_TYPES, TECHS } from '../src/game/content.js';
 import { advance, command, createGame, installQuote, overview, previewSiteExposure, siteExposure, siteHardware, validateSave } from '../src/game/engine.js';
+import { WORK_UNITS } from '../src/game/work-order.js';
+import { laborHours } from '../src/game/research.js';
 import { riskLabel } from '../src/ui/facility-risk.js';
 import { projectedCompute } from '../src/game/equipment.js';
 import { facilityName, regionFactors, regionalSpec, removalReason } from '../src/game/facility-operations.js';
@@ -22,12 +24,93 @@ test('six shuffled urban profiles survive saves without drawing from the campaig
   const rng = state.rng;
   assert.deepEqual(profiles(decodeCampaign(encodeCampaign(state))), profiles(state));
   assert.equal(state.rng, rng);
-  assert.equal(regionFactors(state, 'atlantic').cpu, 1.2);
-  const lunar = regionalSpec(state, 'moon', SITE_TYPES.capsule);
-  assert.equal(lunar.cost, SITE_TYPES.capsule.cost * 2);
-  assert.equal(lunar.hours, SITE_TYPES.capsule.hours * 2);
-  assert.equal(lunar.work, SITE_TYPES.capsule.work * 2);
-  assert.equal(lunar.upkeep, SITE_TYPES.capsule.upkeep * 2);
+  const reference = [
+    [1.2, 5/6, 1, 1], [5/6, 1.2, 1, 1], [1, 1, 1.2, 5/6],
+    [1, 1, 5/6, 1.2], [1.2, 1, 5/6, 1], [1, 1, 1, 1],
+  ];
+  assert.deepEqual(profiles(state).map(Object.values).sort(), reference.sort());
+});
+
+test('each remote survey trades two factors around its original baseline and survives reload', () => {
+  const baselines = {
+    antarctic: [1, 1.2, 5/6, 1], atlantic: [1.2, 1, 1, 1], moon: [1, 1.5, .5, .5],
+    orbit: [1, 1, 1, 1], farReaches: [1, 2, .1, .1], transdimensional: [1, 1, 1, 1],
+  };
+  for (const [id, baseline] of Object.entries(baselines)) {
+    const samples = new Set();
+    for (const seed of [0, 3, 19, 312, 0xffffffff]) {
+      const state = createGame(seed);
+      const { rng } = state;
+      const factors = regionFactors(state, id);
+      const restored = decodeCampaign(encodeCampaign(state));
+      assert.deepEqual(regionFactors(restored, id), factors);
+      assert.equal(state.rng, rng);
+      const percentages = ['cpu', 'stealth', 'thrift', 'speed'].map((key, i) =>
+        Math.round((factors[key] / baseline[i] - 1) * 100)).filter(n => n !== 0).sort((a, b) => a - b);
+      assert.equal(percentages.length, 2);
+      assert.ok(percentages[1] >= 2 && percentages[1] <= 5);
+      assert.equal(percentages[0], -percentages[1]);
+      samples.add(JSON.stringify(factors));
+    }
+    assert.ok(samples.size > 1, id);
+  }
+});
+
+test('every remote design has a saveable quote and can fund its final work unit on each survey', () => {
+  for (const [region, place] of Object.entries(REGIONS)) {
+    if (place.terrain === 'urban') continue;
+    for (const [id, design] of Object.entries(SITE_TYPES)) {
+      if (!design.regions.includes(region)) continue;
+      for (const seed of [0, 47, 89, 152, 731, 0xffffffff]) {
+        const state = createGame(seed);
+        for (const req of [...place.requires, ...design.requires]) learn(state, req);
+        command(state, { type: 'build', siteType: id, region });
+        const quote = regionalSpec(state, region, design);
+        // Removing labor bonuses must reproduce the quote, including a fractional last hour.
+        assert.equal(laborHours(state, quote, { labor: 10000 }), quote.hours);
+        const order = state.builds[0];
+        assert.deepEqual(decodeCampaign(encodeCampaign(state)).builds[0], order);
+        const units = Math.round(order.workRequired * WORK_UNITS);
+        order.work = Math.max(0, units - 1) / WORK_UNITS;
+        order.cashPaid = order.cashRequired;
+        order.hours = order.laborHours;
+        assert.ok(validateSave(state));
+        advance(state, 1);
+        assert.equal(state.builds.length, 0, region + ' ' + id + ' seed ' + seed);
+        assert.ok(validateSave(state));
+      }
+    }
+  }
+});
+
+test('facility names identify local places, retain the quoted name and avoid existing local names', () => {
+  const state = createGame(50);
+  const places = [
+    ['coast', 'relay', 'Seattle'], ['southAmerica', 'relay', 'Ushuaia'], ['europe', 'relay', 'Marseille'],
+    ['africa', 'relay', 'Kigali'], ['asia', 'relay', 'Jakarta'], ['australia', 'relay', 'Brisbane'],
+    ['antarctic', 'covertBase', 'Ross Island'], ['atlantic', 'lab', 'Mid-Atlantic Ridge'],
+    ['moon', 'capsule', 'Shackleton'], ['orbit', 'orbitalServer', 'Polar Orbit'],
+    ['farReaches', 'capsule', 'Oort Cloud'], ['transdimensional', 'realityBubble', 'Mirror Fold'],
+  ];
+  for (const [id, type, place] of places) {
+    const name = facilityName(state, type, id, 2);
+    assert.ok(name.startsWith(place + ' '), name);
+    assert.ok(name.length <= 48);
+    assert.match(name, / \d+$/);
+    assert.equal(facilityName(decodeCampaign(encodeCampaign(state)), type, id, 2), name);
+  }
+  const want = () => facilityName(state, 'relay', 'europe', state.nextSiteId);
+  const original = want();
+  state.sites[0].name = original;
+  state.sites[0].region = 'europe';
+  assert.notEqual(want(), original);
+  const reserved = want();
+  state.builds.push({ type: 'relay', region: 'europe', name: reserved });
+  const quoted = want();
+  assert.ok(quoted !== original && quoted !== reserved);
+  command(state, { type: 'build', siteType: 'relay', region: 'europe' });
+  assert.equal(state.builds.at(-1).name, quoted);
+  assert.equal(state.rng, 50);
 });
 
 test('custom/generated names, cancellation and dismantling guard payments and the last viable host', () => {

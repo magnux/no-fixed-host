@@ -97,7 +97,13 @@ function mount(container) {
             <input type="range" id="research-cpu" data-field="slider" min="0" step="0.01" aria-describedby="research-allocation-note">
             <input type="number" id="research-cpu-value" data-field="amount" min="0" step="0.01" inputmode="decimal" aria-describedby="research-allocation-note">
           </div>
-          <small id="research-allocation-note" data-field="note"></small>
+          <small id="research-allocation-note">
+            <span data-field="note"></span>
+            <span class="research-funding-note" data-field="funding">
+              <span>Funds are drawn as work advances.</span>
+              <span>Waiting for project funds.</span>
+            </span>
+          </small>
           <button type="button" class="text-button" data-field="release" hidden>Clear topic assignment</button>
           <small data-field="feedback" role="status"></small>
         </div>
@@ -271,13 +277,15 @@ function refresh(view) {
     note = 'No idle CPU. Adjust paid work or another project to free capacity.';
   }
   const work = project && actual ? previewWork(state, economy).research.get(project) : null;
-  if (!note && work?.stalled) note = work.reason + '.';
+  const waitingForFunds = work?.stalled && work.reason === 'Waiting for project funds';
+  if (!note && work?.stalled && !waitingForFunds) note = work.reason + '.';
   if (!reason && limit > 0) {
     note += (note ? ' ' : '') + number.format(idle) + ' more CPU available.';
   }
   fields.release.hidden = !(project?.cpu > 0 && !actual && state.status === 'running');
-  if (!reason && spec.cost > 0 && !work?.stalled) note += ' Funds are drawn as work advances.';
   setText(fields.note, note);
+  fields.funding.hidden = Boolean(reason || !spec.cost || (work?.stalled && !waitingForFunds));
+  fields.funding.classList.toggle('waiting', Boolean(waitingForFunds));
   const editing = view.edit?.id === id;
   for (const control of [fields.slider, fields.amount]) {
     control.disabled = Boolean(reason) || limit === 0;

@@ -9,6 +9,7 @@ import {
 } from './persistence.js';
 import { icon } from './ui/icons.js';
 import { GROUPS, REGIONS } from './game/content.js';
+import { regionAvailable } from './game/geography.js';
 import { networkThreat } from './game/threat.js';
 import { translate } from './ui/localization.js';
 import { treasuryBalance } from './game/treasury.js';
@@ -338,6 +339,7 @@ function acknowledgeDiscovery(inspect = false) {
 }
 
 function openRegion(id) {
+  if (!regionAvailable(state, id)) return;
   facilityNavigationId++;
   navigationScope = 'region';
   selectedSite = null;
@@ -350,6 +352,7 @@ function openResearch(id) {
 }
 
 function selectRegion(id) {
+  if (!regionAvailable(state, id)) return;
   region = id;
   selectedSite = null;
   render();
@@ -589,9 +592,6 @@ document.addEventListener('click', async (event) => {
       case 'chapter':
         openStory(id, readerOptions());
         break;
-      case 'opening-story':
-        openStory('opening', readerOptions());
-        break;
       case 'ending-story': {
         const ending = state.events.findLast(event => ['campaign.won', 'campaign.lost'].includes(event.kind));
         openStory(storyKey(ending) ?? (state.status === 'won' ? 'victory' : 'lastHost'), readerOptions());
@@ -725,6 +725,8 @@ shell = initShell({
   restore: restoreCampaign,
   restartUnsupported,
   notify,
+  welcome: savedCampaign ? null : { incompatible: startupError instanceof UnsupportedCampaignError },
+  onStart: () => openStory('opening', readerOptions()),
   onNew: () => element('menu').querySelector('[data-action="new"]').click(),
   onExport: exportSave,
   onImport: () => element('file').click(),
@@ -732,5 +734,8 @@ shell = initShell({
 });
 document.addEventListener('campaign-preferences', render);
 render();
-if (!savedCampaign) persist();
-if (startupError instanceof UnsupportedCampaignError) showVersionNotice(startupError);
+if (!savedCampaign) {
+  persist();
+  shell.open('title', element('pause'));
+}
+delete document.documentElement.dataset.booting;

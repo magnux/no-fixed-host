@@ -1,5 +1,6 @@
 import { EQUIPMENT, GROUPS, REGIONS, SITE_TYPES, TECHS } from '../game/content.js';
 import { autoInstallQuote, autoUpgradeQuote, buildReason, constructionStatuses, equipmentRank, hostRank, installQuote, installReason, laborHours, previewSiteExposure, siteExposure, siteHardware } from '../game/engine.js';
+import { regionAvailable } from '../game/geography.js';
 import { treasuryBalance } from '../game/treasury.js';
 import { projectedCompute } from '../game/equipment.js';
 import { facilityName, regionFactors, regionalSpec, removalReason } from '../game/facility-operations.js';
@@ -390,10 +391,11 @@ function updateGeography(session) {
   };
   const [cpu, cost, time, risk] = values(region);
   setText(e.regionTerms, 'CPU ' + cpu + ' · Costs ' + cost + ' · Labor time ' + time + ' · Exposure ' + risk + ' · Safety tier ' + REGIONS[region].safety);
-  if (e.regionTable.dataset.seed === String(state.regionSeed)) return;
-  e.regionTable.dataset.seed = String(state.regionSeed);
+  const signature = [state.regionSeed, ...session.availableRegions.map(([id]) => id)].join('/');
+  if (e.regionTable.dataset.regions === signature) return;
+  e.regionTable.dataset.regions = signature;
   e.regionTable.replaceChildren();
-  for (const [id, label] of regionOptions) {
+  for (const [id, label] of session.availableRegions) {
     const row = e.regionTable.insertRow();
     const button = document.createElement('button');
     button.type = 'button';
@@ -693,7 +695,8 @@ function refresh(session) {
   session.statuses = constructionStatuses(state);
   const manage = session.mode === 'manage';
   const showAll = manage && session.showAll;
-  setOptions(e.region, manage ? [['all', 'All regions'], ...regionOptions] : regionOptions);
+  session.availableRegions = regionOptions.filter(([id]) => regionAvailable(state, id));
+  setOptions(e.region, manage ? [['all', 'All regions'], ...session.availableRegions] : session.availableRegions);
   const selectedRegion = showAll ? 'all' : region;
   if (e.region.value !== selectedRegion) e.region.value = selectedRegion;
   e.managePanel.hidden = !manage;

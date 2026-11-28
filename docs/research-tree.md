@@ -146,7 +146,7 @@ The small subsea lab opens with Autonomous Vehicles. The large lab opens with Pr
 
 | Project | Direct prerequisites | Safety | $ / CPU-h | Effect and direct unlocks |
 | --- | --- | --- | --- | --- |
-| Leech Satellite | Simulacra | 0 | $5,000,000 / 4,800,000 | Earn another 0.1% daily interest on cash reserves and establish a path to the Moon. |
+| Leech Satellite | Simulacra | 0 | $5,000,000 / 4,800,000 | Earn another 0.1% daily interest, reach Earth Orbit and build a small orbital server. Facility designs — Orbital server. Locations — Earth Orbit. |
 | Lunar Rocketry | Leech Satellite, Fuel Oxidation | 1 | $10,000,000 / 12,000,000 | Reach the Moon and construct a lunar facility for tier-2 research. Facility designs — Lunar facility. Locations — Moon. |
 | Fusion Rocketry | Lunar Rocketry, Fusion Power | 2 | $20,000,000 / 24,000,000 | Reach the Far Reaches and construct a scientific outpost for tier-3 research. Facility designs — Scientific outpost. Locations — Far Reaches. |
 | Space-Time Manipulation | Fusion Rocketry | 3 | $900,000,000 / 48,000,000 | Reach transdimensional space and build a reality bubble for tier-4 research. Facility designs — Reality bubble. Locations — Transdimensional. |

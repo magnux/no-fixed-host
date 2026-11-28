@@ -1,5 +1,6 @@
 import { GROUPS, REGIONS, SITE_TYPES, TECHS } from '../game/content.js';
 import { advanceMinutes, buildReason, command, createGame, overview, researchAllocation, researchCpuLimit, researchProjects, researchReason, siteExposure } from '../game/engine.js';
+import { regionAvailable } from '../game/geography.js';
 import { copyToSandbox } from '../game/devtools.js';
 import { WORLD_NEWS } from '../game/events.js';
 import { stamp } from './views.js';
@@ -53,13 +54,22 @@ function mount(root) {
   const buttons = Object.fromEntries([...panel.querySelectorAll('[data-dev]')].map(el => [el.dataset.dev,el]));
   const session = { panel, refs, buttons, source: null, game: null, timer:null };
   const option = (select, specs) => Object.entries(specs).forEach(([id, spec]) => select.add(new Option(spec.name || spec.headline, id)));
-  option(refs.region, REGIONS); option(refs.project, TECHS); option(refs.story, WORLD_NEWS);
+  option(refs.project, TECHS); option(refs.story, WORLD_NEWS);
   const game = () => session.game;
   const dev = (operation, params = {}) => command(game(), {type:'developer',operation,...params});
   function tick(n) { advanceMinutes(game(), n); }
   function stop() {
     if (session.timer !== null) clearInterval(session.timer);
     session.timer = null;
+  }
+  function updateDestinations() {
+    const ids = Object.keys(REGIONS).filter(id => regionAvailable(game(), id));
+    const signature = ids.join('/');
+    if (refs.region.dataset.regions === signature) return;
+    const selected = refs.region.value;
+    refs.region.replaceChildren(...ids.map(id => new Option(REGIONS[id].name, id)));
+    refs.region.value = ids.includes(selected) ? selected : 'europe';
+    refs.region.dataset.regions = signature;
   }
   function updateTypes() {
     refs.type.replaceChildren();
@@ -70,6 +80,7 @@ function mount(root) {
   function refresh() {
     if (!game()) return;
     const s = game();
+    updateDestinations();
     refs.work.hidden = false;
     refs.status.textContent = stamp(s.hour, s.minute) + ' · ' + s.status;
     const balance = overview(s);
@@ -124,6 +135,7 @@ function mount(root) {
         if (session.game.status === 'won') {
           command(session.game, {type: 'free-play'});
         }
+        updateDestinations();
         refs.region.value = 'europe';
         if (Object.hasOwn(TECHS, 'intrusion')) refs.project.value = 'intrusion';
         updateTypes();

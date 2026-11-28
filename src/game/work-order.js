@@ -3,8 +3,9 @@ export const WORK_UNITS = 6000;
 const whole = amount => Number.isSafeInteger(amount) && amount >= 0;
 
 export function validOrderFunding(order) {
+  const requiredUnits = Math.round(order.workRequired * WORK_UNITS);
   return whole(order.cashRequired) && whole(order.cashPaid) && order.cashPaid <= order.cashRequired &&
-    whole(order.workRequired * WORK_UNITS) && order.work <= order.workRequired;
+    whole(requiredUnits) && requiredUnits / WORK_UNITS === order.workRequired && order.work <= order.workRequired;
 }
 
 // The reference rounds to the nearest unit with ties going to the even unit.

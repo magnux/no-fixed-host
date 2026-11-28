@@ -99,11 +99,11 @@ function mount(container) {
         <button type="button" data-report-section="forecast" aria-pressed="true">Forecast</button>
         <button type="button" data-report-section="statistics" aria-pressed="false">Statistics</button>
       </div>
-    </header>
-    <section data-report="forecast">
-      <div class="report-tools"><label>Forecast period
+      <div class="report-tools" data-report="tools"><label>Forecast period
         <select data-report="period"><option value="midnight">Until midnight</option><option value="24h">Next 24 hours</option></select>
       </label><button type="button" data-report="refresh">Refresh</button><small data-report="range"></small></div>
+    </header>
+    <section data-report="forecast">
       <div class="report-order" data-report="candidate" hidden><div><small data-report="kind"></small><strong data-report="name"></strong><small data-report="package" hidden></small><small data-report="refit" hidden></small></div>
         <button type="button" class="accent-button" data-report="place">Place order</button>
         <button type="button" data-report="clear">Discard preview</button></div>
@@ -167,6 +167,7 @@ function refresh(view) {
   const { state, fields, options } = view;
   const candidate = options.candidate ?? null;
   fields.forecast.hidden = view.mode !== 'forecast';
+  fields.tools.hidden = fields.forecast.hidden;
   fields.statistics.hidden = view.mode !== 'statistics';
   for (const button of view.panel.querySelectorAll('[data-report-section]')) {
     button.setAttribute('aria-pressed', String(button.dataset.reportSection === view.mode));

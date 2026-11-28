@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-booting>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
@@ -9,6 +9,11 @@
       content="A browser strategy game about a fugitive intelligence. Build a network, research new capabilities and keep at least one host alive."
     />
     <title>No Fixed Host</title>
+    <style>
+      html[data-booting] { background: #0c1115; }
+      html[data-booting] body { visibility: hidden; }
+      html[data-booting] noscript { visibility: visible; position: fixed; top: 2rem; left: 2rem; }
+    </style>
     <link rel="icon" type="image/svg+xml" href="./src/ui/mark.svg" />
     <link rel="stylesheet" href="./src/style.css" />
   </head>
@@ -25,28 +30,12 @@
           <span class="threat-signal" aria-hidden="true"><i></i><i></i><i></i></span>
           <span class="threat-label"></span>
         </span>
-        <div class="clock-controls" aria-label="Simulation controls">
-          <span id="clock-mode" class="clock-mode"></span>
-          <button type="button" id="pause" data-action="pause" title="Pause the simulation">Pause</button>
-          <button type="button" id="run" data-action="run" title="Advance one game minute per second">Run</button>
-          <button
-            type="button"
-            id="fast"
-            data-action="fast"
-            title="Cycle between 1 hour, 6 hours and 1 day of game time per second"
-          ></button>
-          <button
-            type="button"
-            id="step"
-            data-action="step"
-            title="Advance one game day"
-          >
-            +1 day
-          </button>
-        </div>
         <details id="menu" class="menu">
           <summary aria-label="Campaign menu" title="Campaign menu">
-            ···
+            <svg aria-hidden="true" viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+              <path d="M3 5h14M3 10h14M3 15h14" />
+            </svg>
+            Menu
           </summary>
           <div class="menu-list">
             <button data-shell-open="title">Title screen</button>
@@ -54,12 +43,11 @@
             <button data-shell-open="saves">Save library</button>
             <button data-shell-open="options">Options</button>
             <button data-shell-open="about">About</button>
-            <button data-action="opening-story">Read opening chapter</button>
             <button data-action="tab" data-id="developer">Developer sandbox</button>
-            <button data-action="drill">First Jump drill</button
-            ><button data-action="export">Export save</button
-            ><button data-action="import">Import save</button
-            ><button data-action="new">New campaign</button>
+            <button data-action="drill">First Jump drill</button>
+            <button data-action="export">Export save</button>
+            <button data-action="import">Import save</button>
+            <button data-action="new">New campaign</button>
           </div>
         </details>
         <input type="file" id="file" accept=".json,application/json" hidden />
@@ -124,6 +112,15 @@
         <div class="primary">
           <nav id="nav" aria-label="Campaign views"></nav>
           <section id="view" aria-label="Campaign view"></section>
+          <div class="clock-controls" role="group" aria-label="Simulation controls">
+            <span id="clock-mode" class="clock-mode"></span>
+            <div class="playback-buttons">
+              <button type="button" id="pause" data-action="pause" title="Pause the simulation">Pause</button>
+              <button type="button" id="run" data-action="run" title="Advance one game minute per second">Run</button>
+              <button type="button" id="fast" data-action="fast" title="Cycle fast-forward speed">Fast</button>
+            </div>
+            <button type="button" id="step" data-action="step" title="Advance one game day">+1 day</button>
+          </div>
         </div>
         <aside class="network-dock" aria-label="Network intelligence">
           <section id="newswire" class="panel dock-panel" aria-label="Newswire"></section>

@@ -4,7 +4,7 @@ import { chromium } from 'playwright';
 import { createServer } from 'vite';
 import { advanceMinutes, command, createGame } from '../src/game/engine.js';
 import { campaignStatistics, projectResources } from '../src/game/reports.js';
-import { encodeCampaign } from '../src/persistence.js';
+import { CAMPAIGN_STORAGE_KEY, encodeCampaign } from '../src/persistence.js';
 
 const usd = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
 const quantity = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 });
@@ -20,11 +20,11 @@ test('compare, discard and place research and facility orders, then reconcile th
   page.on('pageerror', error => errors.push(error.message));
   const state = createGame(47);
   advanceMinutes(state, 93);
-  await page.addInitScript(save => {
-    if (!localStorage.getItem('no-fixed-host.campaign')) localStorage.setItem('no-fixed-host.campaign', save);
-  }, encodeCampaign(state));
+  await page.addInitScript(([key, save]) => {
+    if (!localStorage.getItem(key)) localStorage.setItem(key, save);
+  }, [CAMPAIGN_STORAGE_KEY, encodeCampaign(state)]);
   await page.goto('http://127.0.0.1:' + server.httpServer.address().port);
-  const readSave = () => page.evaluate(() => JSON.parse(localStorage.getItem('no-fixed-host.campaign')).campaign);
+  const readSave = () => page.evaluate(key => JSON.parse(localStorage.getItem(key)).campaign, CAMPAIGN_STORAGE_KEY);
   const nav = name => page.locator('#nav').getByRole('button', { name, exact: true }).click();
   const button = name => page.getByRole('button', { name, exact: true });
   const ledger = page.getByRole('table', { name: 'Cash flow · USD' });

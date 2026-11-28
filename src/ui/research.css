@@ -12,7 +12,7 @@
 .research-dossier { padding: .85rem 1.05rem 1.1rem; border-left: 1px solid var(--line); min-height: 100%; }
 .research-dossier h3 { font-size: 1.25rem; margin: .16rem 0 .5rem; }
 .research-dossier p { font-size: .87rem; line-height: 1.48; color: #c6d6d5; }
-.research-costs { display: flex; flex-wrap: wrap; gap: .65rem 1.25rem; padding: .6rem .7rem; background: #19262b; border-radius: .3rem; margin: .8rem 0; }
+.research-costs { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 9.5rem), 1fr)); gap: .65rem 1.25rem; padding: .6rem .7rem; background: #19262b; border-radius: .3rem; margin: .8rem 0; }
 .research-costs dt, .research-links dt { color: var(--quiet); font-size: .75rem; }
 .research-costs dd { font: .78rem/1.5 var(--mono); margin: .12rem 0 0; }
 .research-order { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; }
@@ -39,6 +39,15 @@
 .research-cpu-controls input[type="number"] { font: .82rem var(--mono); padding: .35rem .45rem; }
 .research-assignment small { font-size: .76rem; line-height: 1.35; color: var(--quiet); }
 .research-assignment small:empty { display: none; }
+#research-allocation-note { font-variant-numeric: tabular-nums; }
+/* Both payment states size the same grid cell. A minute's income can switch
+   the visible state several times without moving the controls below it. */
+.research-funding-note { display: grid; }
+.research-funding-note > span { grid-area: 1 / 1; }
+.research-funding-note.waiting > :first-child,
+.research-funding-note:not(.waiting) > :last-child { visibility: hidden; }
+.research-progress small { font-variant-numeric: tabular-nums; }
+#view[data-view="research"] { scrollbar-gutter: stable; }
 .research-assignment [role=status] { color: #f3cf87; }
 .research-cpu-controls input[type="range"] { --range: var(--violet); --position: 0%; margin: 0; }
 .research-cpu-controls input:disabled { opacity: .58; cursor: default; }

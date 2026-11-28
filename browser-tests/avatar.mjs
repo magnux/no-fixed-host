@@ -114,11 +114,11 @@ test('a discovered region disappears and attracts the gaze once, even when its r
   await page.clock.install();
   await page.clock.fastForward(4000);
   assert.equal(await portrait.getAttribute('data-reaction'), 'loss', 'the glance holds while the report is open');
-  const reportSave = await page.evaluate(() => localStorage.getItem('no-fixed-host.campaign'));
+  const reportSave = await page.evaluate(key => localStorage.getItem(key), CAMPAIGN_STORAGE_KEY);
   await page.locator('#incident-dialog').getByRole('button', { name: 'Acknowledge' }).click();
   await page.clock.fastForward(3000);
   assert.equal(await portrait.getAttribute('data-reaction'), null, 'the paused avatar settles after acknowledgement');
-  await page.evaluate(save => localStorage.setItem('no-fixed-host.campaign', save), reportSave);
+  await page.evaluate(([key, save]) => localStorage.setItem(key, save), [CAMPAIGN_STORAGE_KEY, reportSave]);
   await page.reload();
   await page.locator('#incident-dialog[open]').waitFor();
   assert.equal(await portrait.getAttribute('data-reaction'), null);

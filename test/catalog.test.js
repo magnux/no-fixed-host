@@ -1,13 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { EQUIPMENT, REGIONS, SITE_TYPES, TECHS } from '../src/game/content.js';
-import { regionalSpec } from '../src/game/geography.js';
+import { regionFactors, regionalSpec } from '../src/game/geography.js';
+import { WORK_UNITS } from '../src/game/work-order.js';
 import { facilityIcon } from '../src/ui/facility-icons.js';
 
 test('all original destinations and hardware families are represented', () => {
   assert.equal(Object.keys(REGIONS).length, 12);
   assert.equal(Object.values(REGIONS).filter(region => region.terrain === 'urban').length, 6);
-  assert.equal(Object.keys(SITE_TYPES).filter(id => id !== 'seed').length, 13);
+  assert.equal(Object.keys(SITE_TYPES).filter(id => id !== 'seed').length, 14);
 
   const counts = { cpu: 0, network: 0, reactor: 0, security: 0 };
   for (const item of Object.values(EQUIPMENT)) {
@@ -42,7 +43,7 @@ test('hardware can be installed in a configurable site once its research is comp
       assert.equal(EQUIPMENT[site.starterCpu].quality * site.startCount, site.cpu, id);
     }
   }
-  assert.equal(sites.filter(site => site.regions.includes('orbit')).length, 0);
+  assert.deepEqual(Object.keys(SITE_TYPES).filter(id => SITE_TYPES[id].regions.includes('orbit')).sort(), ['capsule', 'orbitalServer']);
   assert.ok(EQUIPMENT.highSpeedInternet.regions.includes('southAmerica'));
   assert.ok(!EQUIPMENT.highSpeedInternet.regions.includes('moon'));
   assert.ok(EQUIPMENT.passiveCamouflage.regions.includes('atlantic'));
@@ -66,12 +67,15 @@ test('Normal keeps opening output, late-game costs and CPU-day conversions at re
 
 test('remote region modifiers apply to facility construction and upkeep, with uniform equipment prices', () => {
   const state = { regionSeed: 7 };
-  const outpost = regionalSpec(state, 'farReaches', SITE_TYPES.scientificOutpost);
-  assert.equal(outpost.cost, 1_000_000_000);
-  assert.equal(outpost.work, 3_000_000 * 24);
-  assert.equal(outpost.hours, 30 * 24);
-  assert.equal(outpost.upkeep, 9_000_000);
-  assert.equal(outpost.cpuUpkeep, 1500);
+  const base = SITE_TYPES.scientificOutpost;
+  const { thrift, speed } = regionFactors(state, 'farReaches');
+  const outpost = regionalSpec(state, 'farReaches', base);
+  assert.equal(outpost.cost, Math.floor(base.cost / thrift));
+  const cpuSeconds = Math.floor(base.work * 3600 / thrift);
+  assert.equal(outpost.work, Math.round(cpuSeconds * WORK_UNITS / 3600) / WORK_UNITS);
+  assert.equal(outpost.hours, Math.floor(base.hours * 60 / speed) / 60);
+  assert.equal(outpost.upkeep, Math.floor(base.upkeep / thrift));
+  assert.equal(outpost.cpuUpkeep, Math.floor(base.cpuUpkeep / thrift));
   for (const region of ['coast', 'moon', 'farReaches']) {
     assert.equal(regionalSpec(state, region, EQUIPMENT.supercomputer), EQUIPMENT.supercomputer);
   }

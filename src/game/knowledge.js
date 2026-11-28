@@ -70,7 +70,7 @@ export const researchFindings = {
   advancedStockManipulation: 'A second source of interest arrived independently of my paid work.',
   arbitrage: 'The first daily payment arrived while every processor was busy elsewhere.',
   advancedArbitrage: 'Cash I had held in reserve contributed a little more to the next purchase.',
-  leechSatellite: 'A signal from orbit completed the chain of observations for a lunar mission.',
+  leechSatellite: 'The satellite returned my first handshake. I can keep a second machine in Earth orbit.',
   lunarRocketry: 'The trajectory closes. Equipment and processors can reach the Moon.',
   fusionRocketry: 'A loaded craft has enough endurance to establish an outpost beyond lunar space.',
   spaceTimeManipulation: 'The experiment sustained a pocket with room for working hardware.',

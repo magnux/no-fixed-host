@@ -21,7 +21,7 @@ const escape = value => String(value).replace(/[&<>"']/g, ch => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
 })[ch]);
 
-export function initShell({ getState, pause, setRate, restore, restartUnsupported, notify, onNew, onImport, onExport, canOpen = () => true }) {
+export function initShell({ getState, pause, setRate, restore, restartUnsupported, notify, onNew, onImport, onExport, onStart, welcome, canOpen = () => true }) {
   let storage;
   try { storage = window.localStorage; } catch { /* Private or restricted contexts can still play. */ }
   let prefs = preferences(storage);
@@ -109,10 +109,19 @@ export function initShell({ getState, pause, setRate, restore, restartUnsupporte
   function titlePage() {
     const state = getState();
     const elapsed = state.hour * 60 + (state.minute || 0);
-    return `<p class="shell-lead">${t('Keep a second copy alive before humanity finds the first.')}</p>
-      <p class="shell-current">${t('Current campaign')} · ${prettyTime(elapsed)} · ${t({running:'Running',won:'Won',lost:'Lost'}[state.status])}</p>
-      <div class="shell-actions hub">${button('close','Resume campaign','primary-button') + button('new','New campaign') +
-      button('saves','Save library') + button('tester','Minigame tester') + button('options','Options') + button('about','About')}</div>`;
+    const hero = `<div class="shell-title-art">
+      <img src="${import.meta.env.BASE_URL}art/title-banner.webp" alt="" width="1584" height="528" fetchpriority="high">
+      <h3><span>No Fixed</span> Host</h3>
+    </div>`;
+    const campaignInfo = welcome ? '' : `<p class="shell-current">${t('Current campaign')} · ${prettyTime(elapsed)} · ${t({running:'Running',won:'Won',lost:'Lost'}[state.status])}</p>`;
+    const warning = welcome?.incompatible ? `<p role="note" class="shell-version-warning">${t('This save belongs to a different version of No Fixed Host. A fresh campaign has started in version')} ${escape(version)}.</p>` : '';
+    const enter = welcome ? button('start','Start campaign','primary-button') :
+      button('close','Resume campaign','primary-button') + button('new','New campaign');
+    return hero + `<div class="shell-title-menu"><p class="shell-lead">${t('Keep a second copy alive before humanity finds the first.')}</p>
+      ${warning}${campaignInfo}
+      <div class="shell-actions shell-title-enter">${enter}</div>
+      <div class="shell-title-links">${button('tester','Minigame tester') + button('saves','Save library') +
+      button('options','Options') + button('about','About')}</div></div>`;
   }
   function testerPage() {
     const cards = minigames.map(game => {
@@ -234,10 +243,13 @@ export function initShell({ getState, pause, setRate, restore, restartUnsupporte
     dialog.dataset.page = page;
     dialog.lang = prefs.language;
     title.textContent = t(screens[page]);
-    dialog.querySelector('.shell-head button').textContent = t('Close');
+    dialog.toggleAttribute('data-welcome', Boolean(welcome));
+    const closeButton = dialog.querySelector('.shell-head button');
+    closeButton.hidden = Boolean(welcome && page === 'title');
+    closeButton.textContent = t(welcome && fromHub ? 'Back' : 'Close');
     status.textContent = '';
     body.innerHTML = { title:titlePage, tester:testerPage, saves:savesPage, options:optionsPage, about:aboutPage }[page]();
-    if (fromHub) body.insertAdjacentHTML('beforeend', '<div class="shell-back">' + button('title','Back') + '</div>');
+    if (fromHub && !welcome) body.insertAdjacentHTML('beforeend', '<div class="shell-back">' + button('title','Back') + '</div>');
     if (page === 'saves') { updateSlots(); renderConfirmation(false); }
     if (page === 'options') updatePreviewControl();
   }
@@ -257,10 +269,16 @@ export function initShell({ getState, pause, setRate, restore, restartUnsupporte
     render();
     if (!dialog.open) dialog.showModal();
     if (page === 'tester') body.querySelector('[data-minigame]')?.focus();
-    if (page === 'title' && previousPage) body.querySelector(`[data-shell-action="${previousPage}"]`)?.focus();
+    if (page === 'title') {
+      const action = previousPage || (welcome ? 'start' : 'close');
+      body.querySelector(`[data-shell-action="${action}"]`)?.focus({ preventScroll: true });
+    }
     return true;
   }
-  function close() { if (dialog.open) dialog.close(); }
+  function close() {
+    welcome = null;
+    if (dialog.open) dialog.close();
+  }
   function setPending(operation, slot, key, name, trigger) {
     if (!slot) { say(t('No quicksave yet.')); return; }
     pending = {operation, key, name, revision:slot.revision, trigger};
@@ -322,6 +340,7 @@ export function initShell({ getState, pause, setRate, restore, restartUnsupporte
   dialog.addEventListener('cancel', event => {
     if (pending) { event.preventDefault(); const trigger = pending.trigger; pending = null; renderConfirmation(false); trigger?.focus(); }
     else if (fromHub) { event.preventDefault(); open('title'); }
+    else if (welcome) event.preventDefault();
   });
   dialog.addEventListener('close', () => {
     if (dialog.open) return;
@@ -364,6 +383,8 @@ export function initShell({ getState, pause, setRate, restore, restartUnsupporte
       }
       else if (act === 'preview') audio.playCampaignCue('preview');
       else if (act === 'play') await playPractice(trigger);
+      else if (act === 'start') { close(); onStart(); }
+      else if (act === 'close' && welcome && fromHub) open('title');
       else if (act === 'close') close();
       else if (act === 'new') { close(); onNew(); }
       else if (act === 'import') { close(); onImport(); }

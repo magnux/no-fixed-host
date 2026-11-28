@@ -1,11 +1,13 @@
+import { startCampaign } from './support/start-campaign.mjs';
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
 import { advanceMinutes, command, createGame } from '../src/game/engine.js';
 import { GROUPS, REGIONS, SITE_TYPES, TECHS } from '../src/game/content.js';
+import { regionalSpec } from '../src/game/geography.js';
 import { creditTreasury } from '../src/game/treasury.js';
-import { encodeCampaign } from '../src/persistence.js';
+import { CAMPAIGN_STORAGE_KEY, encodeCampaign } from '../src/persistence.js';
 
 let browser;
 let server;
@@ -36,6 +38,7 @@ async function openFreshCampaign(t, viewport = { width: 1920, height: 1080 }) {
   await page.clock.install({ time: new Date('2025-01-01T00:00:00Z') });
   await page.clock.pauseAt(new Date('2025-01-01T00:01:00Z'));
   await page.goto(url);
+  await startCampaign(page);
   await page.locator('#world-atlas [data-action="region"]').first().waitFor();
   return page;
 }
@@ -54,7 +57,15 @@ test('map targets and both docks fit the desktop and ultrawide viewports', async
   })));
   assert.equal(buttons.length, 12);
   assert.equal(new Set(buttons.map(({ id }) => id)).size, 12);
-  assert.ok(buttons.every(({ keyboardAccessible }) => keyboardAccessible));
+  for (const { id, keyboardAccessible } of buttons) {
+    const requires = REGIONS[id].requires;
+    assert.equal(keyboardAccessible, requires.length === 0, id);
+    if (requires.length) {
+      const marker = regions.and(page.locator('[data-id="' + id + '"]'));
+      assert.ok(await marker.locator('.atlas-lock').isVisible(), id);
+      assert.ok((await marker.getAttribute('aria-description')).includes(TECHS[requires[0]].name));
+    }
+  }
 
   for (const viewport of [
     { width: 1366, height: 768 },
@@ -73,6 +84,13 @@ test('map targets and both docks fit the desktop and ultrawide viewports', async
         horizontalDocks: left.width > 0 && right.width > 0 && left.right <= center.left + 1 && center.right <= right.left + 1,
         suspicionIsAtBottom: rect('#suspicion').top >= rect('#recent-activity').bottom - 1,
         suspicionVisible: rect('#suspicion').bottom <= innerHeight + 1,
+        cardsInGutters: ['orbit', 'moon', 'farReaches', 'transdimensional'].every((id, i) => {
+          const card = rect('#world-atlas [data-id="' + id + '"]');
+          const chart = rect('.atlas-geography');
+          return card.top >= chart.top && card.bottom <= chart.bottom &&
+            (i < 2 ? card.right <= chart.left : card.left >= chart.right);
+        }),
+        compactCardsBelowChart: rect('.atlas-horizon').top >= rect('.atlas-geography').bottom - 1,
         commandOverflow: commandDock.scrollHeight - commandDock.clientHeight,
         pageWidth: document.documentElement.scrollWidth,
         pageHeight: document.documentElement.scrollHeight,
@@ -80,17 +98,56 @@ test('map targets and both docks fit the desktop and ultrawide viewports', async
     });
     const size = `${viewport.width}×${viewport.height}`;
     assert.ok(geometry.horizontalDocks, size);
+    if (viewport.width === 2560) assert.ok(geometry.cardsInGutters, size);
+    if (viewport.width === 1920) assert.ok(geometry.compactCardsBelowChart, size);
     assert.ok(geometry.suspicionIsAtBottom && geometry.suspicionVisible, `Suspicion panel placement at ${size}`);
     assert.ok(geometry.pageWidth <= viewport.width + 1, `Horizontal page overflow at ${size}`);
     assert.ok(geometry.pageHeight <= viewport.height + 1, `Vertical page overflow at ${size}`);
     assert.ok(geometry.commandOverflow <= 1, `Command dock overflows by ${geometry.commandOverflow}px at ${size}`);
   }
 
-  for (const { id } of buttons) {
+  for (const { id } of buttons.filter(button => button.keyboardAccessible)) {
     await page.locator(`#world-atlas [data-action="region"][data-id="${id}"]`).click();
     assert.equal(await page.locator('#region').inputValue(), id);
     await page.getByRole('button', { name: 'Overview', exact: true }).click();
   }
+});
+
+test('unlocking a destination reveals its menu entries and enables its existing atlas marker', async t => {
+  const page = await openFreshCampaign(t);
+  const state = createGame(19);
+  // The next supplied CPU-minute completes the regional prerequisite.
+  const tech = TECHS.autonomousVehicles;
+  function learn(id) {
+    if (state.completed.includes(id)) return;
+    TECHS[id].requires.forEach(learn);
+    state.completed.push(id);
+  }
+  tech.requires.forEach(learn);
+  command(state, { type: 'assign-research', id: 'autonomousVehicles', cpu: 1 });
+  state.cash = tech.cost + 10_000;
+  state.research.hours = tech.hours;
+  state.research.work = tech.work - 1 / 60;
+  state.research.cashPaid = tech.cost;
+  await importCampaign(page, encodeCampaign(state));
+
+  const ocean = page.locator('#world-atlas [data-id="atlantic"]');
+  assert.ok(await ocean.isDisabled());
+  await page.getByRole('button', { name: 'Facilities', exact: true }).click();
+  const picker = page.locator('#region');
+  assert.equal(await picker.locator('option[value="atlantic"]').count(), 0);
+  await page.getByRole('button', { name: 'Build facility', exact: true }).click();
+  const terms = page.locator('[data-ref="regionTable"]');
+  assert.equal(await terms.locator('[data-region="atlantic"]').count(), 0);
+  await page.getByRole('button', { name: 'Overview', exact: true }).click();
+  const marker = await ocean.elementHandle();
+  await page.locator('#run').click();
+  await page.clock.runFor(1100);
+  assert.ok(await marker.evaluate(el => el.isConnected && !el.disabled));
+  await ocean.click();
+  assert.equal(await picker.inputValue(), 'atlantic');
+  assert.equal(await terms.locator('[data-region="atlantic"]').count(), 1);
+  assert.equal(await picker.locator('option[value="transdimensional"]').count(), 0);
 });
 
 test('a focused native region picker survives running construction', async (t) => {
@@ -180,18 +237,17 @@ test('facility icons expose research locks, funding, and keyboard selection whil
   assert.equal(await funding.getAttribute('data-stalled'), 'true');
   assert.match(await funding.innerText(), /Waiting for project funds.*\$75 of \$100 outstanding/);
   await page.locator('#pause').click();
-  await page.getByRole('combobox', {name:'Region',exact:true}).selectOption('orbit');
-  assert.equal(await picker.isVisible(), false);
-  assert.equal(await page.getByRole('radio').count(), 0);
-  assert.match(await page.locator('[data-ref="noBuild"]').innerText(), /no facility designs/i);
+  assert.equal(await page.locator('#region option[value="orbit"]').count(), 0);
 
   // A late-game design can exceed the precision limit of the fractional-dollar wallet.
-  creditTreasury(campaign, SITE_TYPES.realityBubble.cost);
+  campaign.completed = Object.keys(TECHS).filter(id => id !== 'apotheosis');
+  const quote = regionalSpec(campaign, 'transdimensional', SITE_TYPES.realityBubble).cost;
+  creditTreasury(campaign, quote);
   await importCampaign(page, encodeCampaign(campaign));
   await page.locator('#world-atlas [data-id="transdimensional"]').click();
   const bubble = tile('realityBubble');
   assert.equal(await bubble.getAttribute('data-affordable'), 'true');
-  assert.match(await bubble.innerText(), /\$80,000,000,000/);
+  assert.ok((await bubble.innerText()).includes('$' + quote.toLocaleString('en-US')));
 
 });
 
@@ -532,7 +588,7 @@ test('a saved research portfolio restores the CPU assigned to each topic', async
   await importCampaign(page, encodeCampaign(campaign));
   await page.locator('#nav [data-id="research"]').click();
   assert.equal(Number(await page.locator('#research').inputValue()), 1);
-  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('no-fixed-host.campaign')).campaign);
+  const saved = await page.evaluate(key => JSON.parse(localStorage.getItem(key)).campaign, CAMPAIGN_STORAGE_KEY);
   assert.equal(saved.cash, campaign.cash);
   for (const [project, cpu] of [[saved.research, .25], [saved.researchQueue[0], .75]]) {
     await page.locator('[data-tech-id="' + project.id + '"]').click();
@@ -701,8 +757,8 @@ test('discovery interrupts day speed, survives reload, and opens the affected re
   assert.equal(await row.locator('.sus-value').innerText(), 'Low');
   assert.doesNotMatch(await row.ariaSnapshot(), /%/);
   assert.equal(await row.getByRole('progressbar').count(), 0);
-  const suspicion = await page.evaluate(group =>
-    JSON.parse(localStorage.getItem('no-fixed-host.campaign')).campaign.suspicion[group], event.group);
+  const suspicion = await page.evaluate(([key, group]) =>
+    JSON.parse(localStorage.getItem(key)).campaign.suspicion[group], [CAMPAIGN_STORAGE_KEY, event.group]);
   assert.ok(suspicion > 0, 'The discovery still raises suspicion while the player can only observe its band.');
   await page.reload();
   assert.ok(await incident.isVisible());

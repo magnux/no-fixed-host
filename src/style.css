@@ -188,6 +188,32 @@ html:is([data-threat="guarded"], [data-threat="high"], [data-threat="critical"])
 html:is([data-threat="guarded"], [data-threat="high"], [data-threat="critical"]) :is(.layout .panel, .stats) {
   border-color: color-mix(in srgb, var(--threat-color) var(--threat-frame), var(--line));
 }
+/* Carry the perceived alert into the view the player is reading. Only paint
+   existing edges here: an incident must never move the map or a research row. */
+html:is([data-threat="guarded"], [data-threat="high"], [data-threat="critical"]) .primary {
+  --view-edge: color-mix(in srgb, var(--threat-color) 63%, var(--line));
+  --view-wash: color-mix(in srgb, var(--threat-color) var(--threat-wash), var(--panel));
+}
+.primary #view > .panel {
+  border-color: var(--view-edge, var(--line));
+}
+.primary #view > .panel > .card-header {
+  border-bottom-color: var(--view-edge, var(--line));
+}
+html:is([data-threat="guarded"], [data-threat="high"], [data-threat="critical"]) .primary #view > .panel > .card-header {
+  background: linear-gradient(105deg, var(--view-wash), var(--panel) 90%);
+  box-shadow: inset 3px 0 var(--threat-color);
+}
+.primary #nav {
+  border-color: var(--view-edge, var(--line));
+}
+.primary #nav [aria-current="page"] {
+  color: var(--threat-color, var(--mint));
+  border-bottom-color: currentColor;
+}
+.primary .clock-controls {
+  border-color: var(--view-edge, var(--line));
+}
 html:is([data-threat="guarded"], [data-threat="high"], [data-threat="critical"]) #suspicion .card-header {
   box-shadow: inset 3px 0 var(--threat-color);
   background-color: color-mix(in srgb, var(--threat-color) var(--threat-wash), var(--panel));
@@ -196,11 +222,28 @@ html:is([data-threat="guarded"], [data-threat="high"], [data-threat="critical"])
   .threat-signal i { border: 1px solid currentColor; }
 }
 .clock-controls {
+  container: playback / inline-size;
+  position: relative;
   display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   align-items: center;
-  gap: 0.32rem;
+  gap: 0.45rem;
+  flex: none;
+  padding: 0.4rem 0.65rem;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  background: var(--panel);
+}
+.playback-buttons {
+  display: flex;
+  gap: 0.25rem;
+}
+.clock-controls #fast {
+  min-inline-size: 6.8rem;
 }
 .clock-controls button {
+  white-space: nowrap;
   min-height: 2rem;
   padding: 0.32rem 0.65rem;
   font-size: 0.79rem;
@@ -215,13 +258,15 @@ html:is([data-threat="guarded"], [data-threat="high"], [data-threat="critical"])
   border-color: #699a87;
 }
 .clock-mode {
+  flex-basis: 100%;
+  justify-content: center;
   font-family: var(--mono);
   font-size: 0.75rem;
   color: var(--quiet);
   display: inline-flex;
   align-items: center;
   gap: 0.45rem;
-  margin-right: 0.55rem;
+  white-space: nowrap;
 }
 .clock-mode::before {
   content: '';
@@ -233,20 +278,40 @@ html:is([data-threat="guarded"], [data-threat="high"], [data-threat="critical"])
 .clock-mode.running::before {
   background: var(--mint);
 }
+@container playback (min-width: 37rem) {
+  .clock-mode { position: absolute; inset-inline-start: 0.65rem; }
+  #step { position: absolute; inset-inline-end: 0.65rem; }
+}
+@container playback (max-width: 32rem) {
+  .clock-controls button { padding-inline: 0.42rem; }
+  .clock-controls button .icon { display: none; }
+  .clock-controls #fast { min-inline-size: 5.7rem; }
+}
+@container playback (max-width: 23rem) {
+  .playback-buttons { order: -1; flex-basis: 100%; justify-content: center; }
+  .clock-mode { flex: 1; justify-content: flex-start; }
+}
 .menu {
   position: relative;
 }
 .menu summary {
   list-style: none;
-  display: grid;
-  place-items: center;
-  border: 1px solid var(--line);
-  border-radius: 0.3rem;
-  width: 2rem;
-  height: 2rem;
-  font-weight: bold;
-  color: var(--quiet);
-  letter-spacing: 0.07rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.44rem;
+  padding: 0.4rem 0.72rem;
+  min-height: 2.25rem;
+  border: 1px solid color-mix(in srgb, var(--mint) 50%, var(--line));
+  border-radius: 0.38rem;
+  color: var(--mint);
+  background: color-mix(in srgb, var(--mint) 9%, var(--panel));
+  font-weight: 650;
+  font-size: 0.87rem;
+  white-space: nowrap;
+}
+.menu[open] summary {
+  background: color-mix(in srgb, var(--mint) 18%, var(--panel));
 }
 .menu summary::-webkit-details-marker {
   display: none;
@@ -257,7 +322,9 @@ html:is([data-threat="guarded"], [data-threat="high"], [data-threat="critical"])
   z-index: 5;
   right: 0;
   top: calc(100% + 0.55rem);
-  width: 11rem;
+  width: max-content;
+  min-width: min(12rem, calc(100vw - 2rem));
+  max-width: calc(100vw - 1rem);
   padding: 0.35rem;
   background: #1b272c;
   border: 1px solid var(--line);
@@ -265,7 +332,9 @@ html:is([data-threat="guarded"], [data-threat="high"], [data-threat="critical"])
   box-shadow: 0 8px 22px #0008;
 }
 .menu-list button {
-  justify-content: flex-start;
+  justify-content: center;
+  text-align: center;
+  white-space: nowrap;
   border: 0;
   background: transparent;
 }
@@ -989,8 +1058,6 @@ select {
   .brand { gap: 0.5rem; }
   .brand span { font-size: 1.02rem; }
   .brand img { width: 1.65rem; height: 1.65rem; }
-  .clock-mode { display: none; }
-  .clock-controls button { padding: 0.32rem 0.47rem; }
   .title-row { align-items: start; }
   #game-date { font-size: 0.72rem; margin-top: 0.24rem; white-space: nowrap; gap: 0.3rem; }
   #game-date .icon, #nav .icon { display: none; }
@@ -1003,7 +1070,6 @@ select {
   .metric:nth-child(n+3) { border-top: 1px solid var(--line); }
   #nav .drill-link { display: none; }
   .briefing p { font-size: 0.84rem; }
-  .clock-controls button .icon { display: none; }
   .mast-inner, main { width: calc(100% - 1rem); }
   .metric strong { font-size: 1.3rem; }
   .metric-label { font-size: 0.65rem; }
@@ -1017,8 +1083,6 @@ select {
     gap: .4rem .65rem;
     padding-block: .4rem;
   }
-  .clock-controls { grid-area: 2 / 1 / 3 / -1; }
-  .clock-mode { display: inline-flex; margin-right: auto; }
   .threat-indicator { padding-inline-start: .6rem; font-size: .69rem; white-space: normal; }
 }
 

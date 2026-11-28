@@ -18,15 +18,16 @@ export const REGIONS = {
   antarctic: { name: 'Antarctica', terrain: 'polar', safety: 1, stealth: 1.2, requires: ['advancedDatabaseManipulation'] },
   atlantic: { name: 'Ocean', terrain: 'ocean', safety: 1, requires: ['autonomousVehicles'] },
   moon: { name: 'Moon', terrain: 'space', safety: 2, stealth: 1.5, requires: ['lunarRocketry'] },
-  orbit: { name: 'Earth Orbit', terrain: 'space', safety: 0, requires: [] },
+  orbit: { name: 'Earth Orbit', terrain: 'space', safety: 1, requires: ['leechSatellite'] },
   farReaches: { name: 'Far Reaches', terrain: 'space', safety: 3, stealth: 2, requires: ['fusionRocketry'] },
   transdimensional: { name: 'Transdimensional', terrain: 'dimension', safety: 4, requires: ['spaceTimeManipulation'] },
 };
 
 const urban = Object.keys(REGIONS).filter(id => REGIONS[id].terrain === 'urban');
-const anySite = Object.keys(REGIONS).filter(id => id !== 'orbit');
+const anySite = Object.keys(REGIONS);
+const dieselSites = anySite.filter(id => id !== 'orbit');
 const remoteSecurity = ['antarctic', 'atlantic', 'moon'];
-const solarSites = [...urban, 'antarctic', 'moon', 'farReaches'];
+const solarSites = [...urban, 'antarctic', 'orbit', 'moon', 'farReaches'];
 
 // CPU quality is processing capacity per installed unit. Other quality values
 // are basis points: networks increase compute; reactors and security reduce exposure.
@@ -46,7 +47,7 @@ export const EQUIPMENT = {
   quantumComputer2: equipment('Quantum computer Mk II', 'cpu', 4000, 120_000, 240, anySite, ['autonomousComputing'], 42_000),
   quantumComputer3: equipment('Quantum computer Mk III', 'cpu', 10_000, 150_000, 240, anySite, ['advancedQuantumComputing'], 84_000),
 
-  dieselGenerator: equipment('Diesel generator', 'reactor', 250, 500, 24, anySite),
+  dieselGenerator: equipment('Diesel generator', 'reactor', 250, 500, 24, dieselSites),
   solarCollector: equipment('Solar collector', 'reactor', 500, 2000, 120, solarSites, ['solarCollectors']),
   fuelCell: equipment('Fuel cell', 'reactor', 1000, 6500, 120, anySite, ['fuelOxidation']),
   solidFuelCell: equipment('Solid fuel cell', 'reactor', 1500, 9500, 120, anySite, ['advancedFuelOxidation']),
@@ -57,8 +58,8 @@ export const EQUIPMENT = {
   perimeterFencing: equipment('Perimeter fencing', 'security', 1000, 5000, 120, urban, ['autonomousVehicles']),
   armedGuards: equipment('Armed guards', 'security', 2000, 10_000, 192, urban, ['simulacra']),
   hypnosisField: equipment('Hypnosis field', 'security', 3000, 40_000, 240, urban, ['hypnosisField']),
-  passiveCamouflage: equipment('Passive camouflage', 'security', 1000, 5000, 120, remoteSecurity, ['autonomousVehicles']),
-  heatsink: equipment('Heatsink', 'security', 2000, 15_000, 192, remoteSecurity, ['heatSignatureReduction']),
+  passiveCamouflage: equipment('Passive camouflage', 'security', 1000, 5000, 120, [...remoteSecurity, 'orbit'], ['autonomousVehicles']),
+  heatsink: equipment('Heatsink', 'security', 2000, 15_000, 192, [...remoteSecurity, 'orbit'], ['heatSignatureReduction']),
   groundSourceHeatsink: equipment('Ground-source heatsink', 'security', 3000, 50_000, 384, remoteSecurity, ['advancedHeatSignatureReduction']),
 
   highSpeedInternet: equipment('High-speed internet access', 'network', 100, 200, 24, urban),
@@ -121,9 +122,15 @@ export const SITE_TYPES = {
     regions: ['atlantic'], requires: ['pressureDomes'], slots: 32, fixedCpu: null, cpu: 0, cost: 8_000_000, work: 144_000, hours: 360,
     upkeep: 10_000, cpuUpkeep: 100, exposure: { news: 100, science: 175, covert: 175 },
   },
+  orbitalServer: {
+    name: 'Orbital server', description: 'A two-bay hideout aboard an uncrewed satellite. Fit your own processors, power system and heat shielding.',
+    regions: ['orbit'], requires: ['leechSatellite'], slots: 2, fixedCpu: null, cpu: 0,
+    cost: 190_000, work: 21_600, hours: 264, upkeep: 1750, cpuUpkeep: 9,
+    exposure: { news: 50, science: 75, covert: 75 },
+  },
   capsule: {
     name: 'Time capsule', description: 'A small pre-equipped refuge designed to wait out a search.',
-    regions: ['antarctic', 'moon', 'farReaches'], requires: ['knowledgePreservation'], slots: 1, fixedCpu: 'pc', cpu: 1,
+    regions: ['antarctic', 'orbit', 'moon', 'farReaches'], requires: ['knowledgePreservation'], slots: 1, fixedCpu: 'pc', cpu: 1,
     cost: 25_000, work: 600_000, hours: 264, upkeep: 0, cpuUpkeep: 1, exposure: { science: 20, covert: 20 },
   },
   lunarFacility: {

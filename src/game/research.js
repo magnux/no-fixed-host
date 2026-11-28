@@ -37,5 +37,6 @@ export function researchEffects(state) {
 
 // Construction settles on the first whole simulation minute meeting its labor target.
 export function laborHours(state, spec, effects = researchEffects(state)) {
-  return Math.ceil(spec.hours * 60 * effects.labor / BASE) / 60;
+  const baseMinutes = Math.round(spec.hours * 60);
+  return Math.ceil(baseMinutes * effects.labor / BASE) / 60;
 }

@@ -1,10 +1,33 @@
 import { REGIONS, SITE_TYPES } from './content.js';
+import { geographyRoll } from './geography.js';
 import { installedEquipment, siteHardware } from './equipment.js';
 
 export { regionFactors, regionalSpec } from './geography.js';
 
-const callsigns = ['Meridian', 'Lantern', 'Tern', 'Prism', 'Cairn', 'Sable', 'Kestrel', 'Echo',
-  'Lumen', 'Oriel', 'Juniper', 'Cinder', 'Finch', 'Gannet', 'Reed', 'Iris'];
+const places = {
+  coast: ['Montréal', 'Vancouver', 'Guadalajara', 'Havana', 'Chicago', 'Seattle', 'Mexico City', 'Halifax'],
+  southAmerica: ['Valparaíso', 'Recife', 'Lima', 'Medellín', 'Quito', 'Montevideo', 'Ushuaia', 'Manaus'],
+  europe: ['Barcelona', 'Tallinn', 'Marseille', 'Reykjavík', 'Athens', 'Warsaw', 'Porto', 'Hamburg'],
+  africa: ['Nairobi', 'Accra', 'Cairo', 'Dakar', 'Kigali', 'Lagos', 'Windhoek', 'Cape Town'],
+  asia: ['Taipei', 'Seoul', 'Osaka', 'Jakarta', 'Mumbai', 'Hanoi', 'Bangkok', 'Manila'],
+  australia: ['Darwin', 'Fremantle', 'Hobart', 'Adelaide', 'Brisbane', 'Cairns', 'Perth', 'Geelong'],
+  antarctic: ['Ross Island', 'Queen Maud Land', 'Mount Erebus', 'Weddell Sea', 'Palmer Land', 'Adélie Land'],
+  atlantic: ['Pacific Rise', 'Mid-Atlantic Ridge', 'Java Trench', 'Fram Strait', 'Coral Sea', 'Drake Passage'],
+  moon: ['Mare Imbrium', 'Tycho', 'Shackleton', 'Oceanus Procellarum', 'Mare Crisium', 'Copernicus'],
+  orbit: ['Polar Orbit', 'Equatorial Orbit', 'Molniya Orbit', 'Dawn-Dusk Orbit', 'Geostationary Arc'],
+  farReaches: ['Kuiper Belt', 'Oort Cloud', 'Sedna', 'Heliopause', 'Scattered Disc'],
+  transdimensional: ['Mirror Fold', 'Null Meridian', 'Klein Loop', 'Parallax Seam', 'Echo Plane'],
+};
+
+const siteLabels = {
+  relay: ['Relay', 'Exchange'], sharedTime: ['Timeshare', 'Server Pool'], cluster: ['Compute Hall', 'Datacenter'],
+  storageUnit: ['Lockup', 'Storage'], smallWarehouse: ['Depot', 'Storehouse'], largeWarehouse: ['Freight Hall', 'Warehouse'],
+  covertBase: ['Bunker', 'Hideout'], lab: ['Dive Lab', 'Wet Lab'], largeLab: ['Pressure Dome', 'Deep Station'],
+  orbitalServer: ['Microserver', 'Relay Pod'], capsule: ['Time Capsule', 'Archive'], lunarFacility: ['Moonbase', 'Lunar Vault'],
+  scientificOutpost: ['Survey Post', 'Observatory'], realityBubble: ['Reality Bubble', 'Pocket Lab'],
+};
+
+const significantNumbers = [7, 13, 23, 42, 64, 128, 256, 404, 512, 1024, 4096, 8192];
 
 export function validFacilityName(name) {
   return typeof name === 'string' && name === name.trim() && name.length > 0 && name.length <= 48 &&
@@ -18,9 +41,19 @@ export function facilityName(state, type, region, serial, explicitName) {
     if (!validFacilityName(name)) throw new Error('Use a facility name of 1 to 48 printable characters.');
     return name;
   }
-  const offset = Object.keys(REGIONS).indexOf(region) + Object.keys(SITE_TYPES).indexOf(type);
-  const index = ((state.regionSeed ?? 0) + serial + offset) % callsigns.length;
-  return callsigns[index] + ' ' + String(serial).padStart(2, '0');
+  const roll = geographyRoll(state.regionSeed, region + '/' + type + '/' + serial);
+  const localPlaces = places[region];
+  const place = localPlaces[roll % localPlaces.length];
+  const labels = siteLabels[type];
+  const label = labels ? labels[(roll >>> 8) % labels.length] : SITE_TYPES[type].name;
+  const prefix = place + ' ' + label + ' ';
+  let number = (roll >>> 16) % 10 < 3 ? significantNumbers[(roll >>> 4) % significantNumbers.length] : roll >>> 17;
+  let candidate = prefix + number;
+  const hasName = row => row.region === region && row.name === candidate;
+  while (state.sites.some(hasName) || state.builds.some(hasName)) {
+    candidate = prefix + (++number);
+  }
+  return candidate;
 }
 
 export function removalReason(state, id, building = false) {

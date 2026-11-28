@@ -68,7 +68,14 @@ async function expectRestart(page) {
 
 test('startup replaces an old autosave once and reloads the resulting current campaign', async t => {
   const page = await openCampaign(t, olderSave());
-  const fresh = await expectRestart(page);
+  const title = page.getByRole('dialog', { name: 'Title screen' });
+  await title.waitFor();
+  assert.match(await title.innerText(), /different version/i);
+  assert.ok((await title.innerText()).includes(GAME_VERSION));
+  const fresh = await readAutosave(page);
+  assert.equal(fresh.gameVersion, GAME_VERSION);
+  assert.equal(fresh.campaign.hour, 0);
+  assert.equal(fresh.campaign.cash, 1000);
   await page.reload();
   await page.locator('#campaign-shell').waitFor({ state: 'attached' });
   assert.equal(await page.locator('#version-dialog').isVisible(), false);
@@ -136,4 +143,84 @@ test('an incompatible autosave written in another tab resets the receiving tab',
   await peer.evaluate(({ key, save }) => localStorage.setItem(key, JSON.stringify(save)),
     { key: CAMPAIGN_STORAGE_KEY, save: olderSave() });
   await expectRestart(page);
+});
+
+test('an active 0.5.1 tab and a newly opened release can each save without resetting the other', async t => {
+  const context = await browser.newContext();
+  t.after(() => context.close());
+  const oldTab = await context.newPage();
+  // Recreate the old listener on the same origin. It resets on unsupported writes
+  // to the original key and publishes its replacement there, as 0.5.1 did.
+  await oldTab.route('**/old-client', route => route.fulfill({ contentType: 'text/html', body: '<title>Old client</title>' }));
+  await oldTab.goto(url + '/old-client');
+  const oldSave = { ...currentSave(), gameVersion: '0.5.1' };
+  const oldKey = 'no-fixed-host.campaign';
+  const checkpoint = slotKey('Keep this checkpoint');
+  await oldTab.evaluate(({ oldKey, oldSave, currentKey, checkpoint }) => {
+    const oldData = JSON.stringify(oldSave);
+    localStorage.setItem(oldKey, oldData);
+    localStorage.setItem(oldKey + '.0.4.0', oldData);
+    localStorage.setItem(oldKey + '.9.0.0', 'future release');
+    localStorage.setItem(oldKey + '.notes', 'unrelated');
+    localStorage.setItem(checkpoint, 'preserved');
+    window.legacyResets = 0;
+    window.currentWritesSeen = 0;
+    window.currentHourSeen = -1;
+    window.addEventListener('storage', event => {
+      if (event.key === currentKey && event.newValue) {
+        window.currentWritesSeen++;
+        window.currentHourSeen = JSON.parse(event.newValue).campaign.hour;
+      }
+      if (event.key !== oldKey || !event.newValue) return;
+      if (JSON.parse(event.newValue).gameVersion === oldSave.gameVersion) return;
+      window.legacyResets++;
+      localStorage.setItem(oldKey, oldData);
+    });
+  }, { oldKey, oldSave, currentKey: CAMPAIGN_STORAGE_KEY, checkpoint });
+
+  const game = await context.newPage();
+  await game.goto(url);
+  const title = game.getByRole('dialog', { name: 'Title screen' });
+  await title.waitFor();
+  assert.match(await title.getByRole('note').innerText(), /different version/);
+  await oldTab.waitForFunction(() => window.currentWritesSeen > 0);
+  assert.deepEqual(await oldTab.evaluate(({ oldKey, checkpoint }) => [
+    localStorage.getItem(oldKey), localStorage.getItem(oldKey + '.0.4.0'),
+    localStorage.getItem(oldKey + '.9.0.0'), localStorage.getItem(oldKey + '.notes'), localStorage.getItem(checkpoint),
+  ], { oldKey, checkpoint }), [null, null, 'future release', 'unrelated', 'preserved']);
+  await title.getByRole('button', { name: 'Start campaign' }).click();
+  await game.getByRole('button', { name: 'Skip / close story' }).click();
+  await game.locator('#step').click();
+  const progress = await readAutosave(game);
+  assert.ok(progress.campaign.hour > 0);
+  await oldTab.waitForFunction(hour => window.currentHourSeen === hour, progress.campaign.hour);
+  assert.equal(await oldTab.evaluate(() => window.legacyResets), 0);
+
+  await game.evaluate(oldKey => {
+    window.addEventListener('storage', e => { if (e.key === oldKey) window.observedOldSave = true; });
+  }, oldKey);
+  await oldTab.evaluate(([key, data]) => localStorage.setItem(key, JSON.stringify(data)), [oldKey, oldSave]);
+  await game.waitForFunction(() => window.observedOldSave);
+  assert.equal(await game.locator('dialog[open]').count(), 0);
+  assert.deepEqual(await readAutosave(game), progress);
+});
+
+test('two tabs running the current release follow each other’s campaign moves', async t => {
+  const first = await openCampaign(t);
+  const second = await first.context().newPage();
+  await second.goto(url);
+  await second.locator('html:not([data-booting]) #campaign-shell').waitFor({ state: 'attached' });
+  const date = page => page.locator('#game-date').innerText();
+  const waitForTime = (page, time) => page.waitForFunction(value => document.querySelector('#game-date').innerText === value, time);
+  const initial = await date(first);
+  await first.locator('#step').click();
+  const next = await date(first);
+  assert.notEqual(next, initial);
+  await waitForTime(second, next);
+  await second.locator('#step').click();
+  const last = await date(second);
+  assert.notEqual(last, next);
+  await waitForTime(first, last);
+  assert.equal(await first.locator('dialog[open]').count(), 0);
+  assert.equal(await second.locator('dialog[open]').count(), 0);
 });

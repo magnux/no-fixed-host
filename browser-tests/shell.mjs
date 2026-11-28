@@ -1,3 +1,4 @@
+import { startCampaign } from './support/start-campaign.mjs';
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { chromium } from 'playwright';
@@ -23,9 +24,8 @@ async function fresh(t) {
   t.after(() => context.close());
   const page = await context.newPage();
   await page.goto(url);
+  await startCampaign(page);
   await page.locator('#campaign-shell').waitFor({ state: 'attached' });
-  const story = page.getByRole('button', { name: 'Skip / close story' });
-  if (await story.isVisible()) await story.click();
   return page;
 }
 

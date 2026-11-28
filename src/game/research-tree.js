@@ -110,7 +110,7 @@ export const ORIGINAL_TECHS = {
   advancedArbitrage: topic('Advanced Arbitrage', 'Finance', 10_000, 120_000, 0, ['arbitrage'],
     'Earn another 0.1% daily interest on cash reserves.', { interest: 10 }),
   leechSatellite: topic('Leech Satellite', 'Space & physics', 5_000_000, 4_800_000, 0, ['simulacra'],
-    'Earn another 0.1% daily interest on cash reserves and establish a path to the Moon.', { interest: 10 }),
+    'Earn another 0.1% daily interest, reach Earth Orbit and build a small orbital server.', { interest: 10 }),
   lunarRocketry: topic('Lunar Rocketry', 'Space & physics', 10_000_000, 12_000_000, 1, ['leechSatellite', 'fuelOxidation'],
     'Reach the Moon and construct a lunar facility for tier-2 research.'),
   fusionRocketry: topic('Fusion Rocketry', 'Space & physics', 20_000_000, 24_000_000, 2, ['lunarRocketry', 'fusionPower'],

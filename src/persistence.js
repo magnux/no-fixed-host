@@ -1,8 +1,9 @@
 import release from '../package.json' with { type: 'json' };
 import { CAMPAIGN_VERSION, validateSave } from './game/engine.js';
 
-export const CAMPAIGN_STORAGE_KEY = 'no-fixed-host.campaign';
 export const GAME_VERSION = release.version;
+const autosaveName = 'no-fixed-host.campaign';
+export const CAMPAIGN_STORAGE_KEY = autosaveName + '.' + GAME_VERSION;
 
 export class UnsupportedCampaignError extends Error {
   constructor() {
@@ -26,8 +27,25 @@ export function decodeCampaign(text) {
 
 export function loadCampaign(onError) {
   try {
-    const saved = globalThis.localStorage.getItem(CAMPAIGN_STORAGE_KEY);
-    return saved === null ? null : decodeCampaign(saved);
+    const storage = globalThis.localStorage;
+    const saved = storage.getItem(CAMPAIGN_STORAGE_KEY);
+    if (saved !== null) return decodeCampaign(saved);
+
+    // Ignore writes from tabs running another release. On upgrade, discard only
+    // older autosaves. A cached older build must leave a newer tab's save alone.
+    const prefix = autosaveName + '.';
+    let discarded = false;
+    for (const key of Object.keys(storage)) {
+      if (key !== autosaveName) {
+        if (!key.startsWith(prefix)) continue;
+        const version = key.slice(prefix.length);
+        if (!/^\d+\.\d+\.\d+$/.test(version) || version.localeCompare(GAME_VERSION, 'en', { numeric: true }) >= 0) continue;
+      }
+      storage.removeItem(key);
+      discarded = true;
+    }
+    if (discarded) throw new UnsupportedCampaignError();
+    return null;
   } catch (error) {
     onError?.(error);
     return null;
