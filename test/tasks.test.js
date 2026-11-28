@@ -173,7 +173,7 @@ test('resizing respects overlapping regional, safety and paid-work limits', () =
   const ids = ['continuity','projectSynchrotron','apotheosis','stealth'];
   const rows = ids.map(id => ({id, work:0, hours:0, cpu:1}));
   s.research = rows.shift(); s.researchQueue = rows;
-  const e = {activeCpu:40,tiers:[40,10,4,3,2],cpuByRegion:{coast:30,atlantic:2,antarctic:4,moon:1,farReaches:1,transdimensional:2}};
+  const e = {activeCpu:40,tiers:[40,10,4,3,2],cpuByRegion:{coast:30,pacific:1,indianOcean:1,antarctic:3,marianaTrench:1,moon:1,farReaches:1,transdimensional:2}};
   resizePortfolio(s,40,e);
   const a = Object.fromEntries(allocateProjects(s,e).byProject);
   assert.equal(a.continuity,2);
@@ -184,7 +184,8 @@ test('resizing respects overlapping regional, safety and paid-work limits', () =
   assert.equal(portfolioLimit(s,e),4);
   resizePortfolio(s,999,e);
   assert.deepEqual(Object.fromEntries(allocateProjects(s,e).byProject),{continuity:2,apotheosis:2});
-  e.cpuByRegion.atlantic=0;
+  e.cpuByRegion.pacific=0;
+  e.cpuByRegion.indianOcean=0;
   assert.equal(allocateProjects(s,e).byProject.get('continuity'),0);
   e.cpuByRegion.atlantic=2;
   assert.equal(allocateProjects(s,e).byProject.get('continuity'),2);

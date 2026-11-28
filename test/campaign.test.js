@@ -215,12 +215,12 @@ test('a completed sleeping backup can survive the same discovery and resume the 
 
 test('unpaid upkeep can cost a sleeping site during discovery grace without implicating a group', () => {
   const game = createGame(firstRollZero);
-  game.regionSeed = 18; // A neutral relay owes its first $1 installment after 288 minutes.
+  game.regionSeed = 18; // A neutral relay owes its first $1 installment at 04:48 UTC.
   game.sites = [{ id: 'host-2', type: 'relay', region: 'europe', startedAt: 0, power: 'sleep' }];
   game.nextSiteId = 3;
   game.cash = 0;
   assert.equal(siteExposure(game, game.sites[0]).perDay, 0);
-  advanceMinutes(game, 287);
+  advanceMinutes(game, 27);
   assert.equal(game.status, 'running');
   assert.equal(game.rng, firstRollZero);
   advanceMinutes(game);
@@ -238,6 +238,9 @@ test('aggregate upkeep can fall due before either site has an individual bill', 
     s.sites.push({ id, type: 'relay', region: 'europe', power: 'sleep', startedAt: 0 });
   }
   s.nextSiteId = 4;
+  // Begin this invoice test at the first UTC midnight.
+  s.hour = 19;
+  s.minute = 40;
   const solvent = structuredClone(s);
   solvent.cash = 1;
   advanceMinutes(solvent, 144); // The two relays share a $10/day network invoice.
@@ -260,8 +263,8 @@ test('explicit or spare job income can cover this minute’s due installment bef
     s.regionSeed = 18;
     s.sites.push({ id: 'host-2', type: 'relay', region: 'europe', power: 'active', startedAt: 0 });
     s.nextSiteId = 3;
-    s.hour = 4;
-    s.minute = 47;
+    s.hour = 0;
+    s.minute = 27;
     s.cash = 1 - overview(s).activeCpu * 5 / 1440;
     allocate(s, jobs, 0);
     advanceMinutes(s);
@@ -449,8 +452,8 @@ test('labor, paid work, interest, daily income and suspicion research affect the
   assert.ok(s.builds.length, 'an upgraded construction site still has a minimum labor time');
   advanceMinutes(s, 1);
   assert.equal(s.builds.length, 0, 'labor research shortened regional construction');
-  s.hour = 23;
-  s.minute = 59;
+  s.hour = 19;
+  s.minute = 39;
   s.suspicion.covert = 8000;
   const forecast = { researchUnits: 0, buildUnits: 0, equipmentUnits: 0, maintenanceUnits: 0, jobsUnits: 0, spareUnits: 0, activeUnits: 0, sleepingUnits: 0, upkeepDue: 0, cashShort: 0, cpuShortUnits: 0, jobsCash: 0, interest: 0, otherIncome: 0 };
   const preMidnight = s.cash;

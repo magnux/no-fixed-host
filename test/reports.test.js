@@ -27,7 +27,7 @@ test('each forecast reconciles with a minute-by-minute live campaign, including 
   command(live, { type: 'assign-research', id: 'intrusion', cpu: 1 });
   command(live, { type: 'allocate', jobs: 30, research: 25 });
   command(live, relay);
-  advanceMinutes(live, 1410);
+  advanceMinutes(live, 1150);
   const before = structuredClone(live);
   for (const [horizon, minutes] of [['midnight', 30], ['24h', day]]) {
     const forecast = projectResources(live, horizon);
@@ -195,8 +195,8 @@ test('forecasts reconcile above the liquid wallet boundary and show only genuine
     const state = createGame(47);
     state.cash = WALLET_LIMIT;
     state.cashReserve = total - WALLET_LIMIT;
-    state.hour = 23;
-    state.minute = 59;
+    state.hour = 19;
+    state.minute = 39;
     const report = projectResources(state, 'midnight', relay);
     assert.ok(report.price > 0);
     assert.equal(report.cash.opening, total);
@@ -220,8 +220,8 @@ test('forecast upkeep across midnight includes commissioned sites and distinguis
   assert.equal(state.sites.length, 3);
   assert.equal(state.cash, order.cash.closing);
   reconcile(order);
-  state.hour = 23 * 24 - 1;
-  state.minute = 59;
+  state.hour = 23 * 24 - 5;
+  state.minute = 39;
   for (const site of state.sites) command(state, { type: 'power', id: site.id, power: 'sleep' });
   state.cash = .25;
   const midnight = projectResources(state, 'midnight');

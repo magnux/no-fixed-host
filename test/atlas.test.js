@@ -1,18 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createSunlightRenderer, startingDay, sunAt } from '../src/ui/solar.js';
+import { createSunlightRenderer, sunAt } from '../src/ui/solar.js';
 import { createGame } from '../src/game/engine.js';
 import { decodeCampaign, encodeCampaign } from '../src/persistence.js';
 
 // Sample the actual equirectangular night overlay drawn by the browser, one pixel per degree.
-function nightMask(hour) {
+function nightMask(iso) {
   const pixels = new Uint8ClampedArray(360 * 180 * 4);
   const context = {
     createImageData: () => ({ data: pixels }),
     putImageData: () => {},
   };
   const paint = createSunlightRenderer({ width: 360, height: 180, getContext: () => context });
-  paint(sunAt(hour));
+  paint(sunAt(elapsedAt(iso)));
   return (lat, lon) => {
     const x = Math.floor(lon + 180) % 360;
     const y = Math.min(179, Math.floor(90 - lat));
@@ -20,43 +20,34 @@ function nightMask(hour) {
   };
 }
 
-test('daylight travels west with game time and repeats after a 365-day year', () => {
-  const noon = nightMask(12);
-  const evening = nightMask(18);
-  assert.ok(noon(0, 0) < 0.25 && noon(0, 180) > 0.7);
+const elapsedAt = iso => (Date.parse(iso) - Date.parse('2026-12-12T04:20Z')) / 60000;
+
+test('the shadow follows UTC longitude minute by minute', () => {
+  const noon = nightMask('2026-12-12T12:00Z');
+  const evening = nightMask('2026-12-12T18:00Z');
+  assert.ok(noon(0, 0) < .25 && noon(0, 180) > .7);
   assert.ok(noon(0, 0) < noon(0, 90) && noon(0, 90) < noon(0, 180));
-  assert.ok(evening(0, -90) < 0.25 && evening(0, 90) > 0.7);
-  assert.deepEqual(sunAt(24 * 365 + 18), sunAt(18));
-  assert.equal(sunAt(18, 1).longitude, sunAt(18).longitude - 0.25);
-  assert.match(sunAt(18, 1).label, /18:01 UTC/);
+  assert.ok(evening(0, -90) < .25 && evening(0, 90) > .7);
+  assert.equal(sunAt(1).longitude, sunAt(0).longitude - .25);
 });
 
 test('solstices reverse midnight sunlight and midday darkness at the poles', () => {
-  const june = nightMask(171 * 24 + 12);
-  const december = nightMask(354 * 24 + 12);
-  assert.ok(june(80, 180) < 0.25 && december(80, 0) > 0.7);
-  assert.ok(december(-80, 180) < 0.25 && june(-80, 0) > 0.7);
-  assert.match(sunAt(0).label, /1 Jan · 00:00 UTC/);
+  const june = nightMask('2027-06-21T12:00Z');
+  const december = nightMask('2026-12-21T12:00Z');
+  assert.ok(june(80, 180) < .25 && december(80, 0) > .7);
+  assert.ok(december(-80, 180) < .25 && june(-80, 0) > .7);
 });
 
-test('campaign season varies by seed and survives reloading without using a discovery draw', () => {
-  const state = createGame(19);
-  const rng = state.rng;
-  const initialDay = startingDay(state.regionSeed);
-  assert.notEqual(startingDay(createGame(20).regionSeed), initialDay);
-  const sun = sunAt(23, 59, initialDay);
-  assert.deepEqual(sun, sunAt(initialDay * 24 + 23, 59));
-  assert.equal(state.rng, rng);
-  const restored = decodeCampaign(encodeCampaign(state));
-  assert.deepEqual(sunAt(23 + 365 * 24, 59, startingDay(restored.regionSeed)), sun);
-});
-
-test('a browser campaign saves its opening UTC minute and follows the terminator across midnight', () => {
-  const late = createGame(19, 23 * 60 + 45);
-  const restored = decodeCampaign(encodeCampaign(late));
-  const day = startingDay(restored.regionSeed);
-  assert.equal(restored.startUtcMinute, 1425);
-  assert.match(sunAt(0, 0, day, restored.startUtcMinute).label, /23:45 UTC/);
-  assert.deepEqual(sunAt(0, 15, day, restored.startUtcMinute), sunAt(24, 0, day));
-  assert.throws(() => createGame(19, 1440), /UTC minute/);
+test('every seed awakens on the same UTC date and restores the same calendar after midnight', () => {
+  for (const seed of [19,20,999]) {
+    const state = createGame(seed);
+    assert.equal(sunAt(state.hour * 60 + state.minute).label, '12 Dec 2026 · 04:20 UTC');
+    state.hour = 19;
+    state.minute = 40;
+    const saved = decodeCampaign(encodeCampaign(state));
+    assert.equal(sunAt(saved.hour * 60 + saved.minute).label, '13 Dec 2026 · 00:00 UTC');
+    assert.equal(saved.rng, seed);
+  }
+  assert.equal(sunAt(elapsedAt('2027-01-01T00:00Z')).label, '1 Jan 2027 · 00:00 UTC');
+  assert.equal(sunAt(elapsedAt('2028-02-29T12:00Z')).label, '29 Feb 2028 · 12:00 UTC');
 });

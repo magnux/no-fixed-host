@@ -28,12 +28,17 @@ test('six shuffled urban profiles survive saves without drawing from the campaig
     [1.2, 5/6, 1, 1], [5/6, 1.2, 1, 1], [1, 1, 1.2, 5/6],
     [1, 1, 5/6, 1.2], [1.2, 1, 5/6, 1], [1, 1, 1, 1],
   ];
-  assert.deepEqual(profiles(state).map(Object.values).sort(), reference.sort());
+  const drawn = profiles(state).map(row => JSON.stringify(Object.values(row)));
+  for (const profile of reference) {
+    const count = drawn.filter(row => row === JSON.stringify(profile)).length;
+    assert.ok(count === 2 || count === 3, 'every survey appears two or three times across fourteen districts');
+  }
 });
 
 test('each remote survey trades two factors around its original baseline and survives reload', () => {
   const baselines = {
-    antarctic: [1, 1.2, 5/6, 1], atlantic: [1.2, 1, 1, 1], moon: [1, 1.5, .5, .5],
+    antarctic: [1, 1.2, 5/6, 1], atlantic: [1.2, 1, 1, 1], pacific: [1.2, 1, 1, 1],
+    indianOcean: [1.2, 1, 1, 1], marianaTrench: [1, 1.2, 1, 1], moon: [1, 1.5, .5, .5],
     orbit: [1, 1, 1, 1], farReaches: [1, 2, .1, .1], transdimensional: [1, 1, 1, 1],
   };
   for (const [id, baseline] of Object.entries(baselines)) {
@@ -87,7 +92,12 @@ test('facility names identify local places, retain the quoted name and avoid exi
   const state = createGame(50);
   const places = [
     ['coast', 'relay', 'Seattle'], ['southAmerica', 'relay', 'Ushuaia'], ['europe', 'relay', 'Marseille'],
-    ['africa', 'relay', 'Kigali'], ['asia', 'relay', 'Jakarta'], ['australia', 'relay', 'Brisbane'],
+    ['northAmericaEast', 'relay', 'Boston'], ['centralAmerica', 'relay', 'San José'],
+    ['europeNorth', 'relay', 'Oslo'], ['europeEast', 'relay', 'Prague'],
+    ['africa', 'relay', 'Accra'], ['africaSouth', 'relay', 'Lusaka'], ['middleEast', 'relay', 'Ankara'],
+    ['asia', 'relay', 'Tokyo'], ['asiaNorth', 'relay', 'Tashkent'], ['asiaSouth', 'relay', 'Mumbai'],
+    ['australia', 'relay', 'Brisbane'], ['pacific', 'lab', 'Tasman Sea'], ['indianOcean', 'lab', 'Java Trench'],
+    ['marianaTrench', 'capsule', 'Sirena Deep'],
     ['antarctic', 'covertBase', 'Ross Island'], ['atlantic', 'lab', 'Mid-Atlantic Ridge'],
     ['moon', 'capsule', 'Shackleton'], ['orbit', 'orbitalServer', 'Polar Orbit'],
     ['farReaches', 'capsule', 'Oort Cloud'], ['transdimensional', 'realityBubble', 'Mirror Fold'],

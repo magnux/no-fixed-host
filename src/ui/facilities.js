@@ -6,7 +6,7 @@ import { autoInstallQuote, autoUpgradeQuote, buildReason, constructionStatuses, 
 import { regionAvailable } from '../game/geography.js';
 import { treasuryBalance } from '../game/treasury.js';
 import { projectedCompute, slotSignature } from '../game/equipment.js';
-import { facilityName, regionFactors, regionalSpec, removalReason } from '../game/facility-operations.js';
+import { facilityName, regionFactors, regionalSpec, regionPlaces, removalReason } from '../game/facility-operations.js';
 import { rankLabels, refitWarning, showRank } from './equipment-display.js';
 import { riskLabel } from './facility-risk.js';
 import { facilityIcon } from './facility-icons.js';
@@ -433,6 +433,7 @@ function updateGeography(session) {
     return [factors.cpu, 1 / factors.thrift, 1 / factors.speed, 1 / factors.stealth].map(n => '×' + quantity(n));
   };
   const [cpu, cost, time, risk] = values(region);
+  e.region.title = regionPlaces[region]?.join(', ') || '';
   setText(e.regionTerms, 'CPU ' + cpu + ' · ' + facilityText('Costs') + ' ' + cost + ' · ' + facilityText('Labor time') + ' ' + time + ' · ' + facilityText('Exposure') + ' ' + risk + ' · ' + facilityText('Safety tier') + ' ' + REGIONS[region].safety);
   const signature = [state.regionSeed, ...session.availableRegions.map(([id]) => id)].join('/');
   if (e.regionTable.dataset.regions === signature) return;
@@ -445,6 +446,7 @@ function updateGeography(session) {
     button.dataset.region = id;
     button.className = 'text-button';
     button.textContent = label;
+    button.title = regionPlaces[id]?.join(', ') || '';
     row.insertCell().append(button);
     for (const value of [...values(id), REGIONS[id].safety]) row.insertCell().textContent = value;
   }
@@ -632,6 +634,8 @@ function updateInspector(session, site, hw) {
   e.count.max = e.countSlider.max = Math.max(1, quote.maxCount);
   e.countSlider.disabled = quote.maxCount < 2;
   if (validCount) e.countSlider.value = String(count);
+  const batchFraction = quote.maxCount > 1 ? (e.countSlider.valueAsNumber - 1) / (quote.maxCount - 1) : 0;
+  e.countSlider.style.setProperty('--position', 100 * batchFraction + '%');
   const previous = hw.installed[slot];
   const replacement = previous && previous.itemId !== itemId ? ' · ' + facilityText('Removes {model} when ordered', { model: catalogLabel(EQUIPMENT[previous.itemId].name) }) : '';
   const batch = site.installations?.find(order => order.itemId === itemId && slot === 'cpu');

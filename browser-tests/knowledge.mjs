@@ -105,7 +105,8 @@ test('research controls, safety and funding status use the selected language wit
     await page.locator('[data-tech-id=pressureDomes]').click();
     assert.ok((await page.locator('#research-allocation-note').innerText()).includes(label('No eligible CPU is online.')), language);
     await page.getByText(label('Where can this research run?'),{exact:true}).click();
-    assert.ok((await page.locator('[data-field=guidance]').innerText()).includes(label('Ocean')), language);
+    const guidance = await page.locator('[data-field=guidance]').innerText();
+    for (const basin of ['Atlantic Ocean', 'Pacific Ocean', 'Indian Ocean']) assert.ok(guidance.includes(label(basin)), language);
     await page.locator('#nav [data-id=knowledge]').click();
     assert.ok(await page.getByRole('searchbox',{name:label('Search'),exact:true}).isVisible(), language);
     assert.ok(await page.getByRole('article',{name:label('Reference entry'),exact:true}).isVisible(), language);

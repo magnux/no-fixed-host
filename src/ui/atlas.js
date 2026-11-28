@@ -3,17 +3,14 @@ import { catalogLabel, menuLanguage } from './localization.js';
 import { regionAvailable } from '../game/geography.js';
 import { REGIONS, TECHS } from '../game/content.js';
 import { siteHardware } from '../game/equipment.js';
+import { regionPlaces } from '../game/facility-operations.js';
 import { icon } from './icons.js';
+import { earthMarkers, positionAtlasLabels } from './atlas-labels.js';
 import { regionKeys } from './campaign-shortcuts.js';
-import { createSunlightRenderer, startingDay, sunAt } from './solar.js';
+import { createSunlightRenderer, sunAt } from './solar.js';
 import coastlines from './world.svg';
 import './atlas.css';
 
-// Representative facility locations in degrees east and north, on an equirectangular map.
-const ground = {
-  coast: [-100, 40], southAmerica: [-57, -15], europe: [13, 51], africa: [20, 8],
-  asia: [92, 47], australia: [133, -24], antarctic: [22, -75], atlantic: [-34, 25],
-};
 // Each chart symbol reads at both sizes: an orbital satellite, cratered moon,
 // comet with its icy nucleus, and an impossible pair of concentric gateways.
 const orbitalGlyphs = {
@@ -29,31 +26,44 @@ function destination(id) {
   const lock = '<span class="atlas-lock" aria-hidden="true">' + icon('lock') + '</span>';
   const label = menuLanguage() === 'en' ? name + ' facilities' : catalogLabel('Facilities') + ' · ' + name;
   const attributes = 'type="button" data-action="region" data-id="' + id + '" aria-label="' + label + '"';
-  if (ground[id]) {
-    const [lon, lat] = ground[id];
-    const style = '--x:' + ((lon + 180) / 3.6) + '%;--y:' + ((90 - lat) / 1.8) + '%';
-    return '<button ' + attributes + ' class="atlas-pin" style="' + style + '">' +
-      '<span class="atlas-target" aria-hidden="true"></span><span class="atlas-name">' + lock + name + counts + '</span></button>';
+  if (earthMarkers[id]) {
+    return '<button ' + attributes + ' class="atlas-pin" data-terrain="' + REGIONS[id].terrain + '">' +
+      '<span class="atlas-name">' + lock + '<span class="atlas-long">' + name + '</span><span class="atlas-code">' +
+      earthMarkers[id][2] + '</span>' + counts + '</span></button>';
   }
   return '<button ' + attributes + ' class="atlas-outpost">' +
     '<svg class="atlas-glyph" aria-hidden="true" viewBox="0 0 48 48">' + orbitalGlyphs[id] + '</svg>' +
     '<span class="atlas-outpost-name">' + lock + name + counts + '</span></button>';
 }
 
+function geographicAnchor(id) {
+  const [lon, lat] = earthMarkers[id];
+  const x = (lon + 180) / 3.6 + '%';
+  const y = (90 - lat) / 1.8 + '%';
+  return '<g data-anchor="' + id + '" data-terrain="' + REGIONS[id].terrain + '">' +
+    '<line x1="' + x + '" y1="' + y + '" x2="' + x + '" y2="' + y + '"/>' +
+    '<circle cx="' + x + '" cy="' + y + '" r="3.3"/></g>';
+}
+
 const views = new WeakMap();
 
 function mount(container) {
+  views.get(container)?.observer.disconnect();
   const regions = Object.keys(REGIONS);
+  const terrestrial = regions.filter(id => earthMarkers[id]);
+  const openRegion = catalogLabel('Open a region from the atlas');
   container.innerHTML = `<section id="world-atlas" class="navigation-atlas panel" aria-labelledby="atlas-title">
     <header class="card-header"><h2 id="atlas-title">${icon('globe')}${catalogLabel('Network map')}</h2><span class="atlas-date"></span></header>
     <div class="atlas-field"><div class="atlas-layout">
     <div class="atlas-planet"><div class="atlas-geography">
       <img src="${coastlines}" alt="" draggable="false">
       <canvas width="480" height="240" aria-hidden="true"></canvas>
-      ${regions.filter(id => ground[id]).map(destination).join('')}
-    </div></div>
+      <div class="atlas-label-layer"><select class="atlas-picker" aria-label="${openRegion}"><option value="">${catalogLabel('Regions')}</option></select>
+      <svg class="atlas-leaders" aria-hidden="true">${terrestrial.map(geographicAnchor).join('')}</svg>
+      ${terrestrial.map(destination).join('')}
+    </div></div></div>
     <div class="atlas-horizon" role="group" aria-label="${catalogLabel('Off-world sites')}"><span class="atlas-caption">${catalogLabel('Off-world sites')}</span>
-      <div class="atlas-outposts">${regions.filter(id => !ground[id]).map(destination).join('')}</div>
+      <div class="atlas-outposts">${regions.filter(id => !earthMarkers[id]).map(destination).join('')}</div>
     </div>
     </div></div>
     <footer class="atlas-key"><span><i class="atlas-status-light online"></i>Host online</span>
@@ -75,6 +85,27 @@ function mount(container) {
     buttons: [...atlas.querySelectorAll('button[data-id]')],
     minute: null,
   };
+  const chart = atlas.querySelector('.atlas-label-layer');
+  const buttonsById = new Map(view.buttons.map(button => [button.dataset.id, button]));
+  const pins = [...chart.querySelectorAll('[data-anchor]')].map(anchor => {
+    const button = buttonsById.get(anchor.dataset.anchor);
+    anchor.addEventListener('click', () => button.click());
+    for (const type of ['pointerenter', 'focus']) button.addEventListener(type, () => anchor.classList.add('highlight'));
+    for (const type of ['pointerleave', 'blur']) button.addEventListener(type, () => anchor.classList.remove('highlight'));
+    return { button, anchor, leader: anchor.querySelector('line'), dot: anchor.querySelector('circle') };
+  });
+  view.anchors = new Map(pins.map(({button, anchor}) => [button.dataset.id, anchor]));
+  view.picker = chart.querySelector('.atlas-picker');
+  view.picker.addEventListener('change', () => {
+    const button = buttonsById.get(view.picker.value);
+    view.picker.value = '';
+    if (button) button.click();
+  });
+  view.observer = new ResizeObserver(() => positionAtlasLabels(chart, pins));
+  view.observer.observe(chart);
+  view.observer.observe(chart.parentElement);
+  for (const {button} of pins) view.observer.observe(button);
+  view.layout = () => positionAtlasLabels(chart, pins);
   views.set(container, view);
   return view;
 }
@@ -107,14 +138,12 @@ export function updateAtlasTime(container, state) {
   if (!view || view.atlas.parentElement !== container) return;
   const minute = state.hour * 60 + (state.minute ?? 0);
   const showLight = document.documentElement.dataset.daylight !== 'false';
-  if (view.minute !== minute || view.showLight !== showLight || view.regionSeed !== state.regionSeed || view.startUtcMinute !== state.startUtcMinute) {
-    const sun = sunAt(state.hour, state.minute, startingDay(state.regionSeed), state.startUtcMinute, view.language);
+  if (view.minute !== minute || view.showLight !== showLight) {
+    const sun = sunAt(minute, view.language);
     if (showLight) view.paint(sun);
     view.showLight = showLight;
     view.date.textContent = sun.label;
     view.minute = minute;
-    view.regionSeed = state.regionSeed;
-    view.startUtcMinute = state.startUtcMinute;
   }
 }
 
@@ -129,6 +158,7 @@ export function updateAtlas(container, state) {
   const previous = advanced ? state.recentRegions[1] : undefined;
   view.latestKey.hidden = !latest;
   view.previousKey.hidden = !previous;
+  let changed = false;
   for (const button of view.buttons) {
     const id = button.dataset.id;
     const occupied = presence[id];
@@ -141,7 +171,10 @@ export function updateAtlas(container, state) {
     const unlocked = regionAvailable(state, id);
     const signature = [unlocked, key, completed, builds, trace].join('/');
     if (button.dataset.summary === signature) continue;
+    changed = true;
     button.dataset.summary = signature;
+    const anchor = view.anchors.get(id);
+    if (anchor) anchor.dataset.status = unlocked ? key : 'locked';
     button.disabled = !unlocked;
     button.dataset.status = key;
     button.querySelector('.atlas-count').textContent = completed + builds;
@@ -151,10 +184,21 @@ export function updateAtlas(container, state) {
       : facilityText(description) + ' · ' + completed + ' ' + facilityText('completed') + ' · ' + builds + ' ' + facilityText('under construction') +
       (latestHere ? ' · ' + facilityText('Latest discovery') : '') + (previousHere ? ' · ' + facilityText('Previous discovery') : '');
     const shortcut = 'Shift+' + regionKeys[id].toUpperCase();
-    button.title = catalogLabel(REGIONS[id].name) + ' · ' + detail + (unlocked ? ' · ' + shortcut : '');
+    const places = regionPlaces[id]?.join(', ');
+    button.title = catalogLabel(REGIONS[id].name) + ' · ' + detail + (unlocked ? ' · ' + shortcut : '') + (places ? '\n' + places : '');
     if (unlocked) button.setAttribute('aria-keyshortcuts', shortcut);
     else button.removeAttribute('aria-keyshortcuts');
     button.setAttribute('aria-description', detail);
   }
   view.pendingKey.hidden = !hasPending;
+  if (changed) {
+    const available = view.buttons.filter(button => !button.disabled);
+    const pickerKey = available.map(button => button.dataset.id).join('/');
+    if (view.picker.dataset.options !== pickerKey) {
+      view.picker.replaceChildren(new Option(catalogLabel('Regions'), ''));
+      for (const button of available) view.picker.add(new Option(catalogLabel(REGIONS[button.dataset.id].name), button.dataset.id));
+      view.picker.dataset.options = pickerKey;
+    }
+    view.layout();
+  }
 }

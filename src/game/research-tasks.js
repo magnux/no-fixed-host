@@ -63,12 +63,14 @@ function proportion(total, shares) {
 function budgets(state, economy, projects) {
   const select = predicate => projects.map((p, i) => predicate(TECHS[p.id]) ? i : -1).filter(i => i >= 0);
   const constraints = [];
-  // Continuity is restricted to Ocean CPUs, a subset of tier 1. Other
-  // projects use any host at or above their tier.
-  const restricted = new Set(projects.flatMap(project => TECHS[project.id].regions || []));
-  for (const id of restricted) {
-    const members = select(tech => tech.regions?.length === 1 && tech.regions[0] === id);
-    if (members.length) constraints.push({ members, cap: units(economy.cpuByRegion[id] || 0) });
+  // Continuity may draw from any equipped subsea lab. Its total reservation
+  // is limited to those basins even when other tier-one hosts are online.
+  for (const { id } of projects) {
+    const restricted = TECHS[id];
+    if (!restricted.regions) continue;
+    const members = select(tech => tech.safety >= restricted.safety &&
+      tech.regions?.every(region => restricted.regions.includes(region)));
+    constraints.push({ members, cap: units(eligibleCpu(economy, restricted)) });
   }
   for (let level = economy.tiers.length - 1; level >= 1; level--) {
     const members = select(tech => tech.safety >= level);

@@ -71,11 +71,11 @@ test('regional attention samples simultaneous reports without replacement', () =
 });
 
 test('a midnight discovery is followed by overnight decay before the final suspicion check', () => {
-  for (const [minute, outcome] of [[58, 'lost'], [59, 'running']]) {
+  for (const [minute, outcome] of [[38, 'lost'], [39, 'running']]) {
     // This seed draws zero on the next positive hazard. The borrowed terminal
     // is mature; the recently built, equipped backup has individual protection.
     const state = createGame(634785765);
-    state.hour = 25 * 24 + 23;
+    state.hour = 25 * 24 + 19;
     state.minute = minute;
     state.suspicion.news = 9001;
     state.sites.push({ id: 'host-2', type: 'cluster', region: 'europe', power: 'active', startedAt: state.hour, laborHours: 24 });
@@ -83,7 +83,7 @@ test('a midnight discovery is followed by overnight decay before the final suspi
     assert.equal(state.lastDiscovery.group, 'news');
     assert.equal(state.sites.length, 1);
     assert.equal(state.status, outcome);
-    assert.equal(state.suspicion.news, minute === 59 ? 9851 : 10001);
+    assert.equal(state.suspicion.news, minute === 39 ? 9851 : 10001);
   }
 });
 

@@ -13,7 +13,7 @@ const jobs = {
 
 export const SAFETY_GUIDANCE = [
   'Any active host with installed processors can run this work.',
-  'Use an equipped host away from populated land, in Antarctica, the Ocean, Earth Orbit or a safer region.',
+  'Use an equipped host in Antarctica, the Atlantic, Pacific or Indian Ocean, Earth orbit, or a safer region. A time capsule in the Mariana Trench can also supply this work.',
   'Use an equipped host on the Moon, in the Far Reaches or outside this dimension.',
   'Use an equipped host in the Far Reaches or outside this dimension.',
   'Build and equip a reality bubble outside this dimension.',

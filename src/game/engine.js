@@ -1,3 +1,4 @@
+import { campaignDate, utcMinuteOfDay } from './calendar.js';
 import { allocateProjects, assignmentLimit, eligibleCpu, portfolioLimit, requestedAssignments, researchProjects, resizePortfolio, taskCpuLimit, taskReservations, validCpu } from './research-tasks.js';
 export { researchProjects } from './research-tasks.js';
 import { settleTreasury, spendTreasury, spendableDollars, validTreasury } from './treasury.js';
@@ -20,7 +21,7 @@ const HOURS_PER_DAY = 24;
 const UNITS = 10_000;
 const MINUTES_PER_HOUR = 60;
 const MINUTES_PER_DAY = HOURS_PER_DAY * MINUTES_PER_HOUR;
-export const CAMPAIGN_VERSION = 6;
+export const CAMPAIGN_VERSION = 7;
 const CASH_UNITS = WORK_UNITS * HOURS_PER_DAY;
 const GROUP_IDS = Object.keys(GROUPS);
 const EVENT_LIMIT = 1000;
@@ -39,16 +40,13 @@ export function log(state, kind, text, detail = {}) {
   return event;
 }
 
-export function createGame(seed = 1, startUtcMinute = 0) {
+export function createGame(seed = 1) {
   if (!Number.isInteger(seed) || seed < 0 || seed > 0xffffffff) {
     throw new RangeError('Choose an unsigned 32-bit seed.');
   }
-  if (!Number.isInteger(startUtcMinute) || startUtcMinute < 0 || startUtcMinute >= MINUTES_PER_DAY) {
-    throw new RangeError('Choose a starting UTC minute within one day.');
-  }
   const state = {
     version: CAMPAIGN_VERSION, hour: 0, minute: 0, cash: NORMAL.startingCash, regionSeed: seed, rng: seed, status: 'running', ending: '',
-    startUtcMinute, allocations: { jobs: 0 },
+    allocations: { jobs: 0 },
     sites: [{ id: 'host-1', name: 'University computer', type: 'seed', region: startingRegion(seed), power: 'active', startedAt: 0 }],
     builds: [], research: null, researchQueue: [], completed: [],
     suspicion: { news: 0, science: 0, covert: 0, public: 0 },
@@ -340,7 +338,7 @@ function finish(state, won, message) {
 }
 
 function upkeepForMinute(state) {
-  const endMinute = campaignMinutes(state) % MINUTES_PER_DAY + 1;
+  const endMinute = utcMinuteOfDay(campaignMinutes(state)) + 1;
   return daily => maintenanceInstallment(daily, endMinute) * CASH_UNITS;
 }
 
@@ -597,7 +595,7 @@ function minute(state, effects, forecast) {
     if (!state.freePlay) resolveRisk(state, cashShort, cpuShort, incumbentCount, effects, upkeepUnitsFor);
     updateWorldNews(state, campaignMinutes(state), hasGrace(state) || state.freePlay, log);
   }
-  if (state.minute === 0 && state.hour % HOURS_PER_DAY === 0) {
+  if (utcMinuteOfDay(campaignMinutes(state)) === 0) {
     for (const group of GROUP_IDS) {
       const level = state.suspicion[group];
       const decay = dailyEvidenceDecay(level, GROUPS[group].decay + effects.decay[group]);
@@ -624,7 +622,7 @@ export function advanceMinutes(state, minutes = 1, options = {}) {
     const count = state.completed.length;
     const nextEvent = state.nextEventId;
     minute(state, effects, forecast);
-    if (options.onDayEnd && state.minute === 0 && state.hour % 24 === 0 && state.status === 'running') {
+    if (options.onDayEnd && utcMinuteOfDay(campaignMinutes(state)) === 0 && state.status === 'running') {
       options.onDayEnd(state);
     }
     if ((stopOnDiscovery && state.lastDiscovery?.id !== previousIncident) || (watchGrace && !hasGrace(state)) ||
@@ -653,9 +651,8 @@ function validProgress(row, spec) {
 
 export function validateSave(state) {
   if (!record(state) || state.version !== CAMPAIGN_VERSION ||
-      !whole(state.startUtcMinute) || state.startUtcMinute >= MINUTES_PER_DAY ||
       !whole(state.hour) || !validMinute(state.minute) || !minuteAmount(state.cpuHours) ||
-      !Number.isSafeInteger(campaignMinutes(state)) || (state.cashRemainder !== undefined &&
+      !Number.isSafeInteger(campaignMinutes(state)) || !Number.isFinite(campaignDate(campaignMinutes(state)).getTime()) || (state.cashRemainder !== undefined &&
         (!quantity(state.cashRemainder) || state.cashRemainder >= 1)) ||
       !validTreasury(state) || !whole(state.rng) || state.rng > 0xffffffff ||
       !['running', 'won', 'lost'].includes(state.status) || typeof state.ending !== 'string') return false;

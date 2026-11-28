@@ -21,6 +21,7 @@
   background-size: 36px 36px;
 }
 .atlas-geography { width: 100%; aspect-ratio: 2; position: relative; }
+.atlas-label-layer { position: absolute; inset-block: 0; left: 50%; transform: translateX(-50%); width: 100%; }
 .atlas-geography > img, .atlas-geography > canvas {
   display: block;
   width: 100%;
@@ -29,60 +30,45 @@
   inset: 0;
   pointer-events: none;
 }
+/* The points stay on the coastlines. Only their labels move to find clear space. */
+.atlas-geography .atlas-leaders { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.atlas-leaders line { stroke: #acc3bb; stroke-width: 1; stroke-opacity: .8; }
+.atlas-leaders circle { fill: #15252b; stroke: #edf7f3; stroke-width: 1.5; pointer-events: all; cursor: pointer; }
+.atlas-leaders :is([data-terrain="ocean"],[data-terrain="trench"]) circle { stroke: #79cddc; }
+.atlas-leaders [data-status="online"] circle { fill: #9cf2c7; stroke: #22483c; }
+.atlas-leaders [data-status="building"] circle { fill: #cfb9f2; }
+.atlas-leaders [data-status="asleep"] circle { fill: #efc77e; }
+.atlas-leaders [data-status="pending"] circle { fill: #76c5db; }
+.atlas-leaders .highlight line, .atlas-leaders .highlight circle { stroke: white; stroke-width: 2; }
+.atlas-leaders [data-status="locked"] circle { stroke: #95a0a7; cursor: default; }
 #world-atlas .atlas-pin {
-  position: absolute;
-  top: var(--y);
-  left: var(--x);
-  z-index: 1;
-  background: none;
-  border: 0;
-  min-height: 24px;
-  display: inline-flex;
-  align-items: center;
-  gap: 0;
-  padding: 0;
-  line-height: 1;
-  color: #eaf6f0;
-  transform: translate(-7px, -50%);
-}
-#world-atlas .atlas-pin:focus-visible { outline-offset: 4px; }
-.atlas-target {
-  box-sizing: border-box;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  border: 1px solid #9caeaf;
-  background: #0c171dcf;
-  display: grid;
-  place-items: center;
-}
-.atlas-target::after {
-  content: '';
-  width: 4px;
-  height: 4px;
-  border: 1px solid #cedbdb;
-  border-radius: 50%;
+  position: absolute; z-index: 1;
+  background: none; border: 0; min-height: 0;
+  display: inline-flex; padding: 0;
+  color: #eaf6f0; line-height: 1; text-align: start;
 }
 .atlas-name {
-  font: 600 clamp(.61rem, .62vw, .83rem)/1.45 var(--mono, monospace);
-  color: #e1e9e8;
-  border-radius: 2px;
-  padding: 1px 4px;
-  background: #101b21e6;
-  white-space: nowrap;
+  display: flex; align-items: center;
+  font: 600 clamp(.65rem, .34vw + .37rem, .83rem)/1.3 var(--mono, monospace);
+  color: #e1e9e8; border: 1px solid #647c78; border-radius: 3px;
+  padding: 2px 4px; background: #101c23ef; white-space: nowrap;
 }
-.atlas-pin[data-id="australia"] { flex-direction: row-reverse; }
-#world-atlas .atlas-pin[data-id="australia"] { transform: translate(calc(-100% + 7px), -50%); }
-.atlas-pin[data-status="online"] .atlas-target {
-  border-color: #9edac5;
-  box-shadow: 0 0 0 3px #91ecc53d;
+.atlas-pin:is([data-terrain="ocean"],[data-terrain="trench"]) .atlas-name { border-style: dashed; border-color: #5c94a1; }
+.atlas-pin[data-status="online"] .atlas-name { color: #b8f7d7; border-color: #7bc29d; }
+.atlas-pin[data-status="building"] .atlas-name { border-color: #b6a0d8; }
+.atlas-pin[data-status="asleep"] .atlas-name { border-color: #b79c6f; }
+.atlas-pin[data-status="pending"] .atlas-name { border-color: #76c5db; }
+.atlas-pin:hover .atlas-name, .atlas-pin:focus-visible .atlas-name { color: white; border-color: white; text-decoration: underline; }
+#world-atlas .atlas-pin:focus-visible { outline-offset: 2px; z-index: 3; }
+.atlas-picker, .atlas-code { display: none; }
+.atlas-label-layer[data-compact] .atlas-long { display: none; }
+.atlas-label-layer[data-compact] .atlas-code { display: inline; }
+.atlas-label-layer[data-compact] .atlas-picker {
+  display: block; position: absolute; z-index: 2; top: 3px; left: 4px;
+  width: auto; max-width: 40%; min-height: 22px; height: auto;
+  padding: 1px 2px; font: 600 .68rem/1.25 var(--mono, monospace); background: #101c23f2;
 }
-.atlas-pin[data-status="online"] .atlas-target::after { background: #a1f0c9; border-color: #a1f0c9; }
-.atlas-pin[data-status="online"] .atlas-name { color: #b8f7d7; }
-.atlas-pin[data-status="pending"] .atlas-target::after { border-color: #76c5db; background: #76c5db; }
-.atlas-pin[data-status="building"] .atlas-target::after { background: #d6c0ff; border-color: #d6c0ff; }
-.atlas-pin[data-status="asleep"] .atlas-target::after { background: #efc77e; border-color: #efc77e; }
-.atlas-pin:hover .atlas-name, .atlas-pin:focus-visible .atlas-name { color: white; text-decoration: underline; }
+.atlas-label-layer[data-compact] .atlas-name { font-size: .65rem; }
 .atlas-horizon { border-top: 1px solid var(--line, #324348); padding: .7rem 1rem; }
 .atlas-caption { color: #adbbbc; text-transform: uppercase; letter-spacing: .075em; }
 .atlas-outposts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .4rem; margin-top: .45rem; }
@@ -116,8 +102,6 @@
   color: #98a2a9;
 }
 #world-atlas .atlas-pin:disabled .atlas-name { color: #a9b0b4; background: #1d2429eb; text-decoration: none; }
-#world-atlas .atlas-pin:disabled .atlas-target { border-color: #707c83; background: #172127; }
-#world-atlas .atlas-pin:disabled .atlas-target::after { border-color: #838f94; }
 #world-atlas .atlas-outpost:disabled { border-color: #364047; background: #192127; }
 #world-atlas .atlas-outpost:disabled .atlas-glyph-fill { fill: #303a40; }
 #world-atlas :disabled .atlas-lock {
@@ -126,14 +110,15 @@
   vertical-align: -.08em;
 }
 .atlas-lock .icon { width: 1em; height: 1em; stroke-width: 2; }
-#world-atlas :disabled .atlas-count { display: none; }
+#world-atlas :disabled .atlas-count, #world-atlas [data-status="empty"] .atlas-count { display: none; }
 
 @media (min-width: 65rem) and (min-height: 37rem) {
-  .navigation-atlas { height: 100%; min-height: 0; }
+  .navigation-atlas { height: 100%; min-height: 24rem; }
   .atlas-field { flex: 1; min-height: 0; container: atlas-field / size; }
   .atlas-layout { height: 100%; display: flex; flex-direction: column; }
   .atlas-planet { flex: 1; container-type: size; }
   .atlas-geography { width: min(100cqw, 200cqh); }
+  .atlas-label-layer { width: min(100cqw, calc(100% + 14rem)); }
   .atlas-outposts { grid-template-columns: repeat(4, auto); }
 }
 /* The globe uses the full chart height. At this ratio each remaining gutter
@@ -145,6 +130,7 @@
     grid-template-rows: 1fr auto auto 1fr;
   }
   .atlas-planet { grid-area: 1 / 1 / -1 / -1; }
+  .atlas-label-layer { width: 100%; }
   .atlas-horizon, .atlas-outposts { display: contents; }
   .atlas-caption { display: none; }
   #world-atlas .atlas-outpost {
@@ -176,12 +162,6 @@
   .atlas-key { gap: .65rem; }
   .atlas-planet { container-type: inline-size; }
 }
-@container (max-width: 470px) {
-  #world-atlas .atlas-pin { flex-direction: column; transform: translate(-50%, -7px); min-height: 0; }
-  #world-atlas .atlas-pin[data-id="australia"] { transform: translate(-50%, -7px); }
-  #world-atlas .atlas-pin[data-id="antarctic"] { flex-direction: column-reverse; transform: translate(-50%, calc(-100% + 7px)); }
-}
-
 .atlas-count { margin-inline-start: .28em; color: #c0d2ce; font: 600 .85em var(--mono); }
 .atlas-trace { color: #f6c27e; margin-inline-start: .25em; }
 .atlas-trace:empty { display: none; }

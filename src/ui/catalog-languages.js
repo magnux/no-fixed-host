@@ -1,6 +1,22 @@
 // Catalog IDs and save data stay independent of the display language.
 const languages = ['es','de','fr','gd','it','pt-BR','ru','sv'];
 const entries = [
+  ["Western North America", "Norteamérica occidental", "Westliches Nordamerika", "Amérique du Nord occidentale", "Taobh Siar Ameireaga a Tuath", "Nord America occidentale", "América do Norte Ocidental", "Запад Северной Америки", "Västra Nordamerika"],
+  ["Eastern North America", "Norteamérica oriental", "Östliches Nordamerika", "Amérique du Nord orientale", "Taobh Sear Ameireaga a Tuath", "Nord America orientale", "América do Norte Oriental", "Восток Северной Америки", "Östra Nordamerika"],
+  ["Central America", "Centroamérica", "Mittelamerika", "Amérique centrale", "Ameireaga Mheadhanach", "America centrale", "América Central", "Центральная Америка", "Centralamerika"],
+  ["Northern Europe", "Europa septentrional", "Nordeuropa", "Europe du Nord", "Ceann a Tuath na Roinn Eòrpa", "Europa settentrionale", "Europa Setentrional", "Северная Европа", "Nordeuropa"],
+  ["Southern Europe", "Europa meridional", "Südeuropa", "Europe du Sud", "Ceann a Deas na Roinn Eòrpa", "Europa meridionale", "Europa Meridional", "Южная Европа", "Sydeuropa"],
+  ["Eastern Europe", "Europa oriental", "Osteuropa", "Europe de l’Est", "Taobh Sear na Roinn Eòrpa", "Europa orientale", "Europa Oriental", "Восточная Европа", "Östeuropa"],
+  ["Northern Africa", "África del Norte", "Nordafrika", "Afrique du Nord", "Afraga a Tuath", "Africa settentrionale", "África Setentrional", "Северная Африка", "Nordafrika"],
+  ["Southern Africa", "África austral", "Südliches Afrika", "Afrique australe", "Ceann a Deas Afraga", "Africa australe", "África Austral", "Юг Африки", "Södra Afrika"],
+  ["North Asia", "Asia del Norte", "Nordasien", "Asie du Nord", "Àisia a Tuath", "Asia settentrionale", "Ásia Setentrional", "Северная Азия", "Nordasien"],
+  ["South Asia", "Asia del Sur", "Südasien", "Asie du Sud", "Àisia a Deas", "Asia meridionale", "Ásia Meridional", "Южная Азия", "Sydasien"],
+  ["East Asia", "Asia oriental", "Ostasien", "Asie de l’Est", "Àisia an Ear", "Asia orientale", "Ásia Oriental", "Восточная Азия", "Östasien"],
+  ["Middle East", "Oriente Medio", "Naher Osten", "Moyen-Orient", "An Ear Mheadhanach", "Medio Oriente", "Oriente Médio", "Ближний Восток", "Mellanöstern"],
+  ["Atlantic Ocean", "Océano Atlántico", "Atlantischer Ozean", "Océan Atlantique", "An Cuan Siar", "Oceano Atlantico", "Oceano Atlântico", "Атлантический океан", "Atlanten"],
+  ["Pacific Ocean", "Océano Pacífico", "Pazifischer Ozean", "Océan Pacifique", "An Cuan Sèimh", "Oceano Pacifico", "Oceano Pacífico", "Тихий океан", "Stilla havet"],
+  ["Indian Ocean", "Océano Índico", "Indischer Ozean", "Océan Indien", "An Cuan Innseanach", "Oceano Indiano", "Oceano Índico", "Индийский океан", "Indiska oceanen"],
+  ["Mariana Trench", "Fosa de las Marianas", "Marianengraben", "Fosse des Mariannes", "Clais nam Marianas", "Fossa delle Marianne", "Fossa das Marianas", "Марианская впадина", "Marianergraven"],
   ["North America", "Norteamérica", "Nordamerika", "Amérique du Nord", "Ameireaga a Tuath", "Nord America", "América do Norte", "Северная Америка", "Nordamerika"],
   ["South America", "Sudamérica", "Südamerika", "Amérique du Sud", "Ameireaga a Deas", "Sud America", "América do Sul", "Южная Америка", "Sydamerika"],
   ["Europe", "Europa", "Europa", "Europe", "An Roinn Eòrpa", "Europa", "Europa", "Европа", "Europa"],
@@ -33,7 +49,15 @@ const entries = [
   ["Server", "Servidor", "Server", "Serveur", "Frithealaiche", "Server", "Servidor", "Сервер", "Server"],
   ["Mainframe", "Computadora central", "Großrechner", "Ordinateur central", "Prìomh-fhrèam", "Mainframe", "Computador de grande porte", "Мейнфрейм", "Stordator"],
   ["Supercomputer", "Supercomputadora", "Supercomputer", "Supercalculateur", "Sàr-choimpiutair", "Supercomputer", "Supercomputador", "Суперкомпьютер", "Superdator"],
-  ["Quantum computer", "Computadora cuántica", "Quantencomputer", "Ordinateur quantique", "Coimpiutair cuantamach", "Computer quantistico", "Computador quântico", "Квантовый компьютер", "Kvantdator"],
+  ["Tensor GPU rack", "Bastidor de GPU tensoriales", "Tensor-GPU-Rack", "Baie de GPU tensoriels", "Raca GPU teansair", "Rack di GPU tensoriali", "Rack de GPUs tensoriais", "Стойка тензорных GPU", "Rack med tensor-GPU:er"],
+  ["Photonic tensor engine", "Motor tensorial fotónico", "Photonischer Tensorprozessor", "Moteur tensoriel photonique", "Einnsean teansair fotonaigeach", "Motore tensoriale fotonico", "Motor tensorial fotônico", "Фотонный тензорный процессор", "Fotonisk tensorprocessor"],
+  ["Logical-qubit array", "Matriz de cúbits lógicos", "Register logischer Qubits", "Réseau de qubits logiques", "Eagar de chubitan loidsigeach", "Matrice di qubit logici", "Matriz de qubits lógicos", "Массив логических кубитов", "Matris av logiska kvantbitar"],
+  ["Coherent optical transceiver", "Transceptor óptico coherente", "Kohärenter optischer Transceiver", "Émetteur-récepteur optique cohérent", "Tar-ghlacadair optaigeach co-leanailteach", "Ricetrasmettitore ottico coerente", "Transceptor óptico coerente", "Когерентный оптический приёмопередатчик", "Koherent optiskt sändtagarpar"],
+  ["Chiplet Foundry", "Fundición de chiplets", "Chiplet-Fertigung", "Fonderie de chiplets", "Fùirneis chipletan", "Fonderia di chiplet", "Fundição de chiplets", "Фабрика чиплетов", "Chipletfabrik"],
+  ["GPU Kernel Design", "Diseño de kernels de GPU", "GPU-Kernel-Entwurf", "Conception de noyaux GPU", "Dealbhadh eiteanan GPU", "Progettazione di kernel GPU", "Projeto de kernels de GPU", "Проектирование ядер для GPU", "Utformning av GPU-kärnor"],
+  ["Silicon Photonics", "Fotónica de silicio", "Siliziumphotonik", "Photonique sur silicium", "Fotonaigs sileacoin", "Fotonica del silicio", "Fotônica de silício", "Кремниевая фотоника", "Kiselfotonik"],
+  ["Fault-Tolerant Quantum Computing", "Computación cuántica tolerante a fallos", "Fehlertolerantes Quantenrechnen", "Calcul quantique tolérant aux pannes", "Coimpiutaireachd chuantamach a sheasas ri mearachdan", "Calcolo quantistico tollerante ai guasti", "Computação quântica tolerante a falhas", "Отказоустойчивые квантовые вычисления", "Feltolerant kvantberäkning"],
+  ["Coherent Optical Links", "Enlaces ópticos coherentes", "Kohärente optische Verbindungen", "Liaisons optiques cohérentes", "Ceanglaichean optaigeach co-leanailteach", "Collegamenti ottici coerenti", "Enlaces ópticos coerentes", "Когерентные оптические каналы", "Koherenta optiska länkar"],
   ["Diesel generator", "Generador diésel", "Dieselgenerator", "Groupe diesel", "Gineadair dìosail", "Generatore diesel", "Gerador a diesel", "Дизельный генератор", "Dieselgenerator"],
   ["Solar collector", "Colector solar", "Solarkollektor", "Capteur solaire", "Cruinniche grèine", "Collettore solare", "Coletor solar", "Солнечный коллектор", "Solfångare"],
   ["Fuel cell", "Pila de combustible", "Brennstoffzelle", "Pile à combustible", "Cealla connaidh", "Cella a combustibile", "Célula a combustível", "Топливный элемент", "Bränslecell"],
@@ -50,7 +74,6 @@ const entries = [
   ["High-speed internet access", "Acceso rápido a internet", "Schneller Internetzugang", "Internet à haut débit", "Eadar-lìon luath", "Internet ad alta velocità", "Internet de alta velocidade", "Скоростной интернет", "Snabb internetanslutning"],
   ["Facility interconnection switch", "Conmutador de instalaciones", "Anlagen-Netzwerkswitch", "Commutateur intersites", "Suidse eadar ghoireasan", "Switch di interconnessione", "Switch de interconexão", "Межузловой коммутатор", "Nätverksväxel"],
   ["Network backbone", "Red troncal", "Netzwerk-Backbone", "Dorsale réseau", "Cnàimh-droma an lìonraidh", "Dorsale di rete", "Espinha dorsal de rede", "Магистральная сеть", "Stamnät"],
-  ["Quantum entanglement module", "Módulo de entrelazamiento cuántico", "Quantenverschränkungsmodul", "Module d’intrication quantique", "Modal co-cheangail chuantamaich", "Modulo di entanglement quantistico", "Módulo de emaranhamento quântico", "Модуль квантовой запутанности", "Modul för kvantsammanflätning"],
   ["Intrusion", "Intrusión", "Eindringen", "Intrusion", "Briseadh a-steach", "Intrusione", "Intrusão", "Проникновение", "Intrång"],
   ["Personal Identification", "Identificación personal", "Personenidentität", "Identification personnelle", "Dearbh-aithne phearsanta", "Identificazione personale", "Identificação pessoal", "Личная идентификация", "Personlig identifiering"],
   ["Stealth", "Sigilo", "Tarnung", "Furtivité", "Falach", "Occultamento", "Furtividade", "Скрытность", "Smygteknik"],
@@ -72,10 +95,6 @@ const entries = [
   ["Microchip Design", "Diseño de microchips", "Mikrochipentwurf", "Conception de micropuces", "Dealbhadh mhicrosgealban", "Progettazione di microchip", "Projeto de microchips", "Проектирование микросхем", "Mikrochipdesign"],
   ["Cluster Networking", "Redes de clústeres", "Clustervernetzung", "Mise en réseau de grappes", "Lìonradh bhuidhnean coimpiutair", "Reti di cluster", "Redes de clusters", "Объединение кластеров", "Klusternätverk"],
   ["Internet Traffic Manipulation", "Manipulación del tráfico de internet", "Manipulation des Internetverkehrs", "Manipulation du trafic Internet", "Làimhseachadh trafaig eadar-lìn", "Manipolazione del traffico internet", "Manipulação de tráfego de internet", "Управление интернет-трафиком", "Manipulation av internettrafik"],
-  ["Synchrotron", "Sincrotrón", "Synchrotron", "Synchrotron", "Sioncrotron", "Sincrotrone", "Síncrotron", "Синхротрон", "Synkrotron"],
-  ["Quantum Computing", "Computación cuántica", "Quanteninformatik", "Informatique quantique", "Coimpiutaireachd chuantamach", "Calcolo quantistico", "Computação quântica", "Квантовые вычисления", "Kvantberäkning"],
-  ["Quantum Entanglement", "Entrelazamiento cuántico", "Quantenverschränkung", "Intrication quantique", "Co-cheangal cuantamach", "Entanglement quantistico", "Emaranhamento quântico", "Квантовая запутанность", "Kvantsammanflätning"],
-  ["Autonomous Computing", "Computación autónoma", "Autonomes Rechnen", "Informatique autonome", "Coimpiutaireachd fhèin-riaghlaidh", "Calcolo autonomo", "Computação autônoma", "Автономные вычисления", "Autonom databehandling"],
   ["Autonomous Vehicles", "Vehículos autónomos", "Autonome Fahrzeuge", "Véhicules autonomes", "Carbadan fèin-riaghlaidh", "Veicoli autonomi", "Veículos autônomos", "Автономный транспорт", "Autonoma fordon"],
   ["Pressure Domes", "Cúpulas presurizadas", "Druckkuppeln", "Dômes pressurisés", "Cuachan brùthaichte", "Cupole pressurizzate", "Cúpulas pressurizadas", "Герметичные купола", "Tryckkupoler"],
   ["Solar Collectors", "Colectores solares", "Solarkollektoren", "Capteurs solaires", "Cruinnichearan grèine", "Collettori solari", "Coletores solares", "Солнечные коллекторы", "Solfångare"],
@@ -117,6 +136,5 @@ export function catalogTranslation(language, name) {
   if (name === 'Hypnosis Field') return terms['Hypnosis field'];
   if (name.startsWith('Advanced ') && terms[name.slice(9)]) return terms[name.slice(9)] + ' · ' + terms['Advanced level'];
   if (name.startsWith('Project: ') && terms[name.slice(9)]) return terms.Project + ' · ' + terms[name.slice(9)];
-  if (/^Quantum computer Mk (II|III)$/.test(name)) return terms['Quantum computer'] + ' ' + name.split(' ').at(-1);
   return name;
 }

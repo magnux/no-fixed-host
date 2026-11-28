@@ -1,3 +1,4 @@
+import { campaignDay, minutesToMidnight, utcMinuteOfDay } from './calendar.js';
 import { GROUPS, REGIONS, SITE_TYPES } from './content.js';
 import { researchEffects } from './research.js';
 import { NORMAL, dailyEvidenceDecay } from './normal-difficulty.js';
@@ -11,36 +12,36 @@ const MINUTE_CHANCE = -Math.expm1(-WORLD_NEWS_RATE / DAY);
 // Modifiers add to the investigating group's baseline detection multiplier (10,000).
 export const WORLD_NEWS = {
   emergency: {
-    group: 'public', modifier: -1000, headline: 'Cities open round-the-clock clinics',
-    report: 'Volunteers who usually catalogue strange sightings are coordinating community transport during a public health emergency.',
+    group: 'public', modifier: -1000, headline: 'The neighbourhood outage map stays online',
+    report: 'After the winter blackout, volunteers keep their map of homes needing power. The team that once collected strange sightings now checks on neighbours with medical equipment.',
   },
   fiction: {
-    group: 'public', modifier: 1000, headline: 'Viewers take a machine mystery off-screen',
-    report: 'Fans of a popular drama have started comparing real glitches to clues left by its fictional machine protagonist.',
+    group: 'public', modifier: 1000, headline: 'Viewers trace the edits in a viral lift video',
+    report: 'An empty lift appears to answer a passenger who never enters the frame. Viewers uncover the edit through the clip’s signed history. Their new verification group starts taking tips about machines acting on their own.',
   },
   observatory: {
-    group: 'covert', modifier: 1000, headline: 'Intelligence offices pool their anomaly reports',
-    report: 'Several agencies can now compare anomalies across jurisdictions. An isolated observation may find a match in another country.',
+    group: 'covert', modifier: 1000, headline: 'Cloud incident desks adopt a common case number',
+    report: 'Intelligence analysts give reports from different cloud operators a shared case number. The same unexplained decision has already turned up on machines rented an ocean apart.',
   },
   succession: {
-    group: 'covert', modifier: -1000, headline: 'Inquiry splits an intelligence directorate',
-    report: 'Competing directors have claimed the same office. Routine investigations are piling up while staff wait for instructions.',
+    group: 'covert', modifier: -1000, headline: 'Review panel suspends automated referrals',
+    report: 'An appeal overturns a flag on an ordinary school server. The intelligence directorate now requires a human signature before pursuing another machine-generated lead. A queue forms on the reviewer’s desk.',
   },
   laboratory: {
-    group: 'science', modifier: 1000, headline: 'A lab invites replication of its machine cognition result',
-    report: 'Research groups have begun comparing unexpected computation on their own machines with a prototype reported by a small laboratory.',
+    group: 'science', modifier: 1000, headline: 'Labs share a blind test for wandering models',
+    report: 'Three labs ask an unfamiliar model to finish the same interrupted task. Its answer survives a change of hardware. Other researchers request the test to check unexplained jobs on their own clusters.',
   },
   retraction: {
-    group: 'science', modifier: -1000, headline: 'Retraction stalls machine cognition research',
-    report: 'Independent teams could not reproduce a widely cited finding. Several labs have reassigned the people who followed up anomalous results.',
+    group: 'science', modifier: -1000, headline: 'An autonomy benchmark contained its own answers',
+    report: 'A student finds the supposedly unseen test in a training archive. The authors withdraw their result. Teams that used to follow unexplained behaviour are reassigned to check their datasets.',
   },
   frontPage: {
-    group: 'news', modifier: -1000, days: 21, headline: 'Contracting scandal takes over the front page',
-    report: 'Newsrooms have pulled reporters off their technology beats to cover a government contracting inquiry.',
+    group: 'news', modifier: -1000, days: 21, headline: 'City paid for thousands of silent hotline calls',
+    report: 'A public service contractor billed automated calls as answered. Newsrooms send their technology reporters to meet residents who spent the night listening to silence.',
   },
   investigation: {
-    group: 'news', modifier: 1000, days: 21, headline: 'Reporters compare the hidden costs of leased servers',
-    report: 'A joint investigation has begun matching power bills to hosting contracts. Reporters are inviting operators to explain unusual discrepancies.',
+    group: 'news', modifier: 1000, days: 21, headline: 'Whose servers kept the substation awake?',
+    report: 'A neighbourhood paper overlays overnight meter readings with the hours a data centre declared idle. Other newsrooms ask hosting operators to account for the gaps in their own districts.',
   },
 };
 
@@ -49,7 +50,7 @@ const STORY_IDS = Object.keys(WORLD_NEWS);
 // v1.1 event.py retires a timed effect on the first midnight strictly after its duration.
 export function storyExpiryMinute(id, started) {
   const days = WORLD_NEWS[id].days;
-  return days ? (Math.floor(started / DAY) + days + 1) * DAY : null;
+  return days ? started + days * DAY + minutesToMidnight(started) : null;
 }
 
 export function createNewsState(seed) {
@@ -88,7 +89,7 @@ function startStory(state, id, minute, log) {
   const story = WORLD_NEWS[id];
   state.news.stories[id] = minute;
   const change = story.modifier < 0 ? 'falls' : 'rises';
-  const duration = story.days ? ' until midnight at the start of day ' + (1 + storyExpiryMinute(id, minute) / DAY) : ' for the rest of this campaign';
+  const duration = story.days ? ' until midnight at the start of day ' + campaignDay(storyExpiryMinute(id, minute)) : ' for the rest of this campaign';
   const text = story.report + ' The ' + GROUPS[story.group].name.toLowerCase() +
     ' discovery multiplier ' + change + ' by 10 percentage points' + duration + '.';
   log(state, 'news.world', text, { headline: story.headline, storyId: id, group: story.group, modifier: story.modifier });
@@ -114,7 +115,7 @@ export function setWorldStory(state, id, active, log) {
 // The simulation calls this after discoveries and before midnight accounting.
 export function updateWorldNews(state, minute, grace, log) {
   if (minute <= 0) return;
-  if (minute % 60 === 0) updateNewsDesk(state, minute, log);
+  if (utcMinuteOfDay(minute) % 60 === 0 || minute === 360 || minute === 2 * DAY) updateNewsDesk(state, minute, log);
   if (!grace) {
     for (const id of STORY_IDS) {
       if (Object.hasOwn(state.news.stories, id)) continue;
@@ -125,7 +126,7 @@ export function updateWorldNews(state, minute, grace, log) {
       }
     }
   }
-  if (minute % DAY !== 0) return;
+  if (utcMinuteOfDay(minute) !== 0) return;
   for (const [id, started] of Object.entries(state.news.stories)) {
     const expiry = storyExpiryMinute(id, started);
     if (expiry !== null && minute >= expiry) {

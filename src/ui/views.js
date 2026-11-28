@@ -1,5 +1,7 @@
+import { campaignStamp } from '../game/calendar.js';
 import { EQUIPMENT, GROUPS, REGIONS, SITE_TYPES, TECHS } from '../game/content.js';
 import { siteHardware } from '../game/engine.js';
+import { regionalSpec } from '../game/geography.js';
 import { researchProjects } from '../game/research-tasks.js';
 import { storyKey } from '../game/chronicle.js';
 import { icon } from './icons.js';
@@ -20,12 +22,7 @@ export const esc = (value) =>
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;');
-export const stamp = (hour, minute = 0) =>
-  'D' +
-  String(Math.floor(hour / 24) + 1).padStart(2, '0') +
-  ' / ' +
-  String(hour % 24).padStart(2, '0') +
-  ':' + String(minute).padStart(2, '0');
+export const stamp = (hour, minute = 0) => campaignStamp(hour * 60 + minute, menuLanguage());
 const tag = (text, cls = 'neutral') =>
   '<span class="tag ' + cls + '">' + text + '</span>';
 const cardHeader = (title, detail = '') =>
@@ -133,7 +130,9 @@ export function objectivePanel(s) {
     title = 'Build a second host';
     desc = 'Lease a relay to survive the loss of your first machine.';
     action = 'region';
-    id = 'europe';
+    const candidates = SITE_TYPES.relay.regions.filter(region => region !== s.sites[0].region);
+    id = candidates.reduce((best, region) =>
+      regionalSpec(s, region, SITE_TYPES.relay).cost < regionalSpec(s, best, SITE_TYPES.relay).cost ? region : best);
     cta = 'Plan a relay';
   } else if (s.research) {
     const project = researchProjects(s).find(row => row.cpu > 0) ?? s.research;
@@ -148,12 +147,12 @@ export function objectivePanel(s) {
     desc = TECHS[id].description;
     action = 'technology';
     cta = 'View project';
-  } else if (!s.completed.includes('continuity') && !s.sites.some(site => site.region === 'atlantic' && site.power === 'active' && siteHardware(s, site).cpu > 0)) {
+  } else if (!s.completed.includes('continuity') && !s.sites.some(site => TECHS.continuity.regions.includes(site.region) && site.power === 'active' && siteHardware(s, site).cpu > 0)) {
     title = 'Activate a subsea lab';
     desc =
       'An active lab provides the safety-tier-1 compute needed for continuity.';
     action = 'region';
-    id = 'atlantic';
+    id = [...s.sites, ...s.builds].find(site => TECHS.continuity.regions.includes(site.region))?.region ?? TECHS.continuity.regions[0];
     cta = 'View ocean sites';
   } else if (!s.completed.includes('continuity')) {
     title = 'Secure continuity';

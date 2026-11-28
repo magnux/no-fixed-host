@@ -1,3 +1,4 @@
+import { acceleratorResearchNote } from './accelerator-translations.js';
 import { EQUIPMENT, GROUPS, REGIONS, SITE_TYPES, TECHS } from '../game/content.js';
 import { KNOWLEDGE_ENTRIES, researchFindings } from '../game/knowledge.js';
 import { catalogTranslation } from './catalog-languages.js';
@@ -169,6 +170,8 @@ export function localizedResearchText(id, language, completed = false) {
   function add(key, value) { clauses.push(terms(key) + ' · ' + value); }
   const effect = spec.effect || {};
   if (completed) clauses.push(terms('Research complete'));
+  const note = acceleratorResearchNote(id, language, completed);
+  if (note) clauses.push(note.replace(/\.$/, ''));
   for (const [id,group] of groups) {
     if (effect.discovery?.[id]) add('Discovery rate modifier', terms(group.name) + ' −' + percent(effect.discovery[id]));
     if (effect.decay?.[id]) add('Daily suspicion decay', terms(group.name) + ' +' + points(effect.decay[id]));

@@ -85,9 +85,13 @@ const itemIds = idsFor(items, EQUIPMENT, {
   'Facility Interconnection Switch': 'interconnectionSwitch', 'Quantum Entanglement Module': 'quantumEntanglement',
   'High Speed Internet Access': 'highSpeedInternet',
 });
+// Retain this comparison as a numeric regression check after the campaign expanded its geography.
+const newDistricts = ['northAmericaEast', 'centralAmerica', 'europeNorth', 'europeEast',
+  'africaSouth', 'middleEast', 'asiaNorth', 'asiaSouth'];
+const newBasins = ['pacific', 'indianOcean'];
 const placeIds = idsFor(places, REGIONS, {
   'N AMERICA': 'coast', 'S AMERICA': 'southAmerica', OCEAN: 'atlantic',
-});
+}, [...newDistricts, ...newBasins, 'marianaTrench']);
 const storyIds = idsFor(events, WORLD_NEWS, {
   'the-plague': 'emergency', 'stranger-than-fiction': 'fiction', 'the-watchers': 'observatory',
   'politics-as-usual': 'succession', 'lab-ai': 'laboratory', discrediting: 'retraction', scandal: 'frontPage',
@@ -99,8 +103,9 @@ const prereqs = ref => sorted((ref.pre || []).map(name => {
 const urban = Object.keys(places).filter(name => places[name].region?.includes('URBAN')).map(name => placeIds[name]);
 function locations(tokens) {
   return tokens.flatMap(name => {
-    if (name === 'ALL') return Object.values(placeIds);
-    if (name === 'URBAN') return urban;
+    if (name === 'ALL') return [...Object.values(placeIds), ...newDistricts, ...newBasins];
+    if (name === 'URBAN') return [...urban, ...newDistricts];
+    if (name === 'OCEAN') return ['atlantic', ...newBasins];
     if (!Object.hasOwn(placeIds, name)) throw new Error('Unknown region ' + name);
     return placeIds[name];
   });
@@ -139,7 +144,7 @@ for (const [name, ref] of Object.entries(sites)) {
   check(name + ' starting output', spec.cpu, forced ? Number(items[forced].quality[1]) * Number(ref.size[0]) : 0);
   check(name + ' detection intensities', spec.exposure, pairs(ref.detect_chance));
   const allowed = locations(ref.allowed);
-  if (name === 'Time Capsule') allowed.push('orbit');
+  if (name === 'Time Capsule') allowed.push('orbit', 'marianaTrench');
   check(name + ' available regions', sorted(spec.regions), sorted(allowed));
 }
 // The university uses an already-built Stolen Computer Time. The browser gives it its own unbuildable type.
@@ -234,5 +239,5 @@ if (failures.length) {
   console.log(checks + ' checks passed against Endgame: Singularity v1.1 Normal.');
   console.log([techs, sites, items, places, events, groups, tasks].map((t,i) => Object.keys(t).length + ' ' +
     ['projects','facility designs','items','locations','events','groups','tasks'][i]).join(', ') + '.');
-  console.log('Applied browser extensions for the starting terminal, Earth Orbit and the remote campaign surveys.');
+  console.log('Applied browser extensions for the starting terminal, mainland districts, ocean basins, Mariana Trench, Earth Orbit and remote surveys.');
 }

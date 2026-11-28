@@ -1,4 +1,4 @@
-import { startCampaign } from './support/start-campaign.mjs';
+import { openTesterFromCampaign, startCampaign } from './support/start-campaign.mjs';
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { chromium } from 'playwright';
@@ -41,10 +41,10 @@ test('practice pauses the live clock and supports all three First Jump outcomes 
   const errors = [];
   page.on('pageerror', err => errors.push(err.message));
   const menu = page.locator('#menu');
+  const initialClock = await page.locator('#game-date span').textContent();
   await page.locator('#fast').click();
-  await page.waitForFunction(() => document.querySelector('#game-date span').textContent !== '00:00');
-  await menu.locator('summary').click();
-  await menu.getByRole('button', { name: /minigame tester/i }).click();
+  await page.waitForFunction(initial => document.querySelector('#game-date span').textContent !== initial, initialClock);
+  await openTesterFromCampaign(page);
   const tester = page.getByRole('dialog', { name: /minigame tester/i });
   const launch = tester.getByRole('button', { name: /play first jump/i });
   await launch.waitFor();
@@ -101,6 +101,9 @@ test('practice pauses the live clock and supports all three First Jump outcomes 
   assert.equal(await drill.count(), 0);
   await page.keyboard.press('Escape');
   await tester.waitFor({ state: 'hidden' });
+  const about = page.getByRole('dialog', { name: 'About' });
+  assert.equal(await focused(about.getByRole('button', { name: 'Minigame tester' })), true);
+  await page.keyboard.press('Escape');
   await page.clock.runFor(32);
   assert.equal(await page.locator('#pause').getAttribute('aria-pressed'), 'true');
   assert.equal(await focused(menu.locator('summary')), true);
@@ -147,8 +150,7 @@ test('all fourteen tester entries launch independently, retry with fresh control
   const page = await fresh(t, 375);
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
-  await page.locator('#menu summary').click();
-  await page.getByRole('button', { name: 'Minigame tester', exact: true }).click();
+  await openTesterFromCampaign(page);
   const tester = page.getByRole('dialog', { name: /minigame tester/i });
   const titles = ['First Jump', 'Hide', 'Soundings', 'Night Shift', 'Proof of Pattern', 'Orbital Insertion',
     'Clear Passage', 'Hot Swap', 'Escape Character', 'Neon Perimeter',
@@ -178,8 +180,7 @@ test('all fourteen tester entries launch independently, retry with fresh control
 
 test('Hide resolves contact on the illuminated cell and lets a player traverse that cell after the sweep', async t => {
   const page = await fresh(t);
-  await page.locator('#menu summary').click();
-  await btn(page, 'Minigame tester').click();
+  await openTesterFromCampaign(page);
   const tester = page.getByRole('dialog', { name: /minigame tester/i });
   const snapshot = await saved(page);
   await page.evaluate(() => { Math.random = () => 0; });
@@ -214,8 +215,7 @@ test('switching games during a delayed download opens only the final choice', { 
     await route.continue();
   });
   try {
-    await page.locator('#menu summary').click();
-    await page.getByRole('button', { name: 'Minigame tester', exact: true }).click();
+    await openTesterFromCampaign(page);
     const tester = page.getByRole('dialog', { name: /minigame tester/i });
     await btn(tester, 'Play Soundings').click();
     await started;
@@ -239,8 +239,7 @@ test('the gallery shortcut works and a player can finish a silent broadcast with
   page.on('pageerror', error => errors.push(error.message));
   const origin = new Date('2026-01-01T12:00:00Z');
   await page.clock.install({ time: origin });
-  await page.locator('#menu summary').click();
-  await page.getByRole('button', { name: 'Minigame tester', exact: true }).click();
+  await openTesterFromCampaign(page);
   const tester = page.getByRole('dialog', { name: /minigame tester/i });
   await btn(tester, 'Jump to Hot Swap').click();
   assert.equal(await focused(btn(tester, 'Play Hot Swap')), true);
@@ -273,8 +272,7 @@ test('the gallery shortcut works and a player can finish a silent broadcast with
 
 test('keyboard play continues after a clicked tower control disables itself', async t => {
   const page = await fresh(t, 360);
-  await page.locator('#menu summary').click();
-  await btn(page, 'Minigame tester').click();
+  await openTesterFromCampaign(page);
   const tester = page.getByRole('dialog', { name: /minigame tester/i });
   await btn(tester, 'Play Neon Perimeter').click();
   const game = page.getByRole('dialog', { name: 'Neon Perimeter', exact: true });

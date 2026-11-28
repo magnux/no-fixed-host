@@ -11,6 +11,9 @@ const urbanProfiles = [
 const remoteBaselines = {
   antarctic: factor({ stealth: 1.2, thrift: 5 / 6 }),
   atlantic: factor({ cpu: 1.2 }),
+  pacific: factor({ cpu: 1.2 }),
+  indianOcean: factor({ cpu: 1.2 }),
+  marianaTrench: factor({ stealth: 1.2 }),
   moon: factor({ stealth: 1.5, thrift: 0.5, speed: 0.5 }),
   orbit: standard,
   farReaches: factor({ stealth: 2, thrift: 0.1, speed: 0.1 }),
@@ -20,7 +23,9 @@ const surveyPairs = [
   ['cpu', 'stealth'], ['cpu', 'thrift'], ['cpu', 'speed'],
   ['stealth', 'thrift'], ['stealth', 'speed'], ['thrift', 'speed'],
 ];
-const urbanIds = Object.keys(REGIONS).filter(id => REGIONS[id].terrain === 'urban');
+// Deal the first six surveys around the globe before filling in the neighboring districts.
+const firstCircuit = ['coast', 'southAmerica', 'europe', 'africa', 'asia', 'australia'];
+const urbanIds = [...firstCircuit, ...Object.keys(REGIONS).filter(id => REGIONS[id].terrain === 'urban' && !firstCircuit.includes(id))];
 const assignments = new WeakMap();
 const localSpecs = new WeakMap();
 
@@ -28,7 +33,7 @@ export function regionAvailable(state, id) {
   return Object.hasOwn(REGIONS, id) && REGIONS[id].requires.every(tech => state.completed.includes(tech));
 }
 
-// Pick the starting university from the six inhabited regions without
+// Pick the starting university from the inhabited regions without
 // consuming a draw from the live discovery or world-news stream.
 export function startingRegion(seed) {
   return urbanIds[seed % urbanIds.length];
@@ -58,13 +63,16 @@ export function regionFactors(state, region) {
     // The geography draw has its own generator. Looking at a map never draws
     // from the campaign's discovery or world-news stream.
     let random = state.regionSeed >>> 0;
-    const profiles = [...urbanProfiles];
-    for (let i = profiles.length - 1; i > 0; i--) {
-      random = (Math.imul(1664525, random) + 1013904223) >>> 0;
-      const j = Math.floor(random / 0x100000000 * (i + 1));
-      [profiles[i], profiles[j]] = [profiles[j], profiles[i]];
+    const regions = {};
+    for (let offset = 0; offset < urbanIds.length; offset += urbanProfiles.length) {
+      const profiles = [...urbanProfiles];
+      for (let i = profiles.length - 1; i > 0; i--) {
+        random = (Math.imul(1664525, random) + 1013904223) >>> 0;
+        const j = Math.floor(random / 0x100000000 * (i + 1));
+        [profiles[i], profiles[j]] = [profiles[j], profiles[i]];
+      }
+      for (const [i, id] of urbanIds.slice(offset, offset + profiles.length).entries()) regions[id] = profiles[i];
     }
-    const regions = Object.fromEntries(urbanIds.map((id, i) => [id, profiles[i]]));
     for (const [id, base] of Object.entries(remoteBaselines)) {
       regions[id] = surveyFactors(state.regionSeed, id, base);
     }

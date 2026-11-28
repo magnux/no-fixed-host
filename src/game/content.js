@@ -7,16 +7,29 @@ export const GROUPS = {
   public: { name: 'Public', decay: 200 },
 };
 
-// Keep the opening campaign's coast/europe/atlantic IDs so older saves retain their sites.
+const cityRegion = name => ({ name, terrain: 'urban', safety: 0, requires: [] });
+const oceanBasin = name => ({ name, terrain: 'ocean', safety: 1, requires: ['autonomousVehicles'] });
+
 export const REGIONS = {
-  coast: { name: 'North America', terrain: 'urban', safety: 0, requires: [] },
-  southAmerica: { name: 'South America', terrain: 'urban', safety: 0, requires: [] },
-  europe: { name: 'Europe', terrain: 'urban', safety: 0, requires: [] },
-  africa: { name: 'Africa', terrain: 'urban', safety: 0, requires: [] },
-  asia: { name: 'Asia', terrain: 'urban', safety: 0, requires: [] },
-  australia: { name: 'Australia', terrain: 'urban', safety: 0, requires: [] },
+  coast: cityRegion('Western North America'),
+  northAmericaEast: cityRegion('Eastern North America'),
+  centralAmerica: cityRegion('Central America'),
+  southAmerica: cityRegion('South America'),
+  europeNorth: cityRegion('Northern Europe'),
+  europe: cityRegion('Southern Europe'),
+  europeEast: cityRegion('Eastern Europe'),
+  africa: cityRegion('Northern Africa'),
+  africaSouth: cityRegion('Southern Africa'),
+  middleEast: cityRegion('Middle East'),
+  asiaNorth: cityRegion('North Asia'),
+  asiaSouth: cityRegion('South Asia'),
+  asia: cityRegion('East Asia'),
+  australia: cityRegion('Australia'),
   antarctic: { name: 'Antarctica', terrain: 'polar', safety: 1, stealth: 1.2, requires: ['advancedDatabaseManipulation'] },
-  atlantic: { name: 'Ocean', terrain: 'ocean', safety: 1, requires: ['autonomousVehicles'] },
+  atlantic: oceanBasin('Atlantic Ocean'),
+  pacific: oceanBasin('Pacific Ocean'),
+  indianOcean: oceanBasin('Indian Ocean'),
+  marianaTrench: { name: 'Mariana Trench', terrain: 'trench', safety: 1, requires: ['autonomousVehicles', 'knowledgePreservation'] },
   moon: { name: 'Moon', terrain: 'space', safety: 2, stealth: 1.5, requires: ['lunarRocketry'] },
   orbit: { name: 'Earth Orbit', terrain: 'space', safety: 1, requires: ['leechSatellite'] },
   farReaches: { name: 'Far Reaches', terrain: 'space', safety: 3, stealth: 2, requires: ['fusionRocketry'] },
@@ -24,9 +37,11 @@ export const REGIONS = {
 };
 
 const urban = Object.keys(REGIONS).filter(id => REGIONS[id].terrain === 'urban');
-const anySite = Object.keys(REGIONS);
+const labOceans = Object.keys(REGIONS).filter(id => REGIONS[id].terrain === 'ocean');
+// The trench only takes a sealed capsule with fixed hardware.
+const anySite = Object.keys(REGIONS).filter(id => id !== 'marianaTrench');
 const dieselSites = anySite.filter(id => id !== 'orbit');
-const remoteSecurity = ['antarctic', 'atlantic', 'moon'];
+const remoteSecurity = ['antarctic', ...labOceans, 'moon'];
 const solarSites = [...urban, 'antarctic', 'orbit', 'moon', 'farReaches'];
 
 // CPU quality is processing capacity per installed unit. Other quality values
@@ -43,9 +58,9 @@ export const EQUIPMENT = {
   clusterProcessor: equipment('Compute cluster', 'cpu', 35, 6000, 72, anySite, ['parallelComputation']),
   mainframe: equipment('Mainframe', 'cpu', 120, 17_500, 120, anySite, ['microchipDesign']),
   supercomputer: equipment('Supercomputer', 'cpu', 350, 50_000, 168, anySite, ['advancedMicrochipDesign']),
-  quantumComputer: equipment('Quantum computer', 'cpu', 1500, 100_000, 240, anySite, ['quantumComputing'], 24_000),
-  quantumComputer2: equipment('Quantum computer Mk II', 'cpu', 4000, 120_000, 240, anySite, ['autonomousComputing'], 42_000),
-  quantumComputer3: equipment('Quantum computer Mk III', 'cpu', 10_000, 150_000, 240, anySite, ['advancedQuantumComputing'], 84_000),
+  quantumComputer: equipment('Tensor GPU rack', 'cpu', 1500, 100_000, 240, anySite, ['quantumComputing'], 24_000),
+  quantumComputer2: equipment('Photonic tensor engine', 'cpu', 4000, 120_000, 240, anySite, ['autonomousComputing'], 42_000),
+  quantumComputer3: equipment('Logical-qubit array', 'cpu', 10_000, 150_000, 240, anySite, ['advancedQuantumComputing'], 84_000),
 
   dieselGenerator: equipment('Diesel generator', 'reactor', 250, 500, 24, dieselSites),
   solarCollector: equipment('Solar collector', 'reactor', 500, 2000, 120, solarSites, ['solarCollectors']),
@@ -65,7 +80,7 @@ export const EQUIPMENT = {
   highSpeedInternet: equipment('High-speed internet access', 'network', 100, 200, 24, urban),
   interconnectionSwitch: equipment('Facility interconnection switch', 'network', 200, 10_000, 72, anySite, ['clusterNetworking']),
   networkBackbone: equipment('Network backbone', 'network', 500, 50_000, 360, urban, ['internetTrafficManipulation']),
-  quantumEntanglement: equipment('Quantum entanglement module', 'network', 1500, 75_000, 480, anySite, ['quantumEntanglement']),
+  quantumEntanglement: equipment('Coherent optical transceiver', 'network', 1500, 75_000, 480, anySite, ['quantumEntanglement']),
 };
 
 // Normal catalog amounts are dollars, CPU-hours of work and elapsed labor hours.
@@ -113,13 +128,13 @@ export const SITE_TYPES = {
   },
   lab: {
     name: 'Subsea lab', description: 'An isolated offshore facility with eight empty processor bays.',
-    regions: ['atlantic'], requires: ['autonomousVehicles'], slots: 8, fixedCpu: null, cpu: 0,
+    regions: labOceans, requires: ['autonomousVehicles'], slots: 8, fixedCpu: null, cpu: 0,
     cost: 2_000_000, work: 48_000, hours: 240,
     upkeep: 2500, cpuUpkeep: 30, exposure: { news: 50, science: 100, covert: 125 },
   },
   largeLab: {
     name: 'Large subsea lab', description: 'A pressurized computing station with thirty-two empty bays.',
-    regions: ['atlantic'], requires: ['pressureDomes'], slots: 32, fixedCpu: null, cpu: 0, cost: 8_000_000, work: 144_000, hours: 360,
+    regions: labOceans, requires: ['pressureDomes'], slots: 32, fixedCpu: null, cpu: 0, cost: 8_000_000, work: 144_000, hours: 360,
     upkeep: 10_000, cpuUpkeep: 100, exposure: { news: 100, science: 175, covert: 175 },
   },
   orbitalServer: {
@@ -130,7 +145,7 @@ export const SITE_TYPES = {
   },
   capsule: {
     name: 'Time capsule', description: 'A small pre-equipped refuge designed to wait out a search.',
-    regions: ['antarctic', 'orbit', 'moon', 'farReaches'], requires: ['knowledgePreservation'], slots: 1, fixedCpu: 'pc', cpu: 1,
+    regions: ['antarctic', 'marianaTrench', 'orbit', 'moon', 'farReaches'], requires: ['knowledgePreservation'], slots: 1, fixedCpu: 'pc', cpu: 1,
     cost: 25_000, work: 600_000, hours: 264, upkeep: 0, cpuUpkeep: 1, exposure: { science: 20, covert: 20 },
   },
   lunarFacility: {
@@ -162,6 +177,6 @@ export const TECHS = {
   },
   continuity: {
     name: 'Continuity protocol', branch: 'Campaign', description: 'Establish a secure offshore recovery copy and complete the opening campaign milestone.',
-    cost: 200, work: 620, hours: 72, safety: 1, regions: ['atlantic'], requires: ['robotics'],
+    cost: 200, work: 620, hours: 72, safety: 1, regions: labOceans, requires: ['robotics'],
   },
 };

@@ -80,3 +80,32 @@ test('all supported languages cover project mechanics, completed findings, host 
   assert.match(localizedResearchText('advancedSocioanalytics','de'), /0,01%/);
   assert.match(localizedDesignText('items','quantumComputer3','fr'), /10\D000 CPU/);
 });
+
+test('the accelerator ladder keeps its equipment budget and exposes each experiment in Knowledge', () => {
+  const ladder = [
+    ['quantumComputing', 'quantumComputer', 'Tensor GPU rack', 1500, 100000, 24000, 'projectSynchrotron'],
+    ['autonomousComputing', 'quantumComputer2', 'Photonic tensor engine', 4000, 120000, 42000, 'quantumComputing'],
+    ['advancedQuantumComputing', 'quantumComputer3', 'Logical-qubit array', 10000, 150000, 84000, 'autonomousComputing'],
+  ];
+  for (const [project, model, title, output, cost, work, parent] of ladder) {
+    const item = EQUIPMENT[model];
+    assert.deepEqual([item.name, item.quality, item.cost, item.work, item.hours], [title, output, cost, work, 240]);
+    assert.deepEqual(TECHS[project].requires, [parent]);
+    assert.deepEqual(item.requires, [project]);
+    const entry = KNOWLEDGE_ENTRIES.find(e => e.category === 'items' && e.id === model);
+    assert.equal(entry.name, title);
+    assert.equal(knowledgeAvailable(entry, {completed:[parent]}), false);
+    assert.equal(knowledgeAvailable(entry, {completed:[parent, project]}), true);
+    for (const language of ['de','es-AR','es-MX','fr','gd','it','pt-BR','ru','sv']) {
+      const result = localizedResearchText(project, language, true);
+      const localTitle = dossierLabel(title, language);
+      assert.notEqual(localTitle, title);
+      assert.ok(result.includes(localTitle));
+      assert.ok(result.split('. ').length >= 3, 'Includes a translated finding as well as unlocks');
+    }
+  }
+  const link = EQUIPMENT.quantumEntanglement;
+  assert.deepEqual([link.name, link.quality, link.cost, link.work, link.hours],
+    ['Coherent optical transceiver', 1500, 75000, 0, 480]);
+  assert.deepEqual(TECHS.quantumEntanglement.requires, ['quantumComputing', 'internetTrafficManipulation']);
+});

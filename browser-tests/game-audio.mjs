@@ -1,4 +1,4 @@
-import { startCampaign } from './support/start-campaign.mjs';
+import { openTesterFromCampaign, startCampaign } from './support/start-campaign.mjs';
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { chromium } from 'playwright';
@@ -123,7 +123,7 @@ async function options(page, music, effects) {
 test('every tester entry produces music with the effects fader down; hiding pauses and resuming restores the score', async t => {
   const page = await fresh(t);
   await options(page, true, false);
-  await menu(page, '[data-shell-open="tester"]');
+  await openTesterFromCampaign(page);
   const tester = page.locator('#campaign-shell');
   const entries = await tester.locator('[data-minigame]').all();
   assert.equal(entries.length, 14);
@@ -152,40 +152,42 @@ test('every tester entry produces music with the effects fader down; hiding paus
   }
 });
 
-test('the direct First Jump drill and gallery both honor music and effects independently; ordinary menu clicks are silent', async t => {
+test('First Jump respects the two audio faders across repeated tester launches', async t => {
   const page = await fresh(t);
-  await menu(page, '[data-action="drill"]');
   const game = page.locator('.first-jump[open]');
+  const play = page.locator('#campaign-shell [data-minigame="first-jump"]');
+  async function leaveTester() {
+    await page.getByRole('dialog', {name:'Minigame tester'}).getByRole('button', {name:'Back', exact:true}).click();
+    await page.getByRole('dialog', {name:'About'}).getByRole('button', {name:'Close', exact:true}).click();
+  }
+  await openTesterFromCampaign(page);
+  await play.click();
   await game.locator('[data-transmit]').click();
-  await staysSilent(page, 'fresh campaign and drill stay silent by default');
+  await staysSilent(page, 'fresh campaign and First Jump stay silent by default');
   await game.locator('[data-close]').click();
+  await leaveTester();
 
   await options(page, false, true);
-  // Capture from before the click so short incidental beeps cannot escape the assertion.
   await staysSilent(page, 'music fader at zero silences the campaign');
   await resetPeak(page);
-  await menu(page, '[data-shell-open="tester"]');
+  await openTesterFromCampaign(page);
   await page.waitForTimeout(180);
   assert.ok(await page.evaluate(() => window.gameAudioMeter.peak < .0001), 'opening the menu is quiet');
-  await page.locator('#campaign-shell [data-minigame="first-jump"]').click();
-  await staysSilent(page, 'a muted practice score is silent before any gameplay input');
-  await resetPeak(page);
-  await game.locator('[data-transmit]').click();
-  await audible(page, 'gallery transmit');
-  await game.locator('[data-close]').click();
-  await page.locator('#campaign-shell .shell-head button').click();
-
-  await menu(page, '[data-action="drill"]');
-  await staysSilent(page, 'no old cue or score leaks into a fresh direct drill');
-  await resetPeak(page);
-  await game.locator('[data-transmit]').click();
-  await audible(page, 'direct transmit');
-  await game.locator('[data-close]').click();
-  await staysSilent(page, 'closing the direct drill stops it');
+  for (let run = 0; run < 2; run++) {
+    await play.click();
+    await staysSilent(page, 'a muted score is silent before gameplay input');
+    await resetPeak(page);
+    await game.locator('[data-transmit]').click();
+    await audible(page, 'transmit effect');
+    await game.locator('[data-close]').click();
+    await staysSilent(page, 'closing the game stops its sounds');
+  }
+  await leaveTester();
 
   await options(page, true, false);
   await clearNotes(page);
-  await menu(page, '[data-action="drill"]');
+  await openTesterFromCampaign(page);
+  await play.click();
   await game.waitFor();
   await resetPeak(page);
   await hearOpening(page, 'first-jump');
@@ -194,7 +196,7 @@ test('the direct First Jump drill and gallery both honor music and effects indep
 
 test('the weather radio can be heard with master sound off, then muted and closed without activating campaign audio', async t => {
   const page = await fresh(t);
-  await menu(page, '[data-shell-open="tester"]');
+  await openTesterFromCampaign(page);
   await page.locator('#campaign-shell [data-minigame="tell-them-im-weather"]').click();
   const game = page.locator('[data-practice-game="tell-them-im-weather"]');
   await staysSilent(page, 'the weather tuner starts silent');
@@ -211,7 +213,7 @@ test('the weather radio can be heard with master sound off, then muted and close
 test('all 14 minigames produce action effects with the music fader down', async t => {
   const page = await fresh(t);
   await options(page, false, true);
-  await menu(page, '[data-shell-open="tester"]');
+  await openTesterFromCampaign(page);
   const tester = page.locator('#campaign-shell');
   const buttons = {
     'first-jump': ['Pulse uplink'], hide: [/Relay/], soundings: ['Sonar ping'],

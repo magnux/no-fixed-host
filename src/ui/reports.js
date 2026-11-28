@@ -1,3 +1,4 @@
+import { campaignStamp } from '../game/calendar.js';
 import { EQUIPMENT, REGIONS, SITE_TYPES, TECHS } from '../game/content.js';
 import { campaignStatistics, comparisonReport, orderPrice } from '../game/reports.js';
 import { refitWarning } from './equipment-display.js';
@@ -39,10 +40,7 @@ const statisticRows = [
 ];
 
 function clock(minute) {
-  const day = Math.floor(minute / 1440) + 1;
-  const hh = String(Math.floor(minute / 60) % 24).padStart(2, '0');
-  const mm = String(minute % 60).padStart(2, '0');
-  return t('Day') + ' ' + reportFormats().number.format(day) + ' ' + hh + ':' + mm;
+  return campaignStamp(minute, menuLanguage());
 }
 
 function text(node, value) {

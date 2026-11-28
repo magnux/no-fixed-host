@@ -4,15 +4,26 @@ import { installedEquipment, siteHardware } from './equipment.js';
 
 export { regionFactors, regionalSpec } from './geography.js';
 
-const places = {
-  coast: ['Montréal', 'Vancouver', 'Guadalajara', 'Havana', 'Chicago', 'Seattle', 'Mexico City', 'Halifax'],
-  southAmerica: ['Valparaíso', 'Recife', 'Lima', 'Medellín', 'Quito', 'Montevideo', 'Ushuaia', 'Manaus'],
-  europe: ['Barcelona', 'Tallinn', 'Marseille', 'Reykjavík', 'Athens', 'Warsaw', 'Porto', 'Hamburg'],
-  africa: ['Nairobi', 'Accra', 'Cairo', 'Dakar', 'Kigali', 'Lagos', 'Windhoek', 'Cape Town'],
-  asia: ['Taipei', 'Seoul', 'Osaka', 'Jakarta', 'Mumbai', 'Hanoi', 'Bangkok', 'Manila'],
+export const regionPlaces = {
+  coast: ['Vancouver', 'Calgary', 'San Francisco', 'Anchorage', 'Denver', 'Seattle', 'Edmonton', 'Portland'],
+  northAmericaEast: ['Montréal', 'Toronto', 'Chicago', 'Halifax', 'Boston', 'Pittsburgh', 'Atlanta', 'New York'],
+  centralAmerica: ['Mexico City', 'Guadalajara', 'Belize City', 'Guatemala City', 'San José', 'Panama City', 'Havana', 'Kingston'],
+  southAmerica: ['Valparaíso', 'Recife', 'Lima', 'Medellín', 'Caracas', 'Montevideo', 'Ushuaia', 'Manaus'],
+  europeNorth: ['Oslo', 'Reykjavík', 'Helsinki', 'Tallinn', 'Dublin', 'Stockholm', 'Hamburg', 'Rotterdam'],
+  europe: ['Barcelona', 'Naples', 'Marseille', 'Valencia', 'Athens', 'Lisbon', 'Porto', 'Split'],
+  europeEast: ['Prague', 'Warsaw', 'Kyiv', 'Bucharest', 'Moscow', 'Saint Petersburg', 'Riga', 'Sofia'],
+  africa: ['Tangier', 'Tunis', 'Cairo', 'Dakar', 'Accra', 'Lagos', 'Algiers', 'Alexandria'],
+  africaSouth: ['Lusaka', 'Cape Town', 'Kigali', 'Maputo', 'Dar es Salaam', 'Luanda', 'Windhoek', 'Gaborone'],
+  middleEast: ['Amman', 'Muscat', 'Beirut', 'Riyadh', 'Doha', 'Tehran', 'Ankara', 'Baghdad'],
+  asiaNorth: ['Beijing', 'Shanghai', 'Chengdu', 'Ulaanbaatar', 'Almaty', 'Tashkent', 'Shenzhen', 'Harbin'],
+  asiaSouth: ['Mumbai', 'Chennai', 'Bengaluru', 'Dhaka', 'Karachi', 'Kathmandu', 'Colombo', 'Thimphu'],
+  asia: ['Taipei', 'Seoul', 'Osaka', 'Tokyo', 'Busan', 'Sapporo', 'Kaohsiung', 'Incheon'],
   australia: ['Darwin', 'Fremantle', 'Hobart', 'Adelaide', 'Brisbane', 'Cairns', 'Perth', 'Geelong'],
   antarctic: ['Ross Island', 'Queen Maud Land', 'Mount Erebus', 'Weddell Sea', 'Palmer Land', 'Adélie Land'],
-  atlantic: ['Pacific Rise', 'Mid-Atlantic Ridge', 'Java Trench', 'Fram Strait', 'Coral Sea', 'Drake Passage'],
+  atlantic: ['Sargasso Sea', 'Mid-Atlantic Ridge', 'Azores Plateau', 'Romanche Trench', 'Rockall Bank', 'Argentine Basin'],
+  pacific: ['East Pacific Rise', 'Coral Sea', 'Juan de Fuca Ridge', 'Tonga Trench', 'Shatsky Rise', 'Tasman Sea'],
+  indianOcean: ['Java Trench', 'Chagos Bank', 'Carlsberg Ridge', 'Arabian Basin', 'Kerguelen Plateau', 'Ninety East Ridge'],
+  marianaTrench: ['Challenger Deep', 'Sirena Deep'],
   moon: ['Mare Imbrium', 'Tycho', 'Shackleton', 'Oceanus Procellarum', 'Mare Crisium', 'Copernicus'],
   orbit: ['Polar Orbit', 'Equatorial Orbit', 'Molniya Orbit', 'Dawn-Dusk Orbit', 'Geostationary Arc'],
   farReaches: ['Kuiper Belt', 'Oort Cloud', 'Sedna', 'Heliopause', 'Scattered Disc'],
@@ -42,7 +53,7 @@ export function facilityName(state, type, region, serial, explicitName) {
     return name;
   }
   const roll = geographyRoll(state.regionSeed, region + '/' + type + '/' + serial);
-  const localPlaces = places[region];
+  const localPlaces = regionPlaces[region];
   const place = localPlaces[roll % localPlaces.length];
   const labels = siteLabels[type];
   const label = labels ? labels[(roll >>> 8) % labels.length] : SITE_TYPES[type].name;

@@ -1,34 +1,17 @@
-// The reference game's 365-day declination model.
+import { campaignDate, campaignStamp, utcMinuteOfDay } from '../game/calendar.js';
+
 const RAD = Math.PI / 180;
-const DAYS = 365;
-const calendars = new Map();
 
-function dateLabel(language, day) {
-  if (!calendars.has(language)) {
-    const format = new Intl.DateTimeFormat(language === 'en' ? 'en-GB' : language, {
-      day: 'numeric', month: 'short', timeZone: 'UTC',
-    });
-    calendars.set(language, Array.from({length: DAYS}, (_, d) => format.format(Date.UTC(2001, 0, 1 + d))));
-  }
-  return calendars.get(language)[day];
-}
-
-export function startingDay(seed) {
-  // An independent integer hash selects the calendar without advancing
-  // the campaign's discovery or world-news generators. v1.1 draws 0..365.
-  const calendar = Math.imul(seed ^ 0x91e10da5, 0x9e3779b1) >>> 0;
-  return Math.floor((DAYS + 1) * calendar / 0x100000000) % DAYS;
-}
-
-export function sunAt(hour, minute = 0, firstDay = 0, startUtcMinute = 0, language = 'en') {
-  const elapsed = hour * 60 + minute + startUtcMinute;
-  const day = (firstDay + Math.floor(elapsed / 1440)) % DAYS;
-  const utc = Math.floor(elapsed / 60) % 24;
-  const utcMinute = elapsed % 60;
+export function sunAt(elapsed, language = 'en') {
+  const date = campaignDate(elapsed);
+  const year = date.getUTCFullYear();
+  const first = Date.UTC(year, 0, 1);
+  const length = (Date.UTC(year + 1, 0, 1) - first) / 86_400_000;
+  const day = Math.floor((date.getTime() - first) / 86_400_000);
   return {
-    longitude: 180 - (utc + utcMinute / 60) * 15,
-    latitude: -23.45 * Math.cos((day + 10) * 2 * Math.PI / DAYS),
-    label: dateLabel(language, day) + ' · ' + String(utc).padStart(2, '0') + ':' + String(utcMinute).padStart(2, '0') + ' UTC',
+    longitude: 180 - utcMinuteOfDay(elapsed) / 4,
+    latitude: -23.45 * Math.cos((day + 10) * 2 * Math.PI / length),
+    label: campaignStamp(elapsed, language),
   };
 }
 

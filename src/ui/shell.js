@@ -1,3 +1,4 @@
+import { campaignDay, campaignStamp, dateLabel } from '../game/calendar.js';
 import { UnsupportedCampaignError } from '../persistence.js';
 import { DEFAULT_PREFS, PREF_KEY, QUICK_SLOT, RECOVERY_SLOT, SLOT_PREFIX, listSlots, loadSlot, matchesSlotName, preferences, removeSlot, slotInfo, slotKey, writeSlot } from '../shell-storage.js';
 import { translate, localizeNavigation } from './localization.js';
@@ -24,7 +25,7 @@ const escape = value => String(value).replace(/[&<>"']/g, ch => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
 })[ch]);
 
-export function initShell({ getState, pause, setRate, restore, restartUnsupported, notify, onNew, onImport, onExport, onStart, welcome, canOpen = () => true }) {
+export function initShell({ getState, pause, setRate, restore, restartUnsupported, notify, onNew, onSandbox, onImport, onExport, onStart, welcome, canOpen = () => true }) {
   let storage;
   try { storage = window.localStorage; } catch { /* Private or restricted contexts can still play. */ }
   let prefs = preferences(storage);
@@ -45,7 +46,7 @@ export function initShell({ getState, pause, setRate, restore, restartUnsupporte
   const status = dialog.querySelector('.shell-notice');
   bindSoundtrackControls(body, audio.campaignMusic, t, say);
   let page = null;
-  let fromHub = false;
+  const pageTrail = [];
   const practiceResults = new Map();
   let practiceRequest = null;
   let returnFocus = null;
@@ -59,7 +60,7 @@ export function initShell({ getState, pause, setRate, restore, restartUnsupporte
   let fullscreenAtOpen = false;
 
   const button = (action, label, style = '') => `<button type="button" class="${style}" data-shell-action="${action}">${t(label)}</button>`;
-  const prettyTime = minute => `${t('Day')} ${Math.floor(minute / 1440) + 1} · ${String(Math.floor(minute / 60) % 24).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}`;
+  const prettyTime = minute => campaignStamp(minute, prefs.language);
   function choice(value, current, label) {
     return `<option value="${value}" ${value === current ? 'selected' : ''}>${t(label)}</option>`;
   }
@@ -68,7 +69,7 @@ export function initShell({ getState, pause, setRate, restore, restartUnsupporte
   }
   function volume(key, label) {
     return `<label class="shell-slider">${t(label)} <output for="shell-${key}">${prefs[key]}%</output>
-      <input id="shell-${key}" type="range" data-pref="${key}" min="0" max="100" value="${prefs[key]}"></label>`;
+      <input id="shell-${key}" type="range" data-pref="${key}" min="0" max="100" value="${prefs[key]}" style="--position: ${prefs[key]}%"></label>`;
   }
   function applyPreferences() {
     const root = document.documentElement;
@@ -310,6 +311,7 @@ export function initShell({ getState, pause, setRate, restore, restartUnsupporte
       <a href="https://github.com/singularity/singularity" target="_blank" rel="noopener">${t('Original inspiration')} · Endgame: Singularity</a>
       (Evil Mr Henry &amp; Phil Bordelon)</p>
       <p>No Fixed Host · magnux · <a href="https://phaser.io" target="_blank" rel="noopener">Phaser</a></p>
+      <div class="shell-actions shell-about-tools">${button('tester','Minigame tester') + button('sandbox','Developer sandbox')}</div>
       <h3>${t('Keyboard shortcuts')}</h3><dl class="shell-shortcuts">${shortcuts.map(([key, ...actions])=>`<div><dt><kbd>${key.replace(/Shift|Enter|Esc/g, t)}</kbd></dt><dd>${actions.map(t).join(' / ')}</dd></div>`).join('')}</dl>`;
   }
   function render() {
@@ -320,14 +322,14 @@ export function initShell({ getState, pause, setRate, restore, restartUnsupporte
     dialog.toggleAttribute('data-welcome', Boolean(welcome));
     const closeButton = dialog.querySelector('.shell-head button');
     closeButton.hidden = Boolean(welcome && page === 'title');
-    closeButton.textContent = t(welcome && fromHub ? 'Back' : 'Close');
+    closeButton.dataset.shellAction = pageTrail.length ? 'back' : 'close';
+    closeButton.textContent = t(pageTrail.length ? 'Back' : 'Close');
     status.textContent = '';
     body.innerHTML = { title:titlePage, tester:testerPage, saves:savesPage, options:optionsPage, about:aboutPage }[page]();
-    if (fromHub && !welcome) body.insertAdjacentHTML('beforeend', '<div class="shell-back">' + button('title','Back') + '</div>');
     if (page === 'saves') { updateSlots(); renderConfirmation(false); }
     if (page === 'options') updatePreviewControl();
   }
-  function open(screen, origin = document.activeElement) {
+  function open(screen, origin = document.activeElement, goingBack = false) {
     if (!Object.hasOwn(screens, screen)) return false;
     const previousPage = dialog.open ? page : null;
     if (!dialog.open) {
@@ -343,18 +345,24 @@ export function initShell({ getState, pause, setRate, restore, restartUnsupporte
       optionsDraft = {original: structuredClone(prefs), edits: new Map()};
       fullscreenAtOpen = Boolean(document.fullscreenElement);
     }
-    fromHub = dialog.open && screen !== 'title' && (page === 'title' || fromHub);
+    if (!previousPage) pageTrail.length = 0;
+    else if (!goingBack && page !== screen) pageTrail.push(page);
     page = screen; pending = null; search = ''; nameInput = lastSaveSeed === getState().regionSeed && lastSaveName
-      ? lastSaveName : prettyTime(getState().hour * 60).split(' · ')[0];
+      ? lastSaveName : dateLabel(getState().hour * 60 + getState().minute, prefs.language);
     selectedSlot = '';
     render();
     if (!dialog.open) dialog.showModal();
+    dialog.scrollTop = 0;
     if (page === 'tester') body.querySelector('[data-minigame]')?.focus();
-    if (page === 'title') {
+    else if (page === 'title' || goingBack) {
       const action = previousPage || (welcome ? 'start' : 'close');
       body.querySelector(`[data-shell-action="${action}"]`)?.focus({ preventScroll: true });
-    }
+    } else if (previousPage) dialog.querySelector('.shell-head button').focus({preventScroll: true});
     return true;
+  }
+  function back() {
+    if (pageTrail.length) open(pageTrail.pop(), undefined, true);
+    else close();
   }
   function close() {
     if (page === 'options') acceptOptions();
@@ -430,9 +438,9 @@ export function initShell({ getState, pause, setRate, restore, restartUnsupporte
     if (pending) { event.preventDefault(); const trigger = pending.trigger; pending = null; renderConfirmation(false); trigger?.focus(); }
     else if (page === 'options') {
       event.preventDefault();
-      cancelOptions().then(() => fromHub ? open('title') : close());
+      cancelOptions().then(back);
     }
-    else if (fromHub) { event.preventDefault(); open('title'); }
+    else if (pageTrail.length) { event.preventDefault(); back(); }
     else if (welcome) event.preventDefault();
   });
   dialog.addEventListener('close', () => {
@@ -500,6 +508,7 @@ export function initShell({ getState, pause, setRate, restore, restartUnsupporte
     if (el.id === 'shell-slot-name') nameInput = el.value;
     if (el.id === 'shell-slot-filter') { search = el.value; updateSlots(); }
     if (el.type === 'range') {
+      el.style.setProperty('--position', el.value + '%');
       dialog.querySelector('output[for="' + el.id + '"]').textContent = el.value + '%';
       audio.apply({...prefs, [el.dataset.pref]: Number(el.value)});
     }
@@ -521,14 +530,15 @@ export function initShell({ getState, pause, setRate, restore, restartUnsupporte
       else if (act === 'accept-options' || act === 'cancel-options') {
         if (act === 'cancel-options') await cancelOptions();
         else acceptOptions();
-        if (fromHub) open('title'); else close();
+        back();
       }
       else if (act === 'preview') audio.playCampaignCue('preview');
       else if (act === 'play') await playPractice(trigger);
       else if (act === 'start') { close(); onStart(); }
-      else if (act === 'close' && welcome && fromHub) open('title');
+      else if (act === 'back') back();
       else if (act === 'close') close();
       else if (act === 'new') { close(); onNew(); }
+      else if (act === 'sandbox') { close(); onSandbox(); }
       else if (act === 'import') onImport();
       else if (act === 'export') onExport();
       else if (act === 'fullscreen') await fullscreen();
@@ -597,13 +607,12 @@ export function initShell({ getState, pause, setRate, restore, restartUnsupporte
       say(t(known.includes(message) ? message : 'Could not import this save.'));
     },
     saveRecoveryCheckpoint(campaign) {
-      if (campaign.hour % 72) return;
+      if ((campaignDay(campaign.hour * 60 + campaign.minute) - 1) % 3) return;
       // Capture this midnight before another simulation tick can change the state.
       try {
         writeSlot(storage, RECOVERY_SLOT, 'Automatic checkpoint', campaign, slotInfo(storage, RECOVERY_SLOT)?.revision ?? null, { gameVersion: version });
       } catch (error) { report(error); }
     },
     getPreferences: () => prefs, playCampaignCue: audio.playCampaignCue, setCampaignStatus: audio.setCampaignStatus,
-    playFirstJump: () => playGame(minigames.find(game => game.id === 'first-jump')),
   };
 }

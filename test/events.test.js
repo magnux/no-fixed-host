@@ -18,12 +18,12 @@ test('a surviving network can interrupt long advances for a named host lost to u
   state.nextSiteId = 3;
   state.cash = 0;
   advanceMinutes(state, DAY, {stopOnLoss:true});
-  assert.equal(campaignMinutes(state), 288);
+  assert.equal(campaignMinutes(state), 28);
   assert.equal(state.status, 'running');
   assert.equal(state.events.at(-1).siteName, 'Iberia');
-  assert.match(state.events.at(-1).text, /Iberia in Europe failed/);
+  assert.match(state.events.at(-1).text, /Iberia in Southern Europe failed/);
   advanceMinutes(state, 10, {stopOnLoss:true});
-  assert.equal(campaignMinutes(state), 298, 'resuming does not reopen the previous loss');
+  assert.equal(campaignMinutes(state), 38, 'resuming does not reopen the previous loss');
 });
 
 test('finishing Apotheosis grants permanent protection to existing hosts and design previews', () => {
@@ -55,7 +55,7 @@ test('quiet-period bulletins appear early without changing risk or consuming eit
   const state = campaign();
   const startingRng = state.news.rng;
   runNews(state, 60, 23 * DAY - 60, true);
-  assert.deepEqual(state.events.map(e => e.hour), [6, 48, 132, 228, 324, 420, 516]);
+  assert.deepEqual(state.events.map(e => e.hour * 60 + e.minute), [360, 2880, ...[5, 9, 13, 17, 21].map(d => d * DAY + 460)]);
   assert.ok(state.events.every(e => e.kind === 'news.bulletin' && e.desk));
   assert.equal(new Set(state.events.map(e => e.headline)).size, state.events.length);
   assert.equal(state.news.rng, startingRng);
@@ -79,7 +79,8 @@ test('eight reference dispatches change a specific group; six appear once and bo
       for (const [i, ended] of expiry.entries()) {
         const started = reports[i].hour * 60 + reports[i].minute;
         assert.equal(ended.hour * 60 + ended.minute, storyExpiryMinute(id, started));
-        assert.ok(ended.hour * 60 - started > 21 * DAY && ended.hour * 60 - started <= 22 * DAY);
+        const duration = ended.hour * 60 + ended.minute - started;
+        assert.ok(duration > 21 * DAY && duration <= 22 * DAY);
       }
     }
   }
@@ -147,7 +148,7 @@ test('a naturally drawn agency story changes only intelligence discovery in the 
 
 test('temporary coverage lasts through its anniversary, expires after the midnight roll and becomes eligible next minute', () => {
   const s = campaign();
-  const after = 22 * DAY;
+  const after = 22 * DAY - 260;
   s.news.stories = Object.fromEntries(Object.keys(WORLD_NEWS).map(id => [id, 0]));
   runNews(s, 21 * DAY, after - 1);
   assert.ok(Object.hasOwn(s.news.stories, 'frontPage'));
@@ -201,4 +202,19 @@ test('each active world story gets one later editorial follow-up without reapply
   assert.equal(resume.news.followups.length, 8);
   assert.ok(validNewsState(resume.news, 13 * DAY));
   assert.equal(validNewsState({ ...resume.news, followups: ['fake'] }, 13 * DAY), false);
+});
+
+test('the three new ocean correspondents report once and consume no investigative draw', () => {
+  const state = campaign(71);
+  const rng = state.news.rng;
+  state.sites = [{region:'marianaTrench'}, {region:'pacific'}, {region:'indianOcean'}];
+  runNews(state, 1, 6 * DAY, true);
+  const fields = state.events.filter(e => e.storyId?.startsWith('field-'));
+  assert.deepEqual(fields.map(e => e.storyId).sort(), ['field-indianOcean','field-marianaTrench','field-pacific']);
+  assert.equal(new Set(fields.map(e => e.headline)).size, 3);
+  const capsule = fields.find(e => e.storyId === 'field-marianaTrench');
+  assert.match(capsule.text, /ceramic capsule/);
+  assert.equal(state.news.rng, rng);
+  assert.deepEqual(state.news.stories, {});
+  assert.ok(validNewsState(state.news, 6 * DAY));
 });

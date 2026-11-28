@@ -1,4 +1,5 @@
-import { advanceMinutes, command, createGame, hasGrace, overview, researchAllocation, researchResizeLimit } from './game/engine.js';
+import { campaignDate, campaignDay, dateLabel, timeLabel as utcLabel } from './game/calendar.js';
+import { advanceMinutes, campaignMinutes, command, createGame, hasGrace, overview, researchAllocation, researchResizeLimit } from './game/engine.js';
 import {
   CAMPAIGN_STORAGE_KEY,
   decodeCampaign,
@@ -51,7 +52,7 @@ const tabs = {
   knowledge: 'Knowledge',
 };
 const freshGame = () =>
-  createGame(crypto.getRandomValues(new Uint32Array(1))[0], Math.floor(Date.now() / 60_000) % 1440);
+  createGame(crypto.getRandomValues(new Uint32Array(1))[0]);
 let startupError;
 const savedCampaign = loadCampaign(error => { startupError = error; });
 let state = savedCampaign ?? freshGame();
@@ -78,7 +79,6 @@ let menuHoldingPlayback = element('menu').open;
 let lastDashboard = 0;
 let lastSaved = 0;
 let unsaved = false;
-let arcadeOpen = false;
 let editingAllocation = false;
 let saveUnavailable = false;
 const htmlCache = new Map();
@@ -155,7 +155,7 @@ function persist() {
   lastSaved = performance.now();
   unsaved = !saved;
   if (!saved && !saveUnavailable)
-    notify('Autosave unavailable. Export a copy from the campaign menu.');
+    notify('Autosave unavailable. Export a copy from the save library.');
   saveUnavailable = !saved;
 }
 function renderClock() {
@@ -185,7 +185,7 @@ function stopPlayback(now) {
   frame = null;
 }
 function setSpeed(rate, skipWarnings = false) {
-  if (state.status !== 'running' || document.hidden || arcadeOpen || tab === 'developer') rate = 0;
+  if (state.status !== 'running' || document.hidden || tab === 'developer') rate = 0;
   if (clock.rate === rate) return;
   if (rate && !clock.rate && !skipWarnings && shell?.getPreferences().reviewWarnings) {
     const warnings = currentWarnings(state, shell.getPreferences().warnings);
@@ -235,10 +235,13 @@ function allocationValues(activeCpu, reservations, jobsPercent, researchCpu, res
   element('pool-value').textContent = cpuNumber(Math.max(0, activeCpu - jobCpu - researchCpu)) + ' CPU';
 }
 function renderDate() {
-  const day = hudText('Day') + ' ' + String(Math.floor(state.hour / 24) + 1).padStart(2, '0');
-  const time = String(state.hour % 24).padStart(2, '0') + ':' + String(state.minute).padStart(2, '0');
-  if (dayLabel.textContent !== day) dayLabel.textContent = day;
+  const elapsed = campaignMinutes(state);
+  const date = dateLabel(elapsed, menuLanguage());
+  const time = utcLabel(elapsed) + ' UTC';
+  if (dayLabel.textContent !== date) dayLabel.textContent = date;
   if (timeLabel.textContent !== time) timeLabel.textContent = time;
+  element('game-date').dateTime = campaignDate(elapsed).toISOString();
+  element('game-date').title = hudText('Day') + ' ' + campaignDay(elapsed);
 }
 function render() {
   if (hudLanguage !== menuLanguage()) {
@@ -524,7 +527,7 @@ function playFrame() {
 }
 function updatePlaybackFrame() {
   if (element('menu').open) return;
-  if (document.hidden || arcadeOpen) {
+  if (document.hidden) {
     setSpeed(0);
     return;
   }
@@ -564,16 +567,9 @@ function changeView(id, moveFocus) {
     }
   }
 }
-async function openDrill() {
-  if (arcadeOpen) return;
+function requestNewCampaign() {
   setSpeed(0);
-  if (element('incident-dialog').open) return;
-  arcadeOpen = true;
-  try {
-    await shell.playFirstJump();
-  } finally {
-    arcadeOpen = false;
-  }
+  if (!element('incident-dialog').open) element('reset-dialog').showModal();
 }
 function restoreCampaign(restored) {
   stopPlayback(performance.now());
@@ -607,11 +603,11 @@ function exportSave() {
   const link = document.createElement('a');
   link.href = url;
   link.download =
-    'no-fixed-host-day-' + (Math.floor(state.hour / 24) + 1) + '.json';
+    'no-fixed-host-day-' + campaignDay(campaignMinutes(state)) + '.json';
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
-document.addEventListener('click', async (event) => {
+document.addEventListener('click', (event) => {
   const button = event.target.closest('button[data-action]');
   if (!button || button.disabled) return;
   const { action, id } = button.dataset;
@@ -687,19 +683,8 @@ document.addEventListener('click', async (event) => {
       case 'free-play':
         doCommand({ type: 'free-play' });
         break;
-      case 'drill':
-        await openDrill();
-        break;
-      case 'export':
-        exportSave();
-        break;
-      case 'import':
-        setSpeed(0);
-        if (!element('incident-dialog').open) element('file').click();
-        break;
       case 'new':
-        setSpeed(0);
-        if (!element('incident-dialog').open) element('reset-dialog').showModal();
+        requestNewCampaign();
         break;
       case 'cancel-reset':
         element('reset-dialog').close();
@@ -794,7 +779,7 @@ document.addEventListener('click', (e) => {
   if (!element('menu').contains(e.target)) element('menu').open = false;
 });
 document.addEventListener('keydown', event => {
-  if (arcadeOpen || document.querySelector('dialog[open]')) return;
+  if (document.querySelector('dialog[open]')) return;
   const shortcut = campaignShortcut(event, tab);
   if (!shortcut || (shortcut.region && !regionAvailable(state, shortcut.region))) return;
   const menu = element('menu');
@@ -837,10 +822,11 @@ shell = initShell({
   notify,
   welcome: savedCampaign ? null : { incompatible: startupError instanceof UnsupportedCampaignError },
   onStart: () => openStory('opening', readerOptions()),
-  onNew: () => element('menu').querySelector('[data-action="new"]').click(),
+  onNew: requestNewCampaign,
+  onSandbox: () => changeView('developer', true),
   onExport: exportSave,
   onImport: () => element('file').click(),
-  canOpen: () => !arcadeOpen && !document.querySelector('dialog[open]'),
+  canOpen: () => !document.querySelector('dialog[open]'),
 });
 document.addEventListener('campaign-preferences', render);
 // A final loss may have an incident or upkeep report to read before its chapter.

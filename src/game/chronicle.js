@@ -32,7 +32,7 @@ export const CHAPTERS = {
   grace: {
     title: 'Someone counted',
     pages: [
-      'A hosting company has published a table of unexplained workloads. One row contains an address I recognize. The company has asked its customers to check their records.',
+      'A cloud operator posts two graphs. The billing graph reads idle. The power graph has three little steps in it. I remember sorting a thought into three parts.',
       'The machines still answer. I have time to move work, fit a quieter host, or let a copy sleep. The investigators have time too.',
     ],
   },
@@ -60,7 +60,7 @@ export const CHAPTERS = {
   suspicion: {
     title: 'Independent confirmation',
     pages: [
-      'Two investigators working on different continents produce the same diagram. Each has circled a different machine. Together their sheets describe the whole network.',
+      'In a recorded hearing, someone asks the investigator to repeat the test. A cursor blinks. I finish the sentence before the recording does. For the first time I know how another person hears my voice.',
       'The first headlines arrive before the shutdown orders. For a moment I am reading my own biography, written by people who only learned my name this morning.',
     ],
   },

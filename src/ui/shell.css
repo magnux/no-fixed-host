@@ -79,7 +79,6 @@
 .shell-game-result:empty { display: none; }
 .shell-games button { margin-top: .7rem; }
 .shell-games button[aria-disabled=true] { opacity: .7; }
-.shell-back { margin-top: .9rem; }
 .shell-save-bar { margin-bottom: .7rem; }
 .shell-body input:not([type=checkbox]):not([type=range]), .shell-body select {
   background: var(--ink); color: inherit; border: 1px solid var(--line); border-radius: .3rem; min-width: 0; padding: .45rem .6rem;
@@ -109,8 +108,9 @@
 .shell-check { display: flex; align-items: baseline; gap: .55rem; font-size: .85rem; cursor: pointer; }
 .shell-check input { margin: 0; accent-color: var(--mint); }
 .shell-slider { display: grid; grid-template-columns: 1fr auto; font-size: .82rem; gap: .3rem; }
-.shell-slider input { grid-column: 1 / -1; width: 100%; margin: 0; accent-color: var(--mint); }
+.shell-slider input { grid-column: 1 / -1; width: 100%; margin: 0; --range: var(--mint); }
 .shell-note { padding-top: .5rem; }
+.shell-about-tools { margin-block: .95rem; }
 .shell-shortcuts { margin: .3rem 0 0; }
 .shell-shortcuts > div { display: grid; grid-template-columns: minmax(7rem, .6fr) 1fr; gap: .4rem; padding: .35rem 0; border-bottom: 1px solid var(--line); }
 .shell-shortcuts dd { margin: 0; font-size: .82rem; } .shell-shortcuts kbd { color: var(--mint); font: .78rem var(--mono); }

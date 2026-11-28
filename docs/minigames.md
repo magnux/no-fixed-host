@@ -1,6 +1,6 @@
 # Minigames in the campaign
 
-Open **Campaign menu → Minigame tester** or enter from the title screen. All 14 games are playable here. You can go straight to the genre you want to try, retry a run, or leave early. Results belong to this playtest session. The campaign clock stays paused and campaign encounters and rewards are deferred until after player feedback.
+Open **Campaign menu → About → Minigame tester** or enter from the title screen. All 14 games are playable here. You can go straight to the genre you want to try, retry a run, or leave early. Results belong to this playtest session. The campaign clock stays paused and campaign encounters and rewards are deferred until after player feedback.
 
 ## Soundtrack
 

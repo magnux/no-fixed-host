@@ -21,8 +21,8 @@ const spanish = {
   "Continue": "Continuar",
   "Start a new campaign?": "¿Iniciar una nueva campaña?",
   "Keep playing": "Seguir jugando",
-  "Your current autosave will be replaced. You can export a copy from the campaign menu.": "Se sustituirá el guardado automático actual. Puedes exportar una copia desde el menú de campaña.",
-  "Autosave unavailable. Export a copy from the campaign menu.": "El guardado automático no está disponible. Exporta una copia desde el menú de campaña.",
+  "Your current autosave will be replaced. You can export a copy from the save library.": "Se sustituirá el guardado automático actual. Puedes exportar una copia desde las partidas guardadas.",
+  "Autosave unavailable. Export a copy from the save library.": "El guardado automático no está disponible. Exporta una copia desde las partidas guardadas.",
   "Choose audio files": "Elegir archivos de audio",
   "No files selected": "No se han elegido archivos",
   "Campaign story": "Historia de la campaña",
@@ -89,7 +89,7 @@ const spanish = {
   'Start campaign': 'Iniciar campaña',
   'This save belongs to a different version of No Fixed Host. A fresh campaign has started in version': 'Esta partida pertenece a otra versión de No Fixed Host. Se ha iniciado una campaña nueva en la versión',
   'Resume campaign': 'Continuar campaña', 'New campaign': 'Nueva campaña', 'Start new campaign': 'Iniciar nueva campaña',
-  'Export save': 'Exportar partida', 'Import save': 'Importar partida', 'First Jump drill': 'Primer salto',
+  'Export save': 'Exportar partida', 'Import save': 'Importar partida',
   'Minigame tester': 'Pruebas de minijuegos', 'Play First Jump': 'Jugar a First Jump', 'Back to tester': 'Volver a las pruebas',
   'Turn-based stealth': 'Sigilo por turnos', 'Underwater exploration': 'Exploración submarina',
   'Platformer': 'Plataformas', 'Spatial puzzle': 'Puzle espacial', 'Flight simulator': 'Simulador de vuelo',
@@ -145,8 +145,8 @@ const spanish = {
   'Toggle sound': 'Alternar sonido',
 };
 const spanishVariants = {
-  'es-AR': { 'Run': 'Avanzar', 'Save library': 'Partidas guardadas', 'First Jump drill': 'Práctica de salto' },
-  'es-MX': { 'Run': 'Avanzar', 'Save library': 'Juegos guardados', 'First Jump drill': 'Práctica de salto' },
+  'es-AR': { 'Run': 'Avanzar', 'Save library': 'Partidas guardadas' },
+  'es-MX': { 'Run': 'Avanzar', 'Save library': 'Juegos guardados' },
 };
 export function translate(language, english) {
   const labels = language?.startsWith('es') ? spanish : menus[language];

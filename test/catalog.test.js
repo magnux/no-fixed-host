@@ -5,11 +5,19 @@ import { regionFactors, regionalSpec } from '../src/game/geography.js';
 import { WORK_UNITS } from '../src/game/work-order.js';
 import { facilityIcon } from '../src/ui/facility-icons.js';
 
-test('all original destinations and hardware families are represented', () => {
-  assert.equal(Object.keys(REGIONS).length, 12);
-  assert.equal(Object.values(REGIONS).filter(region => region.terrain === 'urban').length, 6);
+test('the expanded atlas has fourteen starting districts and capsule-only access to the Mariana Trench', () => {
+  assert.equal(Object.keys(REGIONS).length, 23);
+  assert.equal(Object.values(REGIONS).filter(region => region.terrain === 'urban').length, 14);
   assert.equal(Object.keys(SITE_TYPES).filter(id => id !== 'seed').length, 14);
 
+  const options = region => Object.keys(SITE_TYPES).filter(id => SITE_TYPES[id].regions.includes(region));
+  for (const basin of ['atlantic', 'pacific', 'indianOcean']) {
+    assert.deepEqual(options(basin), ['lab', 'largeLab']);
+    assert.ok(TECHS.continuity.regions.includes(basin));
+  }
+  assert.deepEqual(options('marianaTrench'), ['capsule']);
+  assert.deepEqual(REGIONS.marianaTrench.requires, ['autonomousVehicles', 'knowledgePreservation']);
+  assert.ok(!TECHS.continuity.regions.includes('marianaTrench'));
   const counts = { cpu: 0, network: 0, reactor: 0, security: 0 };
   for (const item of Object.values(EQUIPMENT)) {
     assert.ok(Object.hasOwn(counts, item.slot));

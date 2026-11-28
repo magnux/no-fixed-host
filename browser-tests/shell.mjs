@@ -45,7 +45,7 @@ test('named saves and quickload work through the campaign menu and keyboard', as
   await save.click();
   const row = shell.locator('.shell-slots li').filter({ hasText: 'Alpha <relay>' });
   await row.waitFor();
-  assert.match(await row.innerText(), /Day 1 · 00:00.+Format \d/s);
+  assert.match(await row.innerText(), /12 Dec 2026 · 04:20 UTC.+Format \d/s);
   await save.click();
   await shell.getByRole('button', { name: 'Cancel' }).click();
   await save.click();
@@ -57,7 +57,8 @@ test('named saves and quickload work through the campaign menu and keyboard', as
   await row.getByRole('button', { name: 'Delete' }).click();
   await page.keyboard.press('Escape');
   assert.equal(await row.isVisible(), true);
-  await shell.locator('.shell-head button').click();
+  await shell.getByRole('button', {name:'Back', exact:true}).click();
+  await shell.getByRole('button', {name:'Resume campaign'}).click();
   await page.locator('#jobs').focus();
   await page.keyboard.press('2');
   assert.equal(await page.locator('#pause').getAttribute('aria-pressed'), 'true');
@@ -179,8 +180,8 @@ test('checkpoint chooser accepts unordered words, row shortcuts and the last exp
 
 test('the three-day midnight is a selectable recovery point independent from the live autosave', async t => {
   const state = createGame(714);
-  state.hour = 71;
-  state.minute = 59;
+  state.hour = 67;
+  state.minute = 39;
   const context = await browser.newContext();
   t.after(() => context.close());
   const page = await context.newPage();
@@ -193,12 +194,12 @@ test('the three-day midnight is a selectable recovery point independent from the
   const shell = page.locator('#campaign-shell');
   const row = shell.locator('.shell-slots li').filter({hasText:'Automatic checkpoint'});
   await row.waitFor();
-  assert.match(await row.innerText(), /Day 4 · 00:00/);
-  assert.equal(await page.evaluate(key => JSON.parse(localStorage.getItem(key)).data.campaign.hour, RECOVERY_SLOT),72);
+  assert.match(await row.innerText(), /15 Dec 2026 · 00:00 UTC/);
+  assert.equal(await page.evaluate(key => JSON.parse(localStorage.getItem(key)).data.campaign.hour, RECOVERY_SLOT),67);
   await row.getByRole('button',{name:'Load'}).click();
   await shell.locator('.shell-confirm').getByRole('button',{name:'Load'}).click();
   await shell.waitFor({state:'hidden'});
-  assert.equal(await page.evaluate(key => JSON.parse(localStorage.getItem(key)).campaign.minute, CAMPAIGN_STORAGE_KEY),0);
+  assert.equal(await page.evaluate(key => JSON.parse(localStorage.getItem(key)).campaign.minute, CAMPAIGN_STORAGE_KEY),40);
 });
 
 test('system locale initializes the title, atlas and facility catalog in the same language', async t => {
@@ -220,7 +221,7 @@ test('system locale initializes the title, atlas and facility catalog in the sam
   await shell.locator('.shell-notice').filter({hasText:'Choisissez une sauvegarde JSON de No Fixed Host.'}).waitFor();
   await shell.locator('.shell-head button').click();
   const region = page.locator('#world-atlas [data-id="coast"]');
-  assert.match(await region.innerText(), /Amérique du Nord/);
+  assert.match(await region.getAttribute('aria-label'), /Amérique du Nord/i);
   await region.click();
   await page.locator('[data-ref="buildMode"]').click();
   assert.match(await page.locator('.facility-design-name').first().innerText(), /Relais loué|Box de stockage/);
@@ -242,4 +243,66 @@ test('a damaged checkpoint stays visible and can be deleted without losing anoth
   await broken.waitFor({state:'detached'});
   assert.equal(await page.evaluate(key => localStorage.getItem(key), key), null);
   assert.equal(await shell.locator('.shell-slots strong').innerText(), 'Quicksave');
+});
+
+test('campaign menu exposes four destinations and About routes back through the tester', async t => {
+  const page = await fresh(t);
+  const menu = page.locator('#menu');
+  const shell = page.locator('#campaign-shell');
+  await menu.locator('summary').click();
+  assert.deepEqual(await menu.getByRole('button').allTextContents(), ['Title screen', 'Save library', 'Options', 'About']);
+  await menu.getByRole('button', { name: 'About' }).click();
+  await shell.getByRole('button', { name: 'Minigame tester' }).click();
+  assert.equal(await shell.getByRole('button', { name: 'Play First Jump' }).count(), 1);
+  await shell.getByRole('button', { name: 'Back', exact: true }).click();
+  assert.equal(await shell.getByRole('heading', { name: 'About' }).isVisible(), true);
+  await shell.getByRole('button', { name: 'Developer sandbox' }).click();
+  assert.equal(await shell.isVisible(), false);
+  assert.equal(await page.locator('.developer-console').isVisible(), true);
+});
+
+test('volume sliders paint both sides of the thumb at every theme and track keyboard edits', async t => {
+  const page = await fresh(t);
+  await page.keyboard.press('o');
+  const shell = page.locator('#campaign-shell');
+  const volume = shell.locator('[data-pref="musicVolume"]');
+  const meters = async () => {
+    const bitmap = await volume.screenshot();
+    return page.evaluate(async encoded => {
+      const bytes = Uint8Array.from(atob(encoded), char => char.charCodeAt(0));
+      const image = await createImageBitmap(new Blob([bytes], {type:'image/png'}));
+      const context = new OffscreenCanvas(image.width, image.height).getContext('2d');
+      context.drawImage(image, 0, 0);
+      const sample = (x, y) => [...context.getImageData(Math.floor(x), Math.floor(y), 1, 1).data].slice(0, 3);
+      const left = sample(image.width * .25, image.height / 2);
+      const right = sample(image.width * .75, image.height / 2);
+      const panel = sample(image.width * .25, 1);
+      image.close();
+      return {left, right, panel};
+    }, bitmap.toString('base64'));
+  };
+  const closeColor = (a, b) => a.every((channel, index) => Math.abs(channel - b[index]) <= 2);
+  function luminance(rgb) {
+    const linear = rgb.map(n => n / 255).map(n => n <= .04045 ? n / 12.92 : ((n + .055) / 1.055) ** 2.4);
+    return linear[0] * .2126 + linear[1] * .7152 + linear[2] * .0722;
+  }
+  for (const theme of ['night', 'amber', 'contrast']) {
+    await shell.getByLabel('Theme').selectOption(theme);
+    await volume.press('Home');
+    const empty = await meters();
+    assert.ok(closeColor(empty.left, empty.right), theme + ' empty rail');
+    assert.ok((luminance(empty.right) + .05) / (luminance(empty.panel) + .05) >= 3, theme + ' visible rail');
+    await volume.press('End');
+    const full = await meters();
+    assert.ok(closeColor(full.left, full.right), theme + ' filled rail');
+    assert.ok(!closeColor(full.left, empty.left), theme + ' distinct fill');
+    await volume.press('Home');
+    const bounds = await volume.boundingBox();
+    assert.ok(bounds.height >= 24);
+    await volume.click({position:{x:Math.round(bounds.width / 2), y:Math.floor(bounds.height / 2)}});
+    const half = await meters();
+    assert.ok(closeColor(half.left, full.left), theme + ' half-filled rail starts in the active color');
+    assert.ok(closeColor(half.right, empty.right), theme + ' half-filled rail ends in the rail color');
+    assert.match(await shell.locator('output[for="shell-musicVolume"]').innerText(), /^(49|50|51)%$/);
+  }
 });

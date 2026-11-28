@@ -67,3 +67,16 @@ test('native report metadata is localized while player names and unfamiliar expa
     assert.strictEqual(localizedDispatch(event,'pt-BR'),event);
   }
 });
+
+test('opening broadcasts and new remote correspondents follow the language of the journal', () => {
+  for (const storyId of ['skySurvey', 'racks', 'field-orbit', 'field-pacific', 'field-indianOcean', 'field-marianaTrench']) {
+    const entry = { kind:'news.bulletin', storyId, headline:'Original headline', text:'Original report' };
+    for (const language of languages) {
+      const presented = localizedDispatch(entry, language);
+      assert.notEqual(presented.headline, entry.headline, language + ' ' + storyId);
+      assert.notEqual(presented.text, entry.text, language + ' ' + storyId);
+      assert.ok(presented.text.length > 50);
+    }
+    assert.strictEqual(localizedDispatch(entry, 'en'), entry);
+  }
+});

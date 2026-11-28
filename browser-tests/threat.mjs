@@ -61,7 +61,8 @@ test('a live discovery changes the dashboard immediately, survives reload, and r
   assert.equal(await page.locator('html').getAttribute('data-threat'), 'guarded');
   assert.equal(await label.innerText(), priorLabel);
   await page.locator('#menu summary').click();
-  await page.locator('#menu [data-action="new"]').click();
+  await page.locator('#menu [data-shell-open="title"]').click();
+  await page.getByRole('button', {name: 'New campaign', exact: true}).click();
   await page.locator('[data-action="confirm-reset"]').click();
   await page.locator('html[data-threat="protected"]').waitFor();
   assert.match(await label.innerText(), /protected/i);

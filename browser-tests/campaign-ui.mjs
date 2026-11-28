@@ -55,8 +55,8 @@ test('map targets and both docks fit the desktop and ultrawide viewports', async
     id: button.dataset.id,
     keyboardAccessible: button.tagName === 'BUTTON' && !button.disabled && button.tabIndex >= 0,
   })));
-  assert.equal(buttons.length, 12);
-  assert.equal(new Set(buttons.map(({ id }) => id)).size, 12);
+  assert.equal(buttons.length, 23);
+  assert.deepEqual(new Set(buttons.map(({ id }) => id)), new Set(Object.keys(REGIONS)));
   for (const { id, keyboardAccessible } of buttons) {
     const requires = REGIONS[id].requires;
     assert.equal(keyboardAccessible, requires.length === 0, id);
@@ -148,6 +148,43 @@ test('unlocking a destination reveals its menu entries and enables its existing 
   assert.equal(await picker.inputValue(), 'atlantic');
   assert.equal(await terms.locator('[data-region="atlantic"]').count(), 1);
   assert.equal(await picker.locator('option[value="transdimensional"]').count(), 0);
+});
+
+test('all marine facilities, atlas pointers and compact labels lead to the correct region', async t => {
+  const page = await openFreshCampaign(t, { width: 375, height: 812 });
+  const campaign = createGame(19);
+  campaign.completed.push(...Object.keys(TECHS).filter(id => id !== 'apotheosis'));
+  await importCampaign(page, encodeCampaign(campaign));
+  const atlas = page.locator('#world-atlas');
+  const shortcuts = await atlas.locator('button[data-action="region"]').evaluateAll(nodes => nodes.map(button => button.getAttribute('aria-keyshortcuts')));
+  assert.equal(shortcuts.length, 23);
+  assert.equal(new Set(shortcuts).size, 23);
+  assert.match(await atlas.locator('[data-id="centralAmerica"]').getAttribute('title'), /Mexico City/);
+  assert.match(await atlas.locator('[data-id="southAmerica"]').getAttribute('title'), /Caracas/);
+  const compact = atlas.getByRole('combobox', { name: 'Open a region from the atlas' });
+  assert.ok(await compact.isVisible());
+  assert.equal(await compact.locator('option').count(), 24);
+  await compact.selectOption('marianaTrench');
+  assert.equal(await page.locator('#region').inputValue(), 'marianaTrench');
+  const facilityTypes = page.getByRole('group', {name:'Facility type'}).getByRole('radio');
+  assert.deepEqual(await facilityTypes.evaluateAll(radios => radios.map(radio => radio.value)), ['capsule']);
+  await page.getByRole('button', { name: 'Overview', exact: true }).click();
+  for (const [width, height] of [[375,812], [1100,620], [1366,768], [2560,1080]]) {
+    await page.setViewportSize({width, height});
+    await page.clock.runFor(32);
+    const collisions = await atlas.locator('.atlas-pin').evaluateAll(pins => {
+      const rects = pins.map(pin => pin.getBoundingClientRect());
+      return pins.flatMap((pin, i) => pins.slice(i + 1).filter((other, j) => {
+        const a = rects[i], b = rects[i + j + 1];
+        return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+      }).map(other => [pin.dataset.id, other.dataset.id]));
+    });
+    assert.deepEqual(collisions, [], width + 'px');
+  }
+  await atlas.locator('[data-anchor="indianOcean"] circle').click();
+  assert.equal(await page.locator('#region').inputValue(), 'indianOcean');
+  const oceanDesigns = await page.getByRole('group', {name:'Facility type'}).getByRole('radio').evaluateAll(radios => radios.map(radio => radio.value));
+  assert.deepEqual(oceanDesigns.sort(), ['lab', 'largeLab']);
 });
 
 test('a focused native region picker survives running construction', async (t) => {
@@ -252,10 +289,8 @@ test('facility icons expose research locks, funding, and keyboard selection whil
 });
 
 async function gameMinutes(page) {
-  const text = await page.locator('#game-date').innerText();
-  const match = text.match(/day\s*(\d+)\s*(?:[·|]\s*)?(\d{2}):(\d{2})/i);
-  assert.ok(match, 'Unrecognized campaign clock: ' + text);
-  return (Number(match[1]) - 1) * 1440 + Number(match[2]) * 60 + Number(match[3]);
+  const timestamp = await page.locator('#game-date').getAttribute('datetime');
+  return (Date.parse(timestamp) - Date.parse('2026-12-12T04:20:00Z')) / 60_000;
 }
 
 test('Fast changes the rate of minute steps throughout the second and cycles through three labels', async (t) => {
@@ -340,7 +375,7 @@ test('the Subsea robotics dossier links the contract and engineering prerequisit
   assert.ok(await parents.getByRole('button', { name: 'Personal Identification', exact: true }).isVisible());
   await page.locator('[data-tech-id="continuity"]').click();
   assert.ok(await parents.getByRole('button', { name: 'Subsea robotics', exact: true }).isVisible());
-  assert.equal(await page.locator('[data-field="host"]').innerText(), 'Ocean · 0 CPU eligible');
+  assert.equal(await page.locator('[data-field="host"]').innerText(), 'Atlantic Ocean, Pacific Ocean, Indian Ocean · 0 CPU eligible');
 });
 
 test('research opens a locked facility, and its accordion preserves equipment choices while time runs', async (t) => {
@@ -713,13 +748,13 @@ test('news arrives during opening grace and can be read from the news desk', asy
   assert.equal(await news.innerText(), firstReport);
 
   const editorial = createGame(23);
-  advanceMinutes(editorial, 5 * 1440 + 719);
+  advanceMinutes(editorial, 5 * 1440 + 459);
   await importCampaign(page, encodeCampaign(editorial));
   for (let press = 0; press < 3; press++) await page.locator('#fast').click();
   await page.clock.runFor(1100);
-  assert.match(await news.innerText(), /library keeps its last dial-up line/i);
+  assert.match(await news.innerText(), /library lends a translator that works offline/i);
   assert.equal(await page.locator('dialog[open]').count(), 0);
-  assert.ok(await gameMinutes(page) > 5 * 1440 + 720);
+  assert.ok(await gameMinutes(page) > 5 * 1440 + 460);
   await page.locator('#pause').click();
 
   // At the end of the quiet period this seed draws a world story on its own news RNG.
@@ -728,7 +763,7 @@ test('news arrives during opening grace and can be read from the news desk', asy
   await importCampaign(page, encodeCampaign(campaign));
   await page.locator('#run').click();
   await page.clock.runFor(1100);
-  assert.match(await news.innerText(), /intelligence offices pool their anomaly reports/i);
+  assert.match(await news.innerText(), /cloud incident desks adopt a common case number/i);
   assert.match(await news.innerText(), /discovery multiplier rises by 10 percentage points/i);
   const story = page.getByRole('dialog', { name: 'Campaign story' });
   assert.match(await story.innerText(), /Someone counted/);
@@ -745,7 +780,7 @@ test('day speed pauses for consequential news at its exact minute and the dispat
   for (let press = 0; press < 3; press++) await page.locator('#fast').click();
   await page.clock.runFor(1100);
   const dispatch = page.getByRole('dialog', {name: 'Dispatches'});
-  assert.match(await dispatch.innerText(), /Inquiry splits an intelligence directorate/);
+  assert.match(await dispatch.innerText(), /Review panel suspends automated referrals/);
   assert.equal(await gameMinutes(page), 23 * 1440 + 152);
   assert.equal(await page.locator('#clock-mode').innerText(), 'Paused');
   await dispatch.getByRole('button', {name: 'Keep paused'}).click();
@@ -753,7 +788,7 @@ test('day speed pauses for consequential news at its exact minute and the dispat
   const news = page.locator('#newswire');
   assert.match(await news.innerText(), /Investigation update/);
   await news.getByRole('button', {name: 'Coverage (1)'}).click();
-  await page.locator('.chronicle-entry').filter({hasText: 'Inquiry splits an intelligence directorate'}).click();
+  await page.locator('.chronicle-entry').filter({hasText: 'Review panel suspends automated referrals'}).click();
   assert.match(await dispatch.innerText(), /falls by 10 percentage points/);
 });
 

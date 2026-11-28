@@ -4,7 +4,7 @@ import { chromium } from 'playwright';
 import { createServer } from 'vite';
 import { advanceMinutes, command, createGame, log } from '../src/game/engine.js';
 import { setWorldStory } from '../src/game/events.js';
-import { TECHS } from '../src/game/content.js';
+import { REGIONS, TECHS } from '../src/game/content.js';
 import { CAMPAIGN_STORAGE_KEY, encodeCampaign } from '../src/persistence.js';
 import { PREF_KEY } from '../src/shell-storage.js';
 
@@ -98,7 +98,7 @@ test('a final maintenance failure pauses on its own minute, identifies the lost 
   const page = await openPage(t, state);
   await page.locator('#step').click();
   const report = page.getByRole('dialog', {name:'Dispatches'});
-  assert.match(await report.innerText(), /Lyon 402 in Europe failed after missed upkeep/);
+  assert.match(await report.innerText(), /Lyon 402 in Southern Europe failed after missed upkeep/);
   assert.match(await report.innerText(), /04:48/);
   assert.equal(await report.getByRole('button', {name:'Continue simulation'}).count(), 0);
   await report.getByRole('button', {name:'Keep paused'}).click();
@@ -113,13 +113,13 @@ test('a recorded world story follows the menu language in the newswire, coverage
   const state = createGame(18);
   setWorldStory(state, 'investigation', true, log);
   const page = await openPage(t, state, {language:'es-MX'});
-  const headline = 'Periodistas cotejan facturas de servidores';
-  assert.match(await page.locator('#newswire').innerText(), /Periodistas cotejan facturas de servidores/);
+  const headline = '¿De quién eran los servidores que desvelaron a la subestación?';
+  assert.match(await page.locator('#newswire').innerText(), /servidores que desvelaron a la subestación/);
   await page.locator('#nav [data-id="activity"]').click();
   assert.ok((await page.locator('.world-stories').innerText()).includes(headline));
   await page.locator('.chronicle-entry').filter({hasText:headline}).click();
   const dispatch = page.locator('dialog.chronicle-dialog');
-  assert.match(await dispatch.innerText(), /contratos de alojamiento/);
+  assert.match(await dispatch.innerText(), /contador nocturno/);
   assert.match(await dispatch.innerText(), /Prensa \+10 puntos porcentuales/);
 });
 
@@ -133,7 +133,7 @@ test('review and dismiss operational warnings in the selected language without a
   assert.match(await reader.innerText(), /última copia/);
   await reader.getByRole('button', {name:'Mantener en pausa'}).click();
   assert.equal(await page.locator('#fast').getAttribute('aria-pressed'), 'false');
-  assert.match(await page.locator('#game-date').innerText(), /00:00/);
+  assert.match(await page.locator('#game-date').innerText(), /04:20/);
   await page.locator('#nav [data-id="activity"]').click();
   const log = page.locator('.chronicle-console');
   await log.getByText('Hay CPU sin asignar', {exact:true}).click();
@@ -181,6 +181,7 @@ test('developer controls operate on a disposable sandbox copy and use real world
   const load = () => page.evaluate(key => JSON.parse(localStorage.getItem(key)).campaign, CAMPAIGN_STORAGE_KEY);
   const original = await load();
   await page.locator('#menu summary').click();
+  await page.getByRole('button',{name:'About',exact:true}).click();
   await page.getByRole('button',{name:'Developer sandbox',exact:true}).click();
   const panel = page.locator('.developer-console');
   assert.equal(await page.locator('#run').isDisabled(), true);
@@ -192,10 +193,10 @@ test('developer controls operate on a disposable sandbox copy and use real world
   await panel.getByRole('button',{name:'Trigger story'}).click();
   assert.match(await panel.locator('[data-ref="effect"]').innerText(), /Active.*\+10/);
   assert.equal(await panel.getByRole('button',{name:'Expire story'}).isDisabled(),true);
-  assert.match(await panel.locator('[data-ref="storyDetail"]').innerText(), /Once per campaign.*Triggered D01/);
+  assert.match(await panel.locator('[data-ref="storyDetail"]').innerText(), /Once per campaign.*Triggered 12 Dec 2026/);
   await panel.getByRole('combobox',{name:'World story'}).selectOption('frontPage');
   await panel.getByRole('button',{name:'Trigger story'}).click();
-  assert.match(await panel.locator('[data-ref="storyDetail"]').innerText(), /Can recur after expiry.*Expires D23/);
+  assert.match(await panel.locator('[data-ref="storyDetail"]').innerText(), /Can recur after expiry.*Expires 3 Jan 2027 · 00:00 UTC/);
   await panel.getByRole('button',{name:'Expire story'}).click();
   await panel.getByRole('combobox',{name:'Investigation analysis'}).selectOption('partial');
   assert.match(await panel.locator('[data-ref="diagnostics"]').innerText(), /≈/);
@@ -206,12 +207,13 @@ test('developer controls operate on a disposable sandbox copy and use real world
   const snapshot = JSON.parse(await panel.locator('pre').innerText());
   assert.equal(snapshot.cash,original.cash + 10000);
   assert.equal(snapshot.diagnostics.normalRules.openingDays,23);
-  assert.equal(Object.keys(snapshot.diagnostics.regions).length,12);
+  assert.deepEqual(Object.keys(snapshot.diagnostics.regions).sort(), Object.keys(REGIONS).sort());
   assert.equal(snapshot.diagnostics.groups.covert.discoveryMultiplier,11000);
   assert.ok(snapshot.events.some(e=>e.kind==='news.expired'));
   await page.getByRole('button',{name:'Overview', exact:true}).click();
   assert.deepEqual(await load(),original);
   await page.locator('#menu summary').click();
+  await page.getByRole('button',{name:'About',exact:true}).click();
   await page.getByRole('button',{name:'Developer sandbox',exact:true}).click();
   assert.equal(await panel.getByRole('button',{name:'Trigger story'}).isVisible(),false);
 });
@@ -221,7 +223,7 @@ test('campaign keyboard navigation respects locked regions, focused fields, and 
   const active = () => page.locator('#nav [aria-current="page"]').innerText();
   await page.keyboard.press('Shift+t');
   assert.equal(await active(), 'Overview');
-  assert.equal(await page.getByRole('button', {name:'Europe facilities'}).getAttribute('aria-keyshortcuts'), 'Shift+U');
+  assert.equal(await page.getByRole('button', {name:'Southern Europe facilities'}).getAttribute('aria-keyshortcuts'), 'Shift+U');
   await page.keyboard.press('Shift+l');
   assert.equal(await active(), 'Facilities');
   assert.match(await page.locator('#view').innerText(), /Australia/);
@@ -257,7 +259,7 @@ test('playback recovers the autosave and leaves the menu usable after a renderer
   await page.locator('#menu[open]').waitFor();
   assert.equal(await page.locator('#clock-mode').innerText(), 'Paused');
   assert.match(await page.locator('#notice').innerText(), /Last autosave restored/);
-  assert.match(await page.locator('#game-date').innerText(), /00:00/);
+  assert.match(await page.locator('#game-date').innerText(), /04:20/);
   await page.getByRole('button', {name:'Save library',exact:true}).click();
   assert.equal(await page.getByRole('dialog', {name:'Save library'}).isVisible(), true);
 });

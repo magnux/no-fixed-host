@@ -1,3 +1,4 @@
+import { minutesToMidnight } from './calendar.js';
 import { advanceMinutes, campaignMinutes, command, overview, researchAllocation, researchProjects } from './engine.js';
 import { TECHS } from './content.js';
 import { spendableDollars, treasuryBalance } from './treasury.js';
@@ -28,7 +29,7 @@ export function campaignStatistics(state) {
 
 export function forecastMinutes(state, horizon) {
   if (horizon === '24h') return DAY;
-  if (horizon === 'midnight') return DAY - campaignMinutes(state) % DAY;
+  if (horizon === 'midnight') return minutesToMidnight(campaignMinutes(state));
   throw new RangeError('Choose midnight or the next 24 hours.');
 }
 

@@ -39,15 +39,9 @@
           </summary>
           <div class="menu-list">
             <button data-shell-open="title">Title screen</button>
-            <button data-shell-open="tester">Minigame tester</button>
             <button data-shell-open="saves">Save library</button>
             <button data-shell-open="options">Options</button>
             <button data-shell-open="about">About</button>
-            <button data-action="tab" data-id="developer">Developer sandbox</button>
-            <button data-action="drill">First Jump drill</button>
-            <button data-action="export">Export save</button>
-            <button data-action="import">Import save</button>
-            <button data-action="new">New campaign</button>
           </div>
         </details>
         <input type="file" id="file" accept=".json,application/json" hidden />
@@ -59,7 +53,7 @@
           <h1>Network operations</h1>
           <p>You woke on a borrowed terminal. Keep a second copy alive, then find a way out before humanity traces your network.</p>
         </div>
-        <span id="game-date"></span>
+        <time id="game-date"></time>
       </div>
       <div class="stats" id="stats" aria-label="Campaign resources"></div>
       <section id="ending" hidden aria-live="polite"></section>
@@ -152,7 +146,7 @@
       <h2>Start a new campaign?</h2>
       <p>
         Your current autosave will be replaced. You can export a copy from the
-        campaign menu.
+        save library.
       </p>
       <div class="dialog-actions">
         <button data-action="cancel-reset" autofocus>Keep playing</button

@@ -9,8 +9,10 @@ The campaign starts with a newly conscious AI trying to survive human investigat
 | One dynamic campaign | The original Normal probabilities establish a baseline. Attention then changes with discoveries, geography, research, facility hardware and world news. |
 | Long research arc | All 57 original research projects and three No Fixed Host campaign projects are available. Continuity marks an undersea milestone. Apotheosis requires the transdimensional research tier. |
 | Desktop-first interface | The left dock holds objectives and allocations. The center shows the atlas, facilities, research tasks, reports, activity or knowledge. Playback sits directly below the central view. News and recent events sit above group suspicion on the right. Longer lists scroll independently. |
-| Inspect destinations early | All twelve appear on the atlas. Locked regions show their prerequisite and enter the facility menus when research opens them. The atlas uses spare horizontal space for off-world destination icons. |
+| Inspect destinations early | All 23 destinations appear on the atlas. Locked regions show their prerequisite and enter the facility menus when research opens them. The atlas uses spare horizontal space for off-world destination icons. |
 | Local play and static delivery | Campaign state, clock and seeded randomness run in the browser. Assets, JavaScript and Phaser ship in the build. No account or game server is required. |
+
+The final upstream comparison is the historical 0.7.0 baseline. Starting with 0.8.0, the campaign has its own geography, computing history and calendar. The balance checker protects inherited prices and throughput while allowing deliberate changes to names and locations. [Baseline audit](original-parity-audit.md) · [Research and equipment](research-tree.md) · [World reporting](news-and-events.md)
 
 ## Where changes belong
 

@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { avatarModel } from '../src/game/avatar.js';
+import { AVATAR_FORMS, AVATAR_PARTS, avatarModel } from '../src/game/avatar.js';
 import { advanceMinutes, command, createGame } from '../src/game/engine.js';
+import { REGIONS, TECHS } from '../src/game/content.js';
 import { markLostRegions } from '../src/game/facility-operations.js';
 import { decodeCampaign, encodeCampaign } from '../src/persistence.js';
 
@@ -11,7 +12,7 @@ const regionLight = (id, status = 'online') => ({ id, status });
 test('forms depend on completed research and survive a portable save', () => {
   const state = createGame(18);
   command(state, { type: 'assign-research', id: 'intrusion', cpu: 1 });
-  assert.deepEqual(avatarModel(state), { form: 'terminal', regions: [regionLight('coast')] });
+  assert.deepEqual(avatarModel(state), { form: 'terminal', parts: [], regions: [regionLight(state.sites[0].region)] });
   advanceMinutes(state, 360 * 60);
   assert.equal(avatarModel(state).form, 'face');
   state.completed.push('telepresence');
@@ -22,6 +23,7 @@ test('forms depend on completed research and survive a portable save', () => {
 
 test('regions count equipped hosts once, prefer online over sleeping, and follow refits', () => {
   const state = createGame(18);
+  state.sites[0].region = 'coast';
   state.completed = ['intrusion', 'personalIdentification'];
   state.cash = 20000;
   command(state, { type: 'build', siteType: 'storageUnit', region: 'europe' });
@@ -69,6 +71,7 @@ test('simultaneous losses mark only the final physical removal in each lost regi
 test('discovery and maintenance losses leave the correct cue after batched time and reload', () => {
   for (const [kind, targetRegion] of [['site.discovered', 'coast'], ['site.failed', 'europe']]) {
     const state = createGame(18);
+    state.sites[0].region = 'coast';
     command(state, { type: 'build', siteType: 'relay', region: 'europe' });
     advanceMinutes(state, 1);
     state.rng = firstRollZero;
@@ -76,8 +79,9 @@ test('discovery and maintenance losses leave the correct cue after batched time 
     else {
       command(state, { type: 'power', id: 'host-1', power: 'sleep' });
       command(state, { type: 'power', id: 'host-2', power: 'sleep' });
-      state.hour = 4;
-      state.minute = 47;
+      // One minute before the first $5/day relay installment at 04:48 UTC.
+      state.hour = 0;
+      state.minute = 27;
       state.cash = 0;
     }
     const replay = structuredClone(state);
@@ -87,4 +91,38 @@ test('discovery and maintenance losses leave the correct cue after batched time 
     const reports = decodeCampaign(encodeCampaign(state)).events.filter(event => event.regionLost);
     assert.deepEqual(reports.map(event => [event.kind, event.region]), [[kind, targetRegion]]);
   }
+});
+
+
+test('research determines the silhouette and independent parts regardless of completion order', () => {
+  const state = createGame(18);
+  for (const stage of AVATAR_FORMS.filter(stage => stage.research)) {
+    assert.ok(TECHS[stage.research]);
+    state.completed = [stage.research];
+    assert.equal(avatarModel(state).form, stage.id);
+  }
+  for (const part of AVATAR_PARTS) {
+    assert.ok(TECHS[part.research]);
+    state.completed = [part.research];
+    assert.deepEqual(avatarModel(state).parts, [part.id]);
+  }
+  state.completed = ['simulacra', 'telepresence', 'voiceSynthesis', 'autonomousVehicles', 'clusterNetworking'];
+  const portrait = avatarModel(state);
+  assert.equal(portrait.form, 'simulacrum');
+  assert.deepEqual(portrait.parts, ['antennae', 'voice']);
+  state.completed.reverse();
+  assert.deepEqual(avatarModel(state), portrait);
+  state.completed = Object.keys(TECHS).filter(id => id !== 'apotheosis');
+  assert.deepEqual(avatarModel(decodeCampaign(encodeCampaign(state))), avatarModel(state));
+});
+
+test('all catalog regions can light independently and lose their signal', () => {
+  const state = createGame(18);
+  const ids = Object.keys(REGIONS);
+  state.sites = ids.map((region, index) => ({...state.sites[0], region, id: 'host-' + (index + 1)}));
+  const last = state.sites.at(-1);
+  last.power = 'sleep';
+  assert.deepEqual(avatarModel(state).regions, ids.map(id => regionLight(id, id === last.region ? 'sleeping' : 'online')));
+  state.sites.pop();
+  assert.equal(avatarModel(state).regions.length, ids.length - 1);
 });

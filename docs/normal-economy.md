@@ -13,11 +13,24 @@ These are base prices before geography or research bonuses. A CPU-hour is the wo
 | Leased relay | 100 | 100 | 40 | 0 | 0 |
 | Storage unit | 200 | 4,500 | 30 | 0 | 24 |
 | Server processor | 140 | 2,000 | 0 | 0 | 48 |
-| Quantum computer Mk I | 7,000 | 100,000 | 2,400 | 24,000 | 240 |
+| Tensor GPU rack | 7,000 | 100,000 | 2,400 | 24,000 | 240 |
 | Subsea lab | 950 | 2,000,000 | 400 | 48,000 | 240 |
 | Reality bubble | 14,000 | 80,000,000,000 | 6,000 | 144,000,000 | 1,200 |
 
 The browser catalog uses all 13 facility designs, 26 items and 57 original projects at their v1.1 Normal resource requirements. Source cash maps directly to dollars. CPU-days and labor days each convert to 24 hours in their respective columns. Daily CPU upkeep expresses the number of processors a facility needs continuously. [Facilities](https://github.com/singularity/singularity/blob/v1.1/singularity/data/bases.dat) · [Equipment](https://github.com/singularity/singularity/blob/v1.1/singularity/data/items.dat) · [Unit conversions](https://github.com/singularity/singularity/blob/v1.1/singularity/code/buyable.py)
+
+## Accelerator tiers
+
+One CPU is the campaign’s unit of processing capacity. An awake Tensor GPU rack rated at 1,500 CPU can supply 1,500 CPU-hours in a game hour before equipment and regional modifiers. These figures are game balance values.
+
+| Earlier equipment | Current equipment | Required research | Output per unit | Price | Installation work | Assembly |
+| --- | --- | --- | ---: | ---: | ---: | ---: |
+| Quantum computer | Tensor GPU rack | GPU Kernel Design | 1,500 CPU | $100,000 | 24,000 CPU-h | 240 h |
+| Quantum computer Mk II | Photonic tensor engine | Silicon Photonics | 4,000 CPU | $120,000 | 42,000 CPU-h | 240 h |
+| Quantum computer Mk III | Logical-qubit array | Fault-Tolerant Quantum Computing | 10,000 CPU | $150,000 | 84,000 CPU-h | 240 h |
+| Quantum entanglement module | Coherent optical transceiver | Coherent Optical Links | +15% host compute | $75,000 | 0 CPU-h | 480 h |
+
+The three processors inherit the respective earlier models’ costs, output, regional modifiers and research gates. The first accelerates tiled matrix operations, the second performs matrix operations in silicon waveguides, and the third uses error correction to keep a logical qubit available as physical errors accumulate. Research costs and eligibility remain at their existing tiers. [GPU tiling](https://developer.nvidia.com/blog/how-to-write-high-performance-matrix-multiply-in-nvidia-cuda-tile/) · [Integrated photonic processor](https://news.mit.edu/2024/photonic-processor-could-enable-ultrafast-ai-computations-1202) · [Quantum error correction](https://www.ibm.com/quantum/blog/qec-continuum)
 
 ## Opening and expansion
 
