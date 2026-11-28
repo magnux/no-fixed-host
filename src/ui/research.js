@@ -56,6 +56,13 @@ function showDossier(view, id) {
   setText(view.fields.description, localizedResearchText(id, view.language));
   setText(view.fields.price, format.money(tech.cost));
   setText(view.fields.work, format.number(tech.work) + ' CPU-h');
+  // Reserve the wrapped height of each changing counter using the current
+  // topic, language and the same three decimal places as the live formatter.
+  const longestWork = format.number(tech.work + 0.999);
+  const remaining = format.label('Remaining') + ' · ';
+  view.fields.workLeft.dataset.measure = remaining + longestWork + ' CPU-h';
+  view.fields.cashLeft.dataset.measure = remaining + format.money(tech.cost);
+  view.fields.progressText.dataset.measure = longestWork + ' / ' + format.number(tech.work) + ' CPU-h · 100%';
   view.fields.duration.hidden = !tech.hours;
   setText(view.fields.duration.lastElementChild, format.number(tech.hours) + ' h');
   setText(view.fields.guidance, view.language !== 'en' ? format.safety(tech) : tech.regions
@@ -75,8 +82,10 @@ function selectProject(view, id, follow = false) {
   if (follow && !inDirectory(view.state, id, view.funded)) {
     view.fields.unavailable.checked = true;
   }
+  const changed = view.selected !== id;
   view.selected = id;
   refresh(view);
+  if (changed) view.fields.dossier.scrollTop = 0;
   if (follow) {
     view.buttons.get(id).scrollIntoView({ block: 'nearest' });
     view.fields.title.focus({ preventScroll: true });
@@ -119,9 +128,9 @@ function mount(container) {
           <button type="button" class="text-button" data-field="release" hidden data-label="Clear topic assignment"></button>
           <small data-field="feedback" role="status"></small>
         </div>
-        <div class="research-progress" data-field="progress"><progress max="100" aria-label="Research progress"></progress><small data-field="progressText"></small></div>
+        <div class="research-progress" data-field="progress"><progress max="100" aria-label="Research progress"></progress><small data-field="progressText"><span></span></small></div>
         <dl class="research-costs">
-          <div><dt>Funding</dt><dd data-field="price"></dd><dd data-field="cashLeft" hidden></dd></div><div><dt>Work</dt><dd data-field="work"></dd><dd data-field="workLeft" hidden></dd></div>
+          <div><dt>Funding</dt><dd data-field="price"></dd><dd data-field="cashLeft" hidden><span></span></dd></div><div><dt>Work</dt><dd data-field="work"></dd><dd data-field="workLeft" hidden><span></span></dd></div>
           <div data-field="duration"><dt>Minimum time</dt><dd></dd></div><div><dt>Research host</dt><dd data-field="host"></dd></div>
         </dl>
         <details data-field="safetyHelp" hidden><summary data-label="Where can this research run?"></summary><p data-field="guidance"></p></details>
@@ -382,13 +391,13 @@ function refresh(view) {
   if (project) {
     const fraction = researchProgress(project, spec);
     fields.progress.firstElementChild.value = fraction * 100;
-    setText(fields.progressText, format.number(project.work) + ' / ' + format.number(spec.work) + ' CPU-h · ' + Math.floor(100 * fraction) + '%');
+    setText(fields.progressText.firstElementChild, format.number(project.work) + ' / ' + format.number(spec.work) + ' CPU-h · ' + Math.floor(100 * fraction) + '%');
   }
   fields.cashLeft.hidden = fields.workLeft.hidden = !project;
   setText(fields.price, format.money(spec.cost));
   if (project) {
-    setText(fields.cashLeft, format.label('Remaining') + ' · ' + format.money(spec.cost - project.cashPaid));
-    setText(fields.workLeft, format.label('Remaining') + ' · ' + format.number(spec.work - project.work) + ' CPU-h');
+    setText(fields.cashLeft.firstElementChild, format.label('Remaining') + ' · ' + format.money(spec.cost - project.cashPaid));
+    setText(fields.workLeft.firstElementChild, format.label('Remaining') + ' · ' + format.number(spec.work - project.work) + ' CPU-h');
   }
   fields.forecast.hidden = Boolean(project || reason || !limit || !view.onPreviewOrder);
   if (!fields.forecast.hidden) {
@@ -413,7 +422,17 @@ export function renderResearch(container, state, { onCommand, onPreviewOrder }) 
   view.state = state;
   view.onCommand = onCommand;
   view.onPreviewOrder = onPreviewOrder;
+  // A completion can remove a row, unlock several others or select a new
+  // dossier. Readers at the end stay there; readers midway keep native scroll.
+  const pinned = [];
+  if (view.completedCount !== undefined && view.completedCount !== state.completed.length) {
+    for (const pane of [view.fields.directory, view.fields.dossier]) {
+      if (pane.scrollTop > 0 && pane.scrollHeight - pane.clientHeight - pane.scrollTop <= 1) pinned.push(pane);
+    }
+  }
+  view.completedCount = state.completed.length;
   refresh(view);
+  for (const pane of pinned) pane.scrollTop = pane.scrollHeight;
 }
 
 export function focusResearch(container, state, options, id) {

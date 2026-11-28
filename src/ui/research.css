@@ -54,7 +54,33 @@
 .research-funding-note.waiting > :first-child,
 .research-funding-note:not(.waiting) > :last-child { visibility: hidden; }
 .research-progress small { font-variant-numeric: tabular-nums; }
-#view[data-view="research"] { scrollbar-gutter: stable; }
+/* Size changing readings against their longest localized value. The hidden
+   measuring text shares the visible text's grid cell and is never announced. */
+.research-console [data-measure]:not([hidden]) { display: grid; font-variant-numeric: tabular-nums; }
+.research-console [data-measure]::after,
+.research-console [data-measure] > span { grid-area: 1 / 1; }
+.research-console [data-measure]::after { content: attr(data-measure); visibility: hidden; }
+@media (min-width: 65rem) and (min-height: 37rem) {
+  #view[data-view="research"] { display: grid; grid-template-rows: minmax(0, 1fr); overflow: hidden; }
+  #view[data-view="research"] .research-console {
+    display: grid;
+    grid-template-rows: auto fit-content(50%) minmax(0, 1fr);
+  }
+  #view[data-view="research"] .research-toolbar { min-height: 0; overflow-y: auto; }
+  #view[data-view="research"] .research-columns {
+    align-items: stretch;
+    grid-template-rows: minmax(0, 1fr);
+    min-height: 0;
+  }
+  #view[data-view="research"] :is(.research-directory, .research-dossier) {
+    min-height: 0;
+    max-height: none;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-gutter: stable;
+  }
+}
 .research-assignment [role=status] { color: #f3cf87; }
 .research-cpu-controls input[type="range"] { --range: var(--violet); --position: 0%; margin: 0; }
 .research-cpu-controls input:disabled { opacity: .58; cursor: default; }

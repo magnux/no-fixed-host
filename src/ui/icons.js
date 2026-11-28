@@ -25,6 +25,9 @@ const paths = {
   globe:
     '<circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18"/>',
   jump: '<path d="M3 18h6l7-12h5m-5 0v5"/>',
+  sleep: '<path d="M20.8 14.6A9 9 0 0 1 9.4 3.2a9 9 0 1 0 11.4 11.4Z"/>',
+  wake: '<path d="M12 2.5v9m-4.7-7a8.2 8.2 0 1 0 9.4 0"/>',
+  dismantle: '<path d="M3.5 6.5h17m-14.5 0 1 14h10l1-14M9 6.5v-3h6v3M10 10v7m4-7v7"/>',
   play: '<path d="m7 4 13 8-13 8Z"/>',
   pause: '<path d="M8 4v16m8-16v16"/>',
   fast: '<path d="m3 6 8 6-8 6zm10 0 8 6-8 6z"/>',

@@ -186,19 +186,16 @@ function mountFacilities(root) {
           <ul data-ref="hosts" class="facility-hosts" aria-label="Completed hosts"></ul>
           <p data-ref="noHosts" hidden>No completed facilities in this region.</p>
           <div data-ref="inspector" class="facility-inspector" hidden>
-            <div class="facility-summary"><p data-ref="hostSummary"></p>
-              <button type="button" data-ref="power" class="small-btn"></button>
-            </div>
+            <form class="facility-identity" data-ref="hostIdentity">
+              <input type="text" data-ref="rename" aria-label="Host name" maxlength="48" autocomplete="off" required>
+              <button type="submit" data-ref="saveName">Rename</button>
+            </form>
+            <p class="facility-summary" data-ref="hostSummary"></p>
             <small data-ref="localUpkeep"></small>
             <section class="facility-risk" aria-label="Current host risk"><h4>Current daily discovery risk</h4>
               <dl data-ref="localRisk"></dl><small data-ref="localRiskNote"></small></section>
             <div class="facility-site-nav" role="group" aria-label="Browse hosts"><button type="button" data-ref="prev">Previous host</button>
               <button type="button" data-ref="next">Next host</button></div>
-            <details class="facility-identity"><summary>Manage host identity</summary>
-              <label class="facility-name-field">Host name<input type="text" data-ref="rename" maxlength="48" autocomplete="off"></label>
-              <div class="facility-command"><button type="button" data-ref="saveName">Save name</button>
-                <button type="button" data-ref="dismantle">Dismantle host</button><small data-ref="dismantleReason"></small></div>
-            </details>
             <dl data-ref="installed" class="installed-list"></dl>
             <p data-ref="fixed" hidden>This host uses a fixed hardware package.</p>
             <div data-ref="hardware" class="facility-hardware">
@@ -304,8 +301,23 @@ function mountFacilities(root) {
     else session.handlers.onRegion(scope);
   });
   e.hosts.addEventListener('click', event => {
-    const button = event.target.closest('button[data-site-id]');
-    if (button) session.handlers.onSite(button.dataset.siteId === session.expandedId ? null : button.dataset.siteId);
+    const button = event.target.closest('.facility-host-bar button');
+    if (!button || button.disabled) return;
+    const id = button.closest('.facility-host-row').dataset.siteId;
+    switch (button.dataset.hostAction) {
+      case 'power': {
+        const site = session.state.sites.find(host => host.id === id);
+        if (!site) return;
+        const power = site.power === 'sleep' ? 'active' : 'sleep';
+        perform({type: 'power', id, power}, facilityText(power === 'active' ? 'Host awake.' : 'Host asleep.'));
+        break;
+      }
+      case 'dismantle':
+        requestRemoval(id, false);
+        break;
+      default:
+        session.handlers.onSite(id === session.expandedId ? null : id);
+    }
   });
   root.firstElementChild.addEventListener('click', event => {
     const button = event.target.closest('button[data-research-id]');
@@ -362,7 +374,8 @@ function mountFacilities(root) {
     const button = event.target.closest('[data-region]');
     if (button) session.handlers.onRegion(button.dataset.region);
   });
-  e.saveName.addEventListener('click', () => {
+  e.hostIdentity.addEventListener('submit', event => {
+    event.preventDefault();
     if (perform({ type: 'rename-site', id: session.expandedId, name: e.rename.value }, facilityText('Host name saved.'))) {
       e.rename.value = e.rename.value.trim();
     }
@@ -382,6 +395,7 @@ function mountFacilities(root) {
     const name = record.name || catalogLabel(SITE_TYPES[record.type].name);
     setText(e.removalTitle, facilityText(building ? 'Cancel construction of {site}?' : 'Dismantle {site}?', { site: name }));
     setText(e.removalText, building ? facilityText('You will lose the money and work already invested. Future payments stop.') :
+      catalogLabel(REGIONS[record.region].name) + ' · ' + record.id + '. ' +
       facilityText('This permanently removes the host, its hardware and its installation orders.'));
     setText(e.acceptRemoval, building ? facilityText('Cancel construction') : facilityText('Dismantle facility'));
     setText(e.keep, facilityText('Keep facility'));
@@ -389,7 +403,6 @@ function mountFacilities(root) {
     session.pendingAction = { type: building ? 'cancel-build' : 'dismantle', id };
     e.removal.showModal();
   }
-  e.dismantle.addEventListener('click', () => requestRemoval(session.expandedId, false));
   e.queue.addEventListener('click', event => {
     const button = event.target.closest('button');
     if (button?.dataset.cancelId) requestRemoval(button.dataset.cancelId, true);
@@ -415,12 +428,6 @@ function mountFacilities(root) {
     session.pendingAction = null;
     e.removal.close();
     if (action) perform(action, session.confirmation);
-  });
-  e.power.addEventListener('click', () => {
-    const site = session.state.sites.find(host => host.id === session.expandedId);
-    if (!site) return;
-    const power = site.power === 'sleep' ? 'active' : 'sleep';
-    perform({type: 'power', id: site.id, power}, power === 'active' ? facilityText('Host awake.') : facilityText('Host asleep.'));
   });
   sessions.set(root, session);
   return session;
@@ -555,18 +562,12 @@ function updateInspector(session, site, hw) {
     e.rename.dataset.name = name;
     e.rename.dataset.siteId = site.id;
   }
-  const reasonToKeep = removalReason(state, site.id);
-  setText(e.dismantleReason, facilityText(reasonToKeep));
-  e.dismantle.disabled = Boolean(reasonToKeep);
   e.saveName.disabled = state.status !== 'running';
   e.prev.disabled = e.next.disabled = session.hostCount < 2;
   const cpuRefit = hw.offlineSlots.includes('cpu');
   const status = cpuRefit ? facilityText('Processor installation') + ' · 0 CPU ' + facilityText('until complete') : !hw.rawCpu ? facilityText('Offline') + ' · ' + facilityText('Install processors to bring this host online') :
     sleeping ? facilityText('Sleeping') + ' · ' + potential + ' ' + facilityText('Offline').toLocaleLowerCase() : facilityText('Active') + ' · ' + potential;
   setText(e.hostSummary, status + ' · ' + facilityText('Combined daily risk') + ' ' + dossierFormat(menuLanguage()).risk(riskLabel(state, totalRate, 'host')));
-  e.power.disabled = state.status !== 'running' || !hw.rawCpu;
-  setText(e.power, !hw.rawCpu ? facilityText('Offline') : sleeping ? facilityText('Wake') : facilityText('Sleep'));
-  e.power.setAttribute('aria-label', (!hw.rawCpu ? facilityText('Offline') + ' ' : sleeping ? facilityText('Wake') + ' ' : facilityText('Sleep') + ' ') + catalogLabel(SITE_TYPES[site.type].name) + ' ' + site.id);
   for (const cell of e.installed.querySelectorAll('[data-slot]')) {
     const slot = cell.dataset.slot;
     const part = hw.installed[slot];
@@ -661,11 +662,14 @@ function createHostRow(site) {
   const row = document.createElement('li');
   row.className = 'facility-host-row';
   row.dataset.siteId = site.id;
-  row.innerHTML = `<h3><button type="button" class="facility-host-toggle">
+  row.innerHTML = `<div class="facility-host-bar"><h3><button type="button" class="facility-host-toggle">
     <span class="facility-host-mark" aria-hidden="true">${facilityIcon(site.type)}<span class="facility-host-light"></span></span>
     <span class="facility-host-title"><strong></strong><small></small></span>
     <span class="facility-host-state"></span><span class="hardware-rank"></span><span class="facility-chevron" aria-hidden="true">›</span>
-  </button></h3><div class="facility-host-detail" role="region" hidden></div>`;
+  </button></h3>
+    <button type="button" data-host-action="power" class="facility-host-action">${icon('sleep')}${icon('wake')}</button>
+    <button type="button" data-host-action="dismantle" class="facility-host-action" aria-haspopup="dialog">${icon('dismantle')}</button>
+  </div><div class="facility-host-detail" role="region" hidden></div>`;
   const button = row.querySelector('button');
   const panel = row.querySelector('.facility-host-detail');
   button.dataset.siteId = site.id;
@@ -674,7 +678,17 @@ function createHostRow(site) {
   button.setAttribute('aria-controls', panel.id);
   panel.setAttribute('aria-labelledby', button.id);
   row.querySelector('small').textContent = catalogLabel(SITE_TYPES[site.type].name) + ' · ' + catalogLabel(REGIONS[site.region].name) + ' · ' + site.id;
-  return { row, button, panel, title: row.querySelector('strong'), status: row.querySelector('.facility-host-state'), rank: row.querySelector('.hardware-rank') };
+  return { row, button, panel, power: row.querySelector('[data-host-action="power"]'), dismantle: row.querySelector('[data-host-action="dismantle"]'),
+    title: row.querySelector('strong'), status: row.querySelector('.facility-host-state'), rank: row.querySelector('.hardware-rank') };
+}
+
+function updateHostAction(button, label, reason) {
+  button.disabled = Boolean(reason);
+  button.setAttribute('aria-label', label);
+  const description = facilityText(reason);
+  if (description) button.setAttribute('aria-description', description);
+  else button.removeAttribute('aria-description');
+  button.title = description ? label + ' — ' + description : label;
 }
 
 function installRecords(site, statuses) {
@@ -717,6 +731,12 @@ function updateHosts(session, sites) {
     }
     const hw = siteHardware(state, site);
     const sleeping = site.power === 'sleep';
+    const name = entry.title.textContent;
+    entry.power.dataset.mode = sleeping ? 'wake' : 'sleep';
+    const powerReason = state.status !== 'running' ? 'The campaign has ended.' :
+      !hw.rawCpu ? 'Install processors before switching facility power.' : '';
+    updateHostAction(entry.power, facilityText(sleeping ? 'Wake {site}' : 'Sleep {site}', {site: name}), powerReason);
+    updateHostAction(entry.dismantle, facilityText('Dismantle {site}', {site: name}), removalReason(state, site.id));
     showRank(entry.rank, hostRank(site), hw.fixedProcessor ? facilityText('Fixed hardware') : facilityText('Average installed slot rank, including empty slots'));
     const cpuRefit = hw.offlineSlots.includes('cpu');
     let occupancy = sleeping ? facilityText('Asleep') : facilityText('Online');
@@ -735,7 +755,6 @@ function updateHosts(session, sites) {
       // native inputs, their focus, and the expanded hardware details intact.
       if (e.inspector.parentElement !== entry.panel) {
         e.count.value = '1';
-        for (const detail of e.inspector.querySelectorAll('details')) detail.open = false;
         entry.panel.append(e.inspector);
       }
       updateInspector(session, site, hw);

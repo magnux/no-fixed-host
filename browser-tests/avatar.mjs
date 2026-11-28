@@ -84,14 +84,16 @@ test('two hosts in one region share their light, which dims only when both sleep
   assert.equal(await portrait.locator('.avatar-links > .avatar-link').count(), 1);
 
   await page.locator('#nav [data-id="facilities"]').click();
-  await page.locator('#facility-toggle-host-2').click();
-  await page.locator('[data-ref="power"]').click();
+  const secondHost = page.locator('.facility-host-row[data-site-id="host-2"]');
+  const thirdHost = page.locator('.facility-host-row[data-site-id="host-3"]');
+  const collapsed = await secondHost.locator('.facility-host-toggle').getAttribute('aria-expanded');
+  await secondHost.locator('[data-host-action="power"]').press('Enter');
+  assert.equal(await secondHost.locator('.facility-host-toggle').getAttribute('aria-expanded'), collapsed);
   assert.equal(await europe.getAttribute('data-status'), 'online');
-  await page.locator('#facility-toggle-host-3').click();
-  await page.locator('[data-ref="power"]').click();
+  await thirdHost.locator('[data-host-action="power"]').click();
   assert.equal(await europe.getAttribute('data-status'), 'sleeping');
   assert.equal(await portrait.getAttribute('data-reaction'), null);
-  await page.locator('[data-ref="power"]').click();
+  await thirdHost.locator('[data-host-action="power"]').click();
   assert.equal(await europe.getAttribute('data-status'), 'online');
   assert.equal(await portrait.getAttribute('data-reaction'), null);
 });

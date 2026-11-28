@@ -222,6 +222,8 @@ test('system locale initializes the title, atlas and facility catalog in the sam
   await shell.locator('.shell-head button').click();
   const region = page.locator('#world-atlas [data-id="coast"]');
   assert.match(await region.getAttribute('aria-label'), /Amérique du Nord/i);
+  await region.hover();
+  assert.match(await page.locator('.atlas-hint strong').innerText(), /Amérique du Nord/i);
   await region.click();
   await page.locator('[data-ref="buildMode"]').click();
   assert.match(await page.locator('.facility-design-name').first().innerText(), /Relais loué|Box de stockage/);

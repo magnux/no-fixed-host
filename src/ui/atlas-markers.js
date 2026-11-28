@@ -1,0 +1,22 @@
+// Representative longitude and latitude on the equirectangular chart.
+export const earthMarkers = {
+  coast: [-121, 47],
+  northAmericaEast: [-76, 43],
+  centralAmerica: [-91, 18],
+  southAmerica: [-61, -17],
+  europeNorth: [15, 62],
+  europe: [8, 42],
+  europeEast: [46, 57],
+  africa: [3, 26],
+  africaSouth: [26, -19],
+  middleEast: [46, 30],
+  asiaNorth: [104, 43],
+  asiaSouth: [78, 21],
+  asia: [137, 37],
+  australia: [134, -25],
+  antarctic: [24, -72],
+  atlantic: [-35, 6],
+  pacific: [-141, -9],
+  indianOcean: [78, -31],
+  marianaTrench: [142.5, 11.3],
+};

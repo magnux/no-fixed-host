@@ -5,7 +5,7 @@ import { REGIONS, TECHS } from '../game/content.js';
 import { siteHardware } from '../game/equipment.js';
 import { regionPlaces } from '../game/facility-operations.js';
 import { icon } from './icons.js';
-import { earthMarkers, positionAtlasLabels } from './atlas-labels.js';
+import { earthMarkers } from './atlas-markers.js';
 import { regionKeys } from './campaign-shortcuts.js';
 import { createSunlightRenderer, sunAt } from './solar.js';
 import coastlines from './world.svg';
@@ -27,22 +27,34 @@ function destination(id) {
   const label = menuLanguage() === 'en' ? name + ' facilities' : catalogLabel('Facilities') + ' · ' + name;
   const attributes = 'type="button" data-action="region" data-id="' + id + '" aria-label="' + label + '"';
   if (earthMarkers[id]) {
-    return '<button ' + attributes + ' class="atlas-pin" data-terrain="' + REGIONS[id].terrain + '">' +
-      '<span class="atlas-name">' + lock + '<span class="atlas-long">' + name + '</span><span class="atlas-code">' +
-      earthMarkers[id][2] + '</span>' + counts + '</span></button>';
+    const [lon, lat] = earthMarkers[id];
+    const position = 'left:' + (lon + 180) / 3.6 + '%;top:' + (90 - lat) / 1.8 + '%';
+    return '<button ' + attributes + ' class="atlas-pin" style="' + position + '" data-terrain="' +
+      REGIONS[id].terrain + '"><span class="atlas-dot" aria-hidden="true"></span></button>';
   }
   return '<button ' + attributes + ' class="atlas-outpost">' +
     '<svg class="atlas-glyph" aria-hidden="true" viewBox="0 0 48 48">' + orbitalGlyphs[id] + '</svg>' +
     '<span class="atlas-outpost-name">' + lock + name + counts + '</span></button>';
 }
 
-function geographicAnchor(id) {
-  const [lon, lat] = earthMarkers[id];
-  const x = (lon + 180) / 3.6 + '%';
-  const y = (90 - lat) / 1.8 + '%';
-  return '<g data-anchor="' + id + '" data-terrain="' + REGIONS[id].terrain + '">' +
-    '<line x1="' + x + '" y1="' + y + '" x2="' + x + '" y2="' + y + '"/>' +
-    '<circle cx="' + x + '" cy="' + y + '" r="3.3"/></g>';
+// One hint follows pointer or keyboard focus. Its container is the map itself,
+// so even the Pacific and Antarctic labels stay inside the visible coastline panel.
+function showHint(view) {
+  const button = view.hovered || view.focused;
+  const hint = view.hint;
+  hint.hidden = !button;
+  if (!button) return;
+  view.hintName.textContent = catalogLabel(REGIONS[button.dataset.id].name);
+  view.hintDetail.textContent = button.dataset.detail;
+  view.hintPlaces.textContent = regionPlaces[button.dataset.id]?.join(', ') || '';
+  const map = view.chart.getBoundingClientRect();
+  const pin = button.getBoundingClientRect();
+  const center = (pin.left + pin.right) / 2 - map.left;
+  const above = pin.top - map.top - hint.offsetHeight - 3;
+  const left = Math.max(4, Math.min(center - hint.offsetWidth / 2, map.width - hint.offsetWidth - 4));
+  const top = above >= 4 ? above : Math.min(pin.bottom - map.top + 3, map.height - hint.offsetHeight - 4);
+  hint.style.left = Math.round(left) + 'px';
+  hint.style.top = Math.max(4, Math.round(top)) + 'px';
 }
 
 const views = new WeakMap();
@@ -58,20 +70,21 @@ function mount(container) {
     <div class="atlas-planet"><div class="atlas-geography">
       <img src="${coastlines}" alt="" draggable="false">
       <canvas width="480" height="240" aria-hidden="true"></canvas>
-      <div class="atlas-label-layer"><select class="atlas-picker" aria-label="${openRegion}"><option value="">${catalogLabel('Regions')}</option></select>
-      <svg class="atlas-leaders" aria-hidden="true">${terrestrial.map(geographicAnchor).join('')}</svg>
+      <div class="atlas-pins">
       ${terrestrial.map(destination).join('')}
+      <div class="atlas-hint" aria-hidden="true" hidden><strong></strong><span></span><small></small></div>
     </div></div></div>
     <div class="atlas-horizon" role="group" aria-label="${catalogLabel('Off-world sites')}"><span class="atlas-caption">${catalogLabel('Off-world sites')}</span>
       <div class="atlas-outposts">${regions.filter(id => !earthMarkers[id]).map(destination).join('')}</div>
     </div>
     </div></div>
-    <footer class="atlas-key"><span><i class="atlas-status-light online"></i>Host online</span>
+    <footer class="atlas-key"><select class="atlas-picker" aria-label="${openRegion}"><option value="">${catalogLabel('Regions')}</option></select>
+      <span><i class="atlas-status-light online"></i>Host online</span>
       <span><i class="atlas-status-light building"></i>Under construction</span>
       <span><i class="atlas-status-light asleep"></i>Asleep</span>
       <span class="atlas-pending-key" hidden><i class="atlas-status-light pending"></i>Awaiting CPU</span>
-      <span><i class="atlas-status-light"></i>Unoccupied</span><span>Numbers count hosts and builds</span>
-      <span data-trace-key="latest" hidden>◆ Latest discovery</span><span data-trace-key="previous" hidden>◇ Previous discovery</span></footer>
+      <span><i class="atlas-status-light"></i>Unoccupied</span><span><i class="atlas-status-light locked"></i>${catalogLabel('Locked')}</span>
+      <span data-trace-key="latest" hidden>Latest discovery</span><span data-trace-key="previous" hidden>Previous discovery</span></footer>
   </section>`;
   const atlas = container.querySelector('#world-atlas');
   localizeFacilityMarkup(atlas.querySelector('.atlas-key'));
@@ -85,27 +98,59 @@ function mount(container) {
     buttons: [...atlas.querySelectorAll('button[data-id]')],
     minute: null,
   };
-  const chart = atlas.querySelector('.atlas-label-layer');
+  view.chart = atlas.querySelector('.atlas-pins');
+  view.hint = view.chart.querySelector('.atlas-hint');
+  view.hintName = view.hint.querySelector('strong');
+  view.hintDetail = view.hint.querySelector('span');
+  view.hintPlaces = view.hint.querySelector('small');
+  for (const button of view.chart.querySelectorAll('.atlas-pin')) {
+    button.addEventListener('pointerenter', event => {
+      if (event.pointerType === 'touch') return;
+      view.hovered = button;
+      showHint(view);
+    });
+    button.addEventListener('pointerleave', () => {
+      if (view.hovered === button) view.hovered = null;
+      showHint(view);
+    });
+    button.addEventListener('focus', () => {
+      view.focused = button.matches(':focus-visible') ? button : null;
+      showHint(view);
+    });
+    button.addEventListener('blur', () => {
+      view.focused = null;
+      showHint(view);
+    });
+    // Locked destinations remain focusable for reading their prerequisites.
+    button.addEventListener('click', event => {
+      if (!button.hasAttribute('aria-disabled')) return;
+      event.stopPropagation();
+      if (event.pointerType === 'touch') {
+        view.focused = button;
+        showHint(view);
+      }
+    });
+  }
+  view.chart.addEventListener('pointerdown', event => {
+    if (event.target.closest('.atlas-pin')) return;
+    view.focused = null;
+    showHint(view);
+  });
+  view.chart.addEventListener('keydown', event => {
+    if (event.key !== 'Escape' || view.hint.hidden) return;
+    event.preventDefault();
+    event.stopPropagation();
+    view.hovered = view.focused = null;
+    showHint(view);
+  });
+  view.picker = atlas.querySelector('.atlas-picker');
   const buttonsById = new Map(view.buttons.map(button => [button.dataset.id, button]));
-  const pins = [...chart.querySelectorAll('[data-anchor]')].map(anchor => {
-    const button = buttonsById.get(anchor.dataset.anchor);
-    anchor.addEventListener('click', () => button.click());
-    for (const type of ['pointerenter', 'focus']) button.addEventListener(type, () => anchor.classList.add('highlight'));
-    for (const type of ['pointerleave', 'blur']) button.addEventListener(type, () => anchor.classList.remove('highlight'));
-    return { button, anchor, leader: anchor.querySelector('line'), dot: anchor.querySelector('circle') };
-  });
-  view.anchors = new Map(pins.map(({button, anchor}) => [button.dataset.id, anchor]));
-  view.picker = chart.querySelector('.atlas-picker');
   view.picker.addEventListener('change', () => {
-    const button = buttonsById.get(view.picker.value);
+    buttonsById.get(view.picker.value)?.click();
     view.picker.value = '';
-    if (button) button.click();
   });
-  view.observer = new ResizeObserver(() => positionAtlasLabels(chart, pins));
-  view.observer.observe(chart);
-  view.observer.observe(chart.parentElement);
-  for (const {button} of pins) view.observer.observe(button);
-  view.layout = () => positionAtlasLabels(chart, pins);
+  view.observer = new ResizeObserver(() => showHint(view));
+  view.observer.observe(view.chart);
   views.set(container, view);
   return view;
 }
@@ -173,32 +218,38 @@ export function updateAtlas(container, state) {
     if (button.dataset.summary === signature) continue;
     changed = true;
     button.dataset.summary = signature;
-    const anchor = view.anchors.get(id);
-    if (anchor) anchor.dataset.status = unlocked ? key : 'locked';
-    button.disabled = !unlocked;
     button.dataset.status = key;
-    button.querySelector('.atlas-count').textContent = completed + builds;
-    button.querySelector('.atlas-trace').textContent = trace;
+    if (earthMarkers[id]) {
+      if (unlocked) button.removeAttribute('aria-disabled');
+      else button.setAttribute('aria-disabled', 'true');
+      button.dataset.trace = latestHere && previousHere ? 'both' : latestHere ? 'latest' : previousHere ? 'previous' : '';
+    } else {
+      button.disabled = !unlocked;
+      button.querySelector('.atlas-count').textContent = completed + builds;
+      button.querySelector('.atlas-trace').textContent = trace;
+    }
     const detail = !unlocked
       ? catalogLabel('Locked') + ' · ' + catalogLabel('Requires') + ' ' + REGIONS[id].requires.filter(tech => !state.completed.includes(tech)).map(tech => catalogLabel(TECHS[tech].name)).join(', ')
       : facilityText(description) + ' · ' + completed + ' ' + facilityText('completed') + ' · ' + builds + ' ' + facilityText('under construction') +
       (latestHere ? ' · ' + facilityText('Latest discovery') : '') + (previousHere ? ' · ' + facilityText('Previous discovery') : '');
     const shortcut = 'Shift+' + regionKeys[id].toUpperCase();
     const places = regionPlaces[id]?.join(', ');
-    button.title = catalogLabel(REGIONS[id].name) + ' · ' + detail + (unlocked ? ' · ' + shortcut : '') + (places ? '\n' + places : '');
+    const descriptionText = detail + (unlocked ? ' · ' + shortcut : '') + (places ? '\n' + places : '');
+    if (earthMarkers[id]) button.dataset.detail = detail;
+    else button.title = catalogLabel(REGIONS[id].name) + ' · ' + descriptionText;
     if (unlocked) button.setAttribute('aria-keyshortcuts', shortcut);
     else button.removeAttribute('aria-keyshortcuts');
-    button.setAttribute('aria-description', detail);
+    button.setAttribute('aria-description', descriptionText);
   }
   view.pendingKey.hidden = !hasPending;
   if (changed) {
-    const available = view.buttons.filter(button => !button.disabled);
+    const available = view.buttons.filter(button => !button.matches(':disabled, [aria-disabled="true"]'));
     const pickerKey = available.map(button => button.dataset.id).join('/');
     if (view.picker.dataset.options !== pickerKey) {
       view.picker.replaceChildren(new Option(catalogLabel('Regions'), ''));
       for (const button of available) view.picker.add(new Option(catalogLabel(REGIONS[button.dataset.id].name), button.dataset.id));
       view.picker.dataset.options = pickerKey;
     }
-    view.layout();
+    showHint(view);
   }
 }

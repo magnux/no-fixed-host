@@ -53,16 +53,22 @@ test('map targets and both docks fit the desktop and ultrawide viewports', async
   const regions = page.locator('#world-atlas [data-action="region"]');
   const buttons = await regions.evaluateAll((nodes) => nodes.map((button) => ({
     id: button.dataset.id,
+    available: !button.matches(':disabled, [aria-disabled="true"]'),
     keyboardAccessible: button.tagName === 'BUTTON' && !button.disabled && button.tabIndex >= 0,
   })));
   assert.equal(buttons.length, 23);
   assert.deepEqual(new Set(buttons.map(({ id }) => id)), new Set(Object.keys(REGIONS)));
-  for (const { id, keyboardAccessible } of buttons) {
+  for (const { id, available, keyboardAccessible } of buttons) {
     const requires = REGIONS[id].requires;
-    assert.equal(keyboardAccessible, requires.length === 0, id);
+    assert.equal(available, requires.length === 0, id);
+    assert.equal(keyboardAccessible, available || !['orbit','moon','farReaches','transdimensional'].includes(id), id);
     if (requires.length) {
       const marker = regions.and(page.locator('[data-id="' + id + '"]'));
-      assert.ok(await marker.locator('.atlas-lock').isVisible(), id);
+      if (await marker.locator('.atlas-dot').count()) {
+        assert.equal(await marker.getAttribute('aria-disabled'), 'true');
+      } else {
+        assert.ok(await marker.locator('.atlas-lock').isVisible(), id);
+      }
       assert.ok((await marker.getAttribute('aria-description')).includes(TECHS[requires[0]].name));
     }
   }
@@ -106,7 +112,7 @@ test('map targets and both docks fit the desktop and ultrawide viewports', async
     assert.ok(geometry.commandOverflow <= 1, `Command dock overflows by ${geometry.commandOverflow}px at ${size}`);
   }
 
-  for (const { id } of buttons.filter(button => button.keyboardAccessible)) {
+  for (const { id } of buttons.filter(button => button.available)) {
     await page.locator(`#world-atlas [data-action="region"][data-id="${id}"]`).click();
     assert.equal(await page.locator('#region').inputValue(), id);
     await page.getByRole('button', { name: 'Overview', exact: true }).click();
@@ -143,14 +149,14 @@ test('unlocking a destination reveals its menu entries and enables its existing 
   const marker = await ocean.elementHandle();
   await page.locator('#run').click();
   await page.clock.runFor(1100);
-  assert.ok(await marker.evaluate(el => el.isConnected && !el.disabled));
+  assert.ok(await marker.evaluate(el => el.isConnected && !el.matches(':disabled, [aria-disabled="true"]')));
   await ocean.click();
   assert.equal(await picker.inputValue(), 'atlantic');
   assert.equal(await terms.locator('[data-region="atlantic"]').count(), 1);
   assert.equal(await picker.locator('option[value="transdimensional"]').count(), 0);
 });
 
-test('all marine facilities, atlas pointers and compact labels lead to the correct region', async t => {
+test('Earth markers show one localized hint on hover or keyboard focus and compact selection opens each ocean', async t => {
   const page = await openFreshCampaign(t, { width: 375, height: 812 });
   const campaign = createGame(19);
   campaign.completed.push(...Object.keys(TECHS).filter(id => id !== 'apotheosis'));
@@ -159,8 +165,22 @@ test('all marine facilities, atlas pointers and compact labels lead to the corre
   const shortcuts = await atlas.locator('button[data-action="region"]').evaluateAll(nodes => nodes.map(button => button.getAttribute('aria-keyshortcuts')));
   assert.equal(shortcuts.length, 23);
   assert.equal(new Set(shortcuts).size, 23);
-  assert.match(await atlas.locator('[data-id="centralAmerica"]').getAttribute('title'), /Mexico City/);
-  assert.match(await atlas.locator('[data-id="southAmerica"]').getAttribute('title'), /Caracas/);
+  const pins = atlas.locator('.atlas-pin');
+  const hint = atlas.locator('.atlas-hint');
+  assert.ok(await hint.isHidden());
+  assert.deepEqual(await pins.allTextContents(), Array(19).fill(''));
+  await atlas.locator('[data-id="centralAmerica"]').hover();
+  assert.equal(await hint.locator('strong').innerText(), 'Central America');
+  assert.match(await hint.innerText(), /Mexico City/);
+  await atlas.locator('[data-id="southAmerica"]').hover();
+  assert.match(await hint.innerText(), /South America.*Caracas/s);
+  await atlas.locator('h2').hover();
+  assert.ok(await hint.isHidden());
+  await page.keyboard.press('Tab');
+  await pins.first().focus();
+  assert.equal(await hint.locator('strong').innerText(), 'Western North America');
+  await page.keyboard.press('Escape');
+  assert.ok(await hint.isHidden());
   const compact = atlas.getByRole('combobox', { name: 'Open a region from the atlas' });
   assert.ok(await compact.isVisible());
   assert.equal(await compact.locator('option').count(), 24);
@@ -172,19 +192,41 @@ test('all marine facilities, atlas pointers and compact labels lead to the corre
   for (const [width, height] of [[375,812], [1100,620], [1366,768], [2560,1080]]) {
     await page.setViewportSize({width, height});
     await page.clock.runFor(32);
-    const collisions = await atlas.locator('.atlas-pin').evaluateAll(pins => {
-      const rects = pins.map(pin => pin.getBoundingClientRect());
-      return pins.flatMap((pin, i) => pins.slice(i + 1).filter((other, j) => {
-        const a = rects[i], b = rects[i + j + 1];
-        return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
-      }).map(other => [pin.dataset.id, other.dataset.id]));
-    });
-    assert.deepEqual(collisions, [], width + 'px');
+    for (const region of ['europe','africa','pacific','antarctic','marianaTrench']) {
+      await atlas.locator('.atlas-pin[data-id="' + region + '"]').hover();
+      assert.equal(await hint.locator('strong').innerText(), REGIONS[region].name);
+      const chartBounds = await atlas.locator('.atlas-geography').boundingBox();
+      const tip = await hint.boundingBox();
+      assert.ok(tip.x >= chartBounds.x && tip.x + tip.width <= chartBounds.x + chartBounds.width + 1, region);
+      assert.ok(tip.y >= chartBounds.y && tip.y + tip.height <= chartBounds.y + chartBounds.height + 1, region);
+    }
   }
-  await atlas.locator('[data-anchor="indianOcean"] circle').click();
+  await atlas.locator('.atlas-pin[data-id="indianOcean"]').click();
   assert.equal(await page.locator('#region').inputValue(), 'indianOcean');
   const oceanDesigns = await page.getByRole('group', {name:'Facility type'}).getByRole('radio').evaluateAll(radios => radios.map(radio => radio.value));
   assert.deepEqual(oceanDesigns.sort(), ['lab', 'largeLab']);
+});
+
+test('a touch player can inspect a locked circle, dismiss its hint and open an available region by name', async t => {
+  const context = await browser.newContext({ hasTouch: true, viewport: { width: 375, height: 812 } });
+  t.after(() => context.close());
+  const page = await context.newPage();
+  await page.goto(url);
+  await startCampaign(page);
+  const atlas = page.locator('#world-atlas');
+  const trench = atlas.getByRole('button', {name:'Mariana Trench facilities'});
+  // The touch screen still delivers pointer input to a focusable aria-disabled marker.
+  await trench.scrollIntoViewIfNeeded();
+  const target = await trench.boundingBox();
+  await page.touchscreen.tap(target.x + target.width / 2, target.y + target.height / 2);
+  const hint = atlas.locator('.atlas-hint');
+  assert.match(await hint.innerText(), /Mariana Trench.*Locked.*Knowledge Preservation/s);
+  await atlas.locator('.atlas-pins').tap({position:{x:6, y:6}});
+  assert.ok(await hint.isHidden());
+  const picker = atlas.getByRole('combobox', {name:'Open a region from the atlas'});
+  assert.equal(await picker.locator('option[value="marianaTrench"]').count(), 0);
+  await picker.selectOption('middleEast');
+  assert.equal(await page.locator('#region').inputValue(), 'middleEast');
 });
 
 test('a focused native region picker survives running construction', async (t) => {
@@ -427,8 +469,8 @@ test('research opens a locked facility, and its accordion preserves equipment ch
   assert.equal(await row.getAttribute('aria-expanded'), 'true');
   const panelId = await row.getAttribute('aria-controls');
   assert.ok(await page.locator('#' + panelId).isVisible());
-  const power = page.locator('[data-ref="power"]');
-  assert.equal(await power.innerText(), 'Offline');
+  const power = page.locator('.facility-host-row').filter({has: row}).locator('[data-host-action="power"]');
+  assert.match(await power.getAttribute('aria-description'), /Install processors/);
   assert.ok(await power.isDisabled());
   assert.match(await page.locator('[data-ref="localRiskNote"]').innerText(), /Protected now/);
   assert.doesNotMatch(await page.locator('[data-ref="localRisk"]').innerText(), /%/);
@@ -449,7 +491,7 @@ test('research opens a locked facility, and its accordion preserves equipment ch
   await page.locator('#step').click();
   assert.match(await page.locator('.installed-list:visible').innerText(), /Gaming PC × 2/);
   assert.match(await page.locator('.facility-summary:visible').innerText(), /10 CPU/);
-  assert.equal(await power.innerText(), 'Sleep');
+  assert.match(await power.getAttribute('aria-label'), /^Sleep /);
   assert.ok(await power.isEnabled());
 
   await page.reload();
@@ -478,7 +520,7 @@ test('hardware packages show ranks and prices, forecast refits, and protect the 
   async function openHost(campaign) {
     await importCampaign(page, encodeCampaign(campaign));
     await page.locator('#world-atlas [data-id="europe"]').click();
-    const host = page.getByRole('button', { name: /Foundry/ });
+    const host = page.getByRole('button', { name: /^Foundry Storage unit/ });
     if (await host.getAttribute('aria-expanded') !== 'true') await host.click();
     return host;
   }
@@ -580,16 +622,15 @@ test('atlas history, named construction, removal confirmation and CPU batches su
   await importCampaign(page, encodeCampaign(state));
   const nav = name => page.getByRole('button', { name, exact: true }).click();
   const pin = id => page.locator('#world-atlas [data-id="' + id + '"]');
-  assert.equal(await pin('europe').locator('.atlas-count').innerText(), '1');
+  assert.match(await pin('europe').getAttribute('aria-description'), /1 completed · 0 under construction/);
   assert.match(await pin('asia').getAttribute('aria-description'), /Latest discovery/);
   assert.match(await pin('europe').getAttribute('aria-description'), /Previous discovery/);
   await pin('europe').click();
   const host = page.locator('.facility-host-toggle').filter({ hasText: 'Foundry' });
   if (await host.getAttribute('aria-expanded') !== 'true') await host.click();
   assert.equal(await page.locator('[data-ref="localRisk"] [data-group="public"]').innerText(), '0.00%');
-  await page.locator('.facility-identity summary').click();
   await page.getByLabel('Host name', { exact: true }).fill('Foundry <II>');
-  await nav('Save name');
+  await nav('Rename');
   assert.match(await host.innerText(), /Foundry <II>/);
   await page.getByLabel('Batch size', { exact: true }).focus();
   await page.keyboard.press('ArrowRight');
@@ -618,7 +659,7 @@ test('atlas history, named construction, removal confirmation and CPU batches su
   assert.match(await page.locator('[data-report="kind"]').innerText(), /Proposed order · \$4,500(?:\.00)? new funding/);
   await nav('Place order');
   await nav('Overview');
-  assert.equal(await pin('europe').locator('.atlas-count').innerText(), '2');
+  assert.match(await pin('europe').getAttribute('aria-description'), /1 completed · 1 under construction/);
   await pin('europe').click();
   await nav('Rename facility');
   await page.getByRole('dialog').getByLabel('Facility name', { exact: true }).fill('Meridian III');
@@ -634,19 +675,27 @@ test('atlas history, named construction, removal confirmation and CPU batches su
   await page.locator('#region').selectOption('all');
   const seed = page.locator('.facility-host-toggle[data-site-id="host-1"]');
   if (await seed.getAttribute('aria-expanded') !== 'true') await seed.click();
-  await page.locator('.facility-identity summary').click();
-  assert.ok(await page.getByRole('button', { name: 'Dismantle host' }).isDisabled());
+  const seedRemoval = page.getByRole('button', {name:'Dismantle University computer'});
+  assert.ok(await seedRemoval.isDisabled());
+  assert.match(await seedRemoval.getAttribute('aria-description'), /last viable host/);
   await nav('Next host');
   assert.equal(await host.getAttribute('aria-expanded'), 'true');
   await nav('Previous host');
   assert.equal(await seed.getAttribute('aria-expanded'), 'true');
-  await nav('Next host');
-  await page.locator('.facility-identity summary').click();
-  await nav('Dismantle host');
+  const removeFoundry = page.getByRole('button', {name:'Dismantle Foundry <II>'});
+  // The expanded seed and the collapsed sibling's action deliberately refer to different hosts.
+  await removeFoundry.press('Enter');
+  assert.match(await page.getByRole('dialog').innerText(), /Dismantle Foundry <II>/);
+  await page.keyboard.press('Escape');
+  assert.equal(await seed.getAttribute('aria-expanded'), 'true');
+  assert.equal(await host.getAttribute('aria-expanded'), 'false');
+  assert.equal(await removeFoundry.evaluate(el => el === document.activeElement), true);
+  await removeFoundry.click();
   await nav('Dismantle facility');
+  assert.equal(await seed.getAttribute('aria-expanded'), 'true');
   assert.equal(await host.count(), 0);
   await nav('Overview');
-  assert.equal(await pin('europe').locator('.atlas-count').innerText(), '0');
+  assert.match(await pin('europe').getAttribute('aria-description'), /0 completed · 0 under construction/);
 });
 
 test('a saved research portfolio restores the CPU assigned to each topic', async t => {
@@ -861,20 +910,21 @@ test('French facility controls preserve the player’s host name through power, 
   await host.click();
   const ref = id => page.locator('[data-ref="' + id + '"]');
   assert.equal(await ref('buildMode').innerText(), 'Construire une installation');
-  assert.equal(await ref('power').innerText(), 'Mettre en veille');
-  await ref('power').click();
-  assert.equal(await ref('power').innerText(), 'Réveiller');
-  await ref('power').click();
+  const power = page.getByRole('button', {name:'Mettre Build {site} <III> en veille'});
+  assert.equal(await power.innerText(), '');
+  assert.equal(await power.getAttribute('title'), 'Mettre Build {site} <III> en veille');
+  await power.click();
+  await page.getByRole('button', {name:'Réveiller Build {site} <III>'}).click();
   await ref('autoInstall').click();
   assert.match(await page.getByRole('dialog').innerText(), /Installer cet ensemble de composants/);
   await page.getByRole('button', {name:'Annuler le lot'}).click();
   await ref('autoUpgrade').click();
   assert.match(await page.getByRole('dialog').innerText(), /hors ligne.+0 CPU/);
   await page.getByRole('button', {name:'Garder le matériel en ligne'}).click();
-  await page.locator('.facility-identity summary').click();
   await ref('rename').fill('Keep {site} & Build');
-  await ref('saveName').click();
-  await ref('dismantle').click();
+  assert.equal(await ref('saveName').innerText(), 'Renommer');
+  await ref('rename').press('Enter');
+  await page.getByRole('button', {name:'Démanteler Keep {site} & Build'}).click();
   assert.equal(await ref('removalTitle').innerText(), 'Démanteler Keep {site} & Build ?');
   assert.match(await ref('removalText').innerText(), /définitivement supprimés/);
   await ref('keep').click();
@@ -887,4 +937,44 @@ test('French facility controls preserve the player’s host name through power, 
   await page.getByRole('button',{name:'Enregistrer le nom de l’installation'}).click();
   await page.getByRole('button',{name:'Annuler la commande'}).click();
   assert.equal(await ref('removalTitle').innerText(), 'Annuler la construction de Reserved Package « 2 » ?');
+});
+
+test('host bar actions fit a touch viewport and keep another host’s unsaved name intact', async t => {
+  const state = createGame(19);
+  const first = state.sites[0];
+  first.name = 'University <A>';
+  command(state, {type: 'build', siteType: 'relay', region: first.region, name: 'Western District Research and Communications Hub'});
+  advanceMinutes(state, 1);
+  const context = await browser.newContext({viewport:{width:375, height:812}, hasTouch:true});
+  t.after(() => context.close());
+  await context.addInitScript(([key, data]) => localStorage.setItem(key, data), [CAMPAIGN_STORAGE_KEY, encodeCampaign(state)]);
+  const page = await context.newPage();
+  await page.goto(url);
+  await page.locator('#nav [data-id="facilities"]').click();
+  const firstRow = page.locator('.facility-host-row[data-site-id="host-1"]');
+  const other = page.locator('.facility-host-row[data-site-id="host-2"]');
+  await firstRow.locator('.facility-host-toggle').click();
+  const name = firstRow.getByRole('textbox', {name:'Host name'});
+  await name.fill('Not saved yet');
+  const bar = other.locator('.facility-host-bar');
+  for (const width of [375, 1366]) {
+    await page.setViewportSize({width, height:812});
+    const geometry = await bar.evaluate(el => {
+      const [toggle, power, remove] = [...el.querySelectorAll('button')].map(b => b.getBoundingClientRect());
+      return { separate: toggle.right <= power.left && power.right <= remove.left,
+        inside: remove.right <= el.getBoundingClientRect().right && el.getBoundingClientRect().right <= innerWidth,
+        touchTargets: [power, remove].every(r => r.width >= 44 && r.height >= 44) };
+    });
+    assert.deepEqual(geometry, {separate:true, inside:true, touchTargets:true});
+  }
+  await bar.getByRole('button', {name:'Sleep Western District Research and Communications Hub'}).tap();
+  assert.equal(await name.inputValue(), 'Not saved yet');
+  assert.equal(await other.locator('.facility-host-toggle').getAttribute('aria-expanded'), 'false');
+  await bar.getByRole('button', {name:'Dismantle Western District Research and Communications Hub'}).tap();
+  const confirm = page.getByRole('dialog', {name:'Dismantle Western District Research and Communications Hub?'});
+  assert.match(await confirm.innerText(), /host-2/);
+  await confirm.getByRole('button',{name:'Keep facility'}).tap();
+  assert.equal(await name.inputValue(), 'Not saved yet');
+  assert.equal(await other.locator('.facility-host-toggle').getAttribute('aria-expanded'), 'false');
+  assert.match(await firstRow.locator('h3').innerText(), /University <A>/);
 });
