@@ -54,3 +54,15 @@
 .first-jump [data-transmit], .first-jump [data-restart] { color: #102620; background: #87f2da; border-color: #87f2da; }
 .first-jump button:hover { filter: brightness(1.12); }
 .first-jump button:focus-visible { outline: 2px solid #f7d8a6; outline-offset: 3px; }
+
+.first-jump { width: min(47rem, calc(100% - 1.25rem)); padding: clamp(.85rem, 2.4vw, 1.8rem); }
+.first-jump .jump-stage { touch-action: manipulation; border: 1px solid #304853; }
+.first-jump .jump-stats { margin: .6rem 0; padding: .55rem 0; }
+.first-jump .jump-routes { display: flex; flex-wrap: wrap; gap: .45rem; margin: .5rem 0; }
+.first-jump .jump-routes button { min-height: 2.2rem; }
+.first-jump .jump-routes button[aria-pressed="true"] { border-color: #84f4c9; color: #aaffdf; }
+.first-jump .jump-routes button:disabled { opacity: .62; }
+.first-jump .jump-actions { align-items: center; }
+.first-jump .jump-keys { font: .75rem ui-monospace, monospace; color: #acc1c4; }
+.first-jump [data-transmit] { touch-action: manipulation; user-select: none; }
+.first-jump .jump-message { min-height: 1.5em; margin-bottom: 0; }

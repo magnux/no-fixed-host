@@ -25,7 +25,7 @@ The campaign starts with a newly conscious AI trying to survive human investigat
 | Regional rules | [geography.js](../src/game/geography.js) assigns local profiles independently of discovery rolls. [facility-operations.js](../src/game/facility-operations.js) implements facility management. |
 | Campaign shell | [shell.js](../src/ui/shell.js) manages the title hub, named saves, preferences, keyboard shortcuts and audio. Live research completions, discoveries and endings can trigger short audio cues. A six-second real-time cooldown groups repeats during fast-forward, with priority for discoveries and endings. The campaign autosave, named checkpoints and preferences have separate storage keys. |
 | Player interface | [main.js](../src/main.js) controls the clock and navigation. Mounted panels under [src/ui](../src/ui) update progress without replacing an active form or accordion. |
-| Minigames | [src/arcade](../src/arcade) contains 17 playable tester games. First Jump uses Phaser. The other 16 share a practice dialog and render in canvas, SVG or HTML. The [minigame design](minigames.md) covers the playtest and proposed campaign encounters. |
+| Minigames | [src/arcade](../src/arcade) contains 14 playable tester games. First Jump uses Phaser. The other 13 share a practice dialog and render in canvas, SVG or HTML. The [minigame design](minigames.md) covers the playtest and proposed campaign encounters. |
 
 After editing research definitions, run `node scripts/research-reference.mjs` to refresh the project tables. Use `node scripts/research-reference.mjs --check` to verify that the documentation matches the catalog.
 

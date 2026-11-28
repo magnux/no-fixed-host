@@ -1,39 +1,88 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { newBroadcast, dialAt, sendPulse, reception } from '../src/arcade/prototypes/tell-them-im-weather.js';
+import { advanceBroadcast, broadcastChart, broadcastEnd, newBroadcast, pressBand, reception, releaseBand } from '../src/arcade/prototypes/tell-them-im-weather.js';
 
-test('the receiver separates count-in, call, reply and the final rest', () => {
-  assert.equal(dialAt(3.99).phase,'count');
-  assert.equal(dialAt(4).phase,'listen');
-  assert.equal(dialAt(12).phase,'reply');
-  assert.deepEqual(dialAt(67.5),{phase:'reply',round:3,column:7});
-  assert.equal(dialAt(68).phase,'end');
-  const state=newBroadcast();
-  state.running=true;
-  state.beat=4.5;
-  assert.equal(sendPulse(state),'Listen');
-  assert.equal(state.errors.size,0);
+function fresh() {
+  return { ...newBroadcast(), running: true };
+}
+
+function perform(s, lanes) {
+  for (const lane of lanes) pressBand(s,lane);
+  for (const lane of lanes) releaseBand(s,lane);
+  advanceBroadcast(s,.04);
+}
+
+test('the four-front score is playable, including every syncopation, double and triple stop', () => {
+  const s=fresh();
+  assert.equal(broadcastChart[0].time,2);
+  assert.ok(broadcastChart.some(n=>n.lanes.length===3));
+  assert.ok(broadcastChart.some(n=>n.time%0.5===.25));
+  broadcastChart.forEach(note=>{
+    advanceBroadcast(s,note.time-s.time);
+    perform(s,note.lanes);
+  });
+  advanceBroadcast(s,broadcastEnd-s.time);
+  assert.equal(s.hits,broadcastChart.length);
+  assert.equal(s.perfect,s.hits);
+  assert.equal(s.best,s.hits);
+  assert.equal(s.noise,0);
+  assert.equal(reception(s),'complete');
 });
 
-test('a clean transmission survives the rival; tapping through every beat does not', () => {
-  const state=newBroadcast(); state.running=true;
-  const quietBeats=[[1,3,5,7],[2,3,5,7],[1,2,5,7],[1,4,5,7]];
-  quietBeats.forEach((columns,round) => {
-    columns.forEach(col => {
-      state.beat=12+16*round+col+.5;
-      assert.equal(sendPulse(state),'Received');
-      sendPulse(state);
-    });
-    if (round===1) assert.equal(reception(state).outcome,'partial');
+test('chord components must overlap, be fresh key edges, and land within the spread', () => {
+  const atChord=()=>{
+    const s=fresh();
+    const note=broadcastChart.find(n=>n.lanes.length===2);
+    advanceBroadcast(s,note.time);
+    return [s,note.lanes];
+  };
+  let [s,[a,b]]=atChord();
+  pressBand(s,a);pressBand(s,a);
+  advanceBroadcast(s,.05);
+  pressBand(s,b);
+  advanceBroadcast(s,.04);
+  assert.equal(s.hits,1);
+  assert.equal(s.flash.text,'Perfect');
+  [s,[a,b]]=atChord();
+  pressBand(s,a);releaseBand(s,a);pressBand(s,b);
+  assert.equal(s.flash.text,'Split chord');
+  assert.equal(s.hits,0);
+  [s,[a,b]]=atChord();
+  pressBand(s,a);advanceBroadcast(s,.09);pressBand(s,b);
+  assert.equal(s.flash.text,'Crossed signal');
+  assert.equal(s.hits,0);
+});
+
+test('radio rejects wrong bands, extra keys, early taps and an idle transmission', () => {
+  const s=fresh();
+  pressBand(s,0);releaseBand(s,0);
+  assert.equal(s.noise,0,'the count-in does not penalize a warm-up');
+  broadcastChart.forEach(note=>{
+    advanceBroadcast(s,note.time-s.time);
+    perform(s,[0,1,2,3]);
   });
-  assert.equal(state.hits.size,16);
-  assert.equal(reception(state).outcome,'complete');
-  for (let round=0;round<4;round++) for (let col=0;col<8;col++) {
-    state.beat=12+16*round+col+.5;
-    sendPulse(state);
+  assert.equal(s.hits,0);
+  assert.equal(reception(s),'failed');
+  const idle=fresh();
+  advanceBroadcast(idle,broadcastEnd);
+  assert.equal(idle.misses,broadcastChart.length);
+  assert.equal(reception(idle),'failed');
+  const offbeat=fresh();
+  advanceBroadcast(offbeat,broadcastChart[0].time+.1);
+  perform(offbeat,[0]);
+  assert.equal(offbeat.hits,1);
+  assert.equal(offbeat.perfect,0);
+  advanceBroadcast(offbeat,.1);perform(offbeat,[1]);
+  assert.equal(offbeat.noise,1);
+});
+
+test('partial reception is scored separately, with rhythm timing independent of frame rate', () => {
+  const s=fresh();
+  for(const note of broadcastChart.slice(0,18)) {
+    while(note.time-s.time>.031) advanceBroadcast(s,.031);
+    advanceBroadcast(s,note.time-s.time);perform(s,note.lanes);
   }
-  assert.equal(reception(state).outcome,'failed');
-  const early=newBroadcast(); early.running=true; early.beat=13.01;
-  assert.equal(sendPulse(early),'Off beat');
-  assert.equal(early.hits.size,0);
+  advanceBroadcast(s,broadcastEnd);
+  assert.equal(s.hits,18);
+  assert.equal(reception(s),'partial');
 });

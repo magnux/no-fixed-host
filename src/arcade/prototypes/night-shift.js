@@ -1,23 +1,65 @@
 const width = 620;
 const height = 278;
-const decks = [
-  { left: 7, right: 125, y: 237 },
-  { left: 149, right: 246, y: 208 },
-  { left: 265, right: 344, y: 174 },
-  { left: 364, right: 460, y: 199 },
-  { left: 480, right: 612, y: 164 },
-];
-const stations = [
-  { x: 202, deck: 1 }, { x: 410, deck: 3 }, { x: 558, deck: 4 },
-];
-const start = { x: 53, y: decks[0].y };
 const walkingSpeed = 148;
 
 export function startShift(random = Math.random) {
+  // Keep every gap within the drone's jump envelope, even at maximum rise.
+  const decks = [];
+  const count = random() < .5 ? 5 : 6;
+  const lowBay = random() < .5 ? 1 : 2;
+  let left = 7, y = 225;
+  for (let i = 0; i < count; i++) {
+    const right = i === count-1 ? width-7 : Math.round((i+1)*width/count - 17 + random()*18);
+    decks.push({ left, right, y });
+    left = right + 20 + Math.round(random() * 16);
+    const rise = 14 + Math.round(random() * 21);
+    y = Math.max(148, Math.min(225, y + (i === lowBay ? rise : -rise)));
+  }
+  const stations = [1, count === 6 ? (random() < .5 ? 3 : 4) : 3, count - 1].map(deck => {
+    const { left, right } = decks[deck];
+    return { x: Math.round(left + (.43 + random() * .19) * (right - left)), deck };
+  });
+  const earlyGap = count === 6 && random() < .5 ? 2 : 1;
+  const scannerFirst = random() < .5;
+  const machinery = [earlyGap, count-2].map((gap, i) => ({
+    gap,
+    x: (decks[gap].right + decks[gap + 1].left) / 2,
+    floor: Math.min(decks[gap].y, decks[gap + 1].y),
+    kind: (i === 0) === scannerFirst ? 'scanner' : 'press',
+    phase: random() * Math.PI * 2, speed: 1.2 + random() * .35,
+  }));
   return {
-    ...start, vy: 0, deck: 0, checkpoint: -1, falls: 0, elapsed: 0,
-    serviced: [false, false, false], phases: stations.map(() => random() * 2 * Math.PI),
+    x: 40, y: decks[0].y, vy: 0, deck: 0, checkpoint: -1, falls: 0, elapsed: 0,
+    decks, stations, machinery, lastLoss: '', serviced: [false, false, false],
+    phases: stations.map(() => random() * Math.PI * 2),
   };
+}
+
+export function machineryPose(machine, time) {
+  const t = time * machine.speed + machine.phase;
+  const extension = (1 - Math.cos(t)) / 2;
+  const scan = machine.kind === 'scanner';
+  return {
+    x: machine.x + (scan ? 11 * Math.sin(t) : 0),
+    y: 30 + (machine.floor - 38) * extension,
+    radius: scan ? 10 : 12,
+  };
+}
+
+// A green lamp gives enough clearance for a jump started at the hazard stripes.
+export function crossingOpen(machine, time) {
+  return [0, .2, .4, .6].every(offset => machineryPose(machine, time + offset).y < machine.floor - 100);
+}
+
+function respawn(state, reason) {
+  state.falls++;
+  state.lastLoss = reason;
+  const post = state.stations[state.checkpoint];
+  state.x = post?.x ?? 40;
+  state.deck = post?.deck ?? 0;
+  state.y = state.decks[state.deck].y;
+  state.vy = 0;
+  return true;
 }
 
 export function jump(state) {
@@ -28,6 +70,7 @@ export function jump(state) {
 
 // One-way walkways let the drone pass a higher ledge on ascent and land on descent.
 export function stepShift(state, dt, direction) {
+  const { decks } = state;
   const lastY = state.y;
   state.elapsed += dt;
   state.x = Math.max(7, Math.min(width - 7, state.x + direction * walkingSpeed * dt));
@@ -47,18 +90,19 @@ export function stepShift(state, dt, direction) {
       }
     }
   }
-  if (state.y < height + 20) return false;
-  state.falls++;
-  const post = stations[state.checkpoint];
-  state.x = post?.x ?? start.x;
-  state.deck = post?.deck ?? 0;
-  state.y = decks[state.deck].y;
-  state.vy = 0;
-  return true;
+  for (const machine of state.machinery) {
+    const head = machineryPose(machine, state.elapsed);
+    const dx = Math.max(0, Math.abs(state.x - head.x) - 7);
+    const dy = Math.max(0, Math.abs((state.y - 10) - head.y) - 9);
+    if (dx * dx + dy * dy <= head.radius * head.radius) {
+      return respawn(state, machine.kind === 'press' ? 'The freight press caught the drone.' : 'The inspection scanner clipped the drone.');
+    }
+  }
+  return state.y > height + 20 && respawn(state, 'The drone fell into the shaft.');
 }
 
 function nearbyStation(state) {
-  return stations.findIndex((station, i) => !state.serviced[i] && state.deck === station.deck && Math.abs(station.x - state.x) <= 21);
+  return state.stations.findIndex((station, i) => !state.serviced[i] && state.deck === station.deck && Math.abs(station.x - state.x) <= 21);
 }
 
 function dial(state, index) {
@@ -77,6 +121,7 @@ export function calibrate(state) {
 }
 
 function paint(ctx, state, moving, facing, feedback) {
+  const { decks, stations } = state;
   const rect = (x, y, w, h, color) => { ctx.fillStyle = color; ctx.fillRect(x, y, w, h); };
   const line = (x, y, x2, y2, color, weight = 1) => {
     ctx.strokeStyle = color; ctx.lineWidth = weight; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x2, y2); ctx.stroke();
@@ -113,6 +158,29 @@ function paint(ctx, state, moving, facing, feedback) {
     rect(p.left + 10, p.y + 14, 5, height - p.y, '#293140');
     rect(p.right - 13, p.y + 14, 5, height - p.y, '#293140');
   }
+  for (const machine of state.machinery) {
+    const { x, y, radius } = machineryPose(machine, state.elapsed);
+    const scan = machine.kind === 'scanner';
+    const color = scan ? '#91dce1' : '#ffab64';
+    const open = crossingOpen(machine, state.elapsed);
+    line(machine.x - 11, 10, machine.x + 11, 10, '#a2a7a6', 4);
+    line(machine.x, 10, x, y - radius, '#bfb7a7', 2);
+    ctx.beginPath(); ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fillStyle = '#252e3e'; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = color; ctx.stroke();
+    if (scan) {
+      const angle = state.elapsed * 3.4;
+      for (let i = 0; i < 3; i++) {
+        const a = angle + i * Math.PI * 2 / 3;
+        line(x, y, x + 8 * Math.cos(a), y + 8 * Math.sin(a), color, 3);
+      }
+    } else {
+      for (let dx = -7; dx <= 5; dx += 5) line(x + dx, y + 4, x + dx + 3, y - 4, color, 2);
+    }
+    const ledge = decks[machine.gap];
+    for (let i = 0; i < 3; i++) line(ledge.right - 23 + i * 5, ledge.y + 4, ledge.right - 20 + i * 5, ledge.y, '#ecbd6a', 2);
+    rect(ledge.right - 9, ledge.y - 5, 8, 4, open ? '#93efc3' : '#ff785f');
+    if (open) line(ledge.right - 9, ledge.y - 9, ledge.right - 2, ledge.y - 9, '#93efc3', 1);
+  }
   stations.forEach(({ x, deck }, i) => {
     const y = decks[deck].y;
     const done = state.serviced[i];
@@ -120,12 +188,23 @@ function paint(ctx, state, moving, facing, feedback) {
     rect(x - 8, y - 26, 16, 26, '#212938');
     rect(x - 7, y - 26, 14, 3, ink);
     rect(x - 4, y - 15, 8, 6, done ? '#477565' : '#685839');
+    const trace = (Math.floor(state.elapsed * 5) + i) % 5;
+    rect(x - 4 + trace, y - 14, 3, 2, ink);
     label(done ? '✓' : String(i + 1), x - 4, y - 31, ink, 15);
   });
   // The drone has a reversible optic, articulated feet and a separate chassis.
   const x = Math.round(state.x), y = Math.round(state.y);
   const stride = moving && state.deck !== null ? Math.round(Math.sin(state.elapsed * 25) * 2) : 0;
-  rect(x - 7 + stride, y - 4, 5, 4, '#e6ce9c'); rect(x + 3 - stride, y - 4, 5, 4, '#e6ce9c');
+  const airborne = state.deck === null;
+  const lift = airborne ? 3 : 0;
+  const sway = airborne ? (state.vy < 0 ? -2 : 2) : stride;
+  line(x - 5, y - 7, x - 6 + stride, y - lift - 2, '#363b49', 3);
+  line(x + 5, y - 7, x + 6 - stride, y - lift - 2, '#363b49', 3);
+  rect(x - 7 + stride, y - 4 - lift, 5, 4, '#e6ce9c');
+  rect(x + 3 - stride, y - 4 - lift, 5, 4, '#e6ce9c');
+  line(x - facing * 5, y - 14, x - facing * (11 + sway), y - (airborne ? 16 : 8), '#ffd796', 3);
+  line(x, y - 19, x - facing * 3, y - 24 - Math.abs(sway), '#e6ce9c', 1);
+  rect(x - facing * 3 - 1, y - 26 - Math.abs(sway), 3, 3, '#95e8d6');
   rect(x - 9, y - 14, 18, 10, '#272f40'); rect(x - 8, y - 15, 16, 8, '#fa9b54');
   rect(x - 5, y - 21, 11, 7, '#ffd796'); rect(x + (facing > 0 ? 3 : -6), y - 20, 5, 3, '#22394a');
   rect(x + (facing > 0 ? 5 : -6), y - 20, 2, 2, '#87f2e5');
@@ -146,7 +225,7 @@ function paint(ctx, state, moving, facing, feedback) {
 export default function mount(api) {
   const state = startShift();
   const { canvas, ctx } = api.canvas(width, height);
-  canvas.setAttribute('aria-label', 'Maintenance drone on five elevated walkways with three numbered service stations. Move right from the loading bay.');
+  canvas.setAttribute('aria-label', state.decks.length + ' generated walkways, three service posts and two moving machines. Move right and cross beneath each machine as it retracts.');
   const keys = new Set();
   const pointers = new Map();
   let stride = 0, strideUntil = 0, facing = 1, ended = false, feedback;
@@ -222,7 +301,7 @@ export default function mount(api) {
     window.removeEventListener('blur', clear);
     document.removeEventListener('visibilitychange', clear);
   });
-  api.setStatus('Reach posts 1–3. Hold ←/→ or A/D and jump with Space. At each post, press C when the needle enters green. The buttons also work by touch.');
+  api.setStatus('Service posts 1–3. A/D or ←/→ to walk, Space to jump, C to calibrate in green. Wait on the hazard stripes and jump when the lip light goes green.');
   updateHud(); paint(ctx, state, false, facing);
   api.frame(dt => {
     if (ended) return;
@@ -240,7 +319,7 @@ export default function mount(api) {
     if (fell) {
       if (state.falls < 3) api.sfx?.('fall');
       clear(); strideUntil = 0;
-      api.setStatus('Drone lost in the shaft. A spare is at the last checkpoint.');
+      api.setStatus(state.lastLoss + ' A spare is at the last checkpoint.');
     }
     updateHud(); paint(ctx, state, direction !== 0, facing, feedback);
     if (fell && state.falls === 3) finish(count() ? 'partial' : 'failed', count() + ' of 3 posts held calibration when the last drone was lost.');

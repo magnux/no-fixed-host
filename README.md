@@ -37,9 +37,9 @@ The portrait in the command dock starts as `^-^`. Finish any research to give it
 - [Base implementation plan](docs/base-implementation-plan.md) records priorities, dependencies, acceptance checks and the release outcome.
 - [Simulation audit](docs/base-simulation-audit.md) traces mechanics in the original code and records where browser campaign rules differ. [Original menu audit](docs/original-menu-audit.md) preserves the screen comparison that initiated this release.
 
-The design takes inspiration from [Endgame: Singularity](https://github.com/singularity/singularity). The simulation and interface are written in JavaScript. Open **Campaign menu → Minigame tester** to play all 17 standalone games. The campaign stays paused while you practice. Each game can be retried, and the tester remembers your last result for each title until the page reloads. [Campaign encounters and minigame categories](docs/minigames.md)
+The design takes inspiration from [Endgame: Singularity](https://github.com/singularity/singularity). The simulation and interface are written in JavaScript. Open **Campaign menu → Minigame tester** to play all 14 standalone games. The campaign stays paused while you practice. Each game can be retried, and the tester remembers your last result for each title until the page reloads. [Campaign encounters and minigame categories](docs/minigames.md)
 
-Enable audio in the tester or in **Campaign menu → Options**. **Music volume** controls the score and **Effects volume** controls actions and alerts. The browser synthesizes all 17 original arcade tracks locally. [Soundtrack and listening notes](docs/minigames.md#soundtrack)
+Enable audio in the tester or in **Campaign menu → Options**. **Music volume** controls the score and **Effects volume** controls actions and alerts. The browser synthesizes all 14 original arcade tracks locally. [Soundtrack and listening notes](docs/minigames.md#soundtrack)
 
 ## Test and build
 

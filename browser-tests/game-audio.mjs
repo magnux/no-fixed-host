@@ -126,7 +126,7 @@ test('every tester entry produces music with the effects fader down; hiding paus
   await menu(page, '[data-shell-open="tester"]');
   const tester = page.locator('#campaign-shell');
   const entries = await tester.locator('[data-minigame]').all();
-  assert.equal(entries.length, 17);
+  assert.equal(entries.length, 14);
   for (const entry of entries) {
     const id = await entry.getAttribute('data-minigame');
     await clearNotes(page);
@@ -208,17 +208,17 @@ test('the weather radio can be heard with master sound off, then muted and close
   await staysSilent(page, 'the opt-in never enables the campaign soundtrack');
 });
 
-test('all 17 minigames produce action effects with the music fader down', async t => {
+test('all 14 minigames produce action effects with the music fader down', async t => {
   const page = await fresh(t);
   await options(page, false, true);
   await menu(page, '[data-shell-open="tester"]');
   const tester = page.locator('#campaign-shell');
   const buttons = {
-    'first-jump': ['Transmit block'], hide: [/Relay/], soundings: ['Sonar ping'],
+    'first-jump': ['Pulse uplink'], hide: [/Relay/], soundings: ['Sonar ping'],
     'night-shift': ['Jump'], 'proof-of-pattern': ['Rotate ↻'], 'orbital-insertion': [/Transfer burn/],
-    'clear-passage': ['Start escort'], 'clearing-house': ['Rush next leg'], 'hot-swap': [/Enter Foundry/, 'Fire'],
+    'clear-passage': ['Start escort'], 'hot-swap': [/Enter Foundry/, 'Fire'],
     'escape-character': ['Jump'], 'neon-perimeter': [/^Pulse/], 'dead-drop-circuit': ['Dispatch courier'],
-    'black-start': ['Plunger'], 'tell-them-im-weather': ['Tune in'], 'ram-jam': ['Start meadow', /Modem chirp/],
+    'black-start': ['Plunger'], 'tell-them-im-weather': ['Tune in'], 'ram-jam': ['Start meadow', /Twitt/],
   };
   for (const entry of await tester.locator('[data-minigame]').all()) {
     const id = await entry.getAttribute('data-minigame');
@@ -226,9 +226,7 @@ test('all 17 minigames produce action effects with the music fader down', async 
     const game = page.locator(id === 'first-jump' ? '.first-jump[open]' : '[data-practice-game="' + id + '"][open]');
     await game.waitFor();
     await staysSilent(page, id + ' playing music at zero volume');
-    if (id === 'crosscheck') await game.getByRole('checkbox').first().check();
-    else if (id === 'witness') await game.locator('[data-controls] button').first().click();
-    else for (const name of buttons[id]) await game.getByRole('button', { name, exact: typeof name === 'string' }).click();
+    for (const name of buttons[id]) await game.getByRole('button', { name, exact: typeof name === 'string' }).click();
     await audible(page, id + ' action');
     await game.locator(id === 'first-jump' ? '[data-close]' : '[data-practice-back]').click();
     await tester.getByRole('status').filter({ hasText: 'Left before finishing' }).waitFor();

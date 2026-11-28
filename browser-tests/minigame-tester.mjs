@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
+import { broadcastChart, broadcastEnd } from '../src/arcade/prototypes/tell-them-im-weather.js';
 import { CAMPAIGN_STORAGE_KEY } from '../src/persistence.js';
 
 let browser;
@@ -53,33 +54,54 @@ test('practice pauses the live clock and supports all three First Jump outcomes 
   const { hour, minute } = JSON.parse(saveAtEntry).campaign;
   assert.ok(hour * 60 + minute > 0);
 
-  await launch.click();
+  const origin = new Date('2026-01-01T12:00:00Z');
+  await page.clock.install({ time: origin });
+  await page.clock.pauseAt(new Date(origin.getTime() + 2000));
   const drill = page.getByRole('dialog', { name: 'First Jump' });
-  const transmit = btn(drill, 'Transmit block');
-  const hold = btn(drill, 'Hold signal');
-  const replay = btn(drill, 'Restart jump');
-  await drill.locator('canvas').waitFor();
-  await transmit.click();
-  await transmit.click();
+  const pulse = drill.locator('[data-transmit]');
+  const fire = () => pulse.evaluate(el => el.click());
+  const launchPacket = async () => {
+    for (let i = 0; i < 4; i++) await fire();
+    assert.equal(await drill.getAttribute('data-flight'), 'flying');
+  };
+  async function openDrill() {
+    await launch.evaluate(el => el.click());
+    await drill.locator('canvas').waitFor({ state: 'attached' });
+    await page.clock.runFor(16);
+  }
+  await openDrill();
+  await page.clock.runFor(2752);
+  await launchPacket();
+  await page.clock.runFor(1104);
   assert.equal(await drill.locator('[data-signal]').textContent(), 'Traced');
-  await btn(drill, 'Back to tester').click();
+  await drill.locator('[data-close]').evaluate(el => el.click());
   await tester.getByRole('status').filter({ hasText: 'Traced' }).waitFor();
-  await launch.click();
-  assert.equal(await drill.locator('[data-copied]').textContent(), '0 / 3');
-  for (let i = 0; i < 6; i++) await hold.click();
+
+  await openDrill();
+  assert.equal(await drill.locator('[data-links]').textContent(), '0 / 4');
+  await launchPacket();
+  await page.clock.runFor(1408);
   assert.equal(await drill.locator('[data-signal]').textContent(), 'Closed');
-  await replay.click();
-  await transmit.click();
-  await hold.click();
-  await transmit.click();
-  await transmit.click();
+  await drill.locator('[data-restart]').evaluate(el => el.click());
+  await page.clock.runFor(16);
+  for (const [index, relay] of ['1', '2', '1', '1'].entries()) {
+    await page.keyboard.press(relay);
+    await launchPacket();
+    for (const ms of [416, 672, 672]) {
+      await page.clock.runFor(ms);
+      await page.keyboard.press('Space');
+    }
+    await page.clock.runFor(index === 0 || index === 3 ? 48 : 160);
+    assert.equal(await drill.locator('[data-links]').textContent(), (index + 1) + ' / 4');
+  }
   assert.equal(await drill.locator('[data-signal]').textContent(), 'Linked');
-  await btn(drill, 'Back to tester').click();
+  await drill.locator('[data-close]').evaluate(el => el.click());
   await tester.getByRole('status').filter({ hasText: 'Linked' }).waitFor();
   assert.equal(await focused(launch), true);
   assert.equal(await drill.count(), 0);
   await page.keyboard.press('Escape');
   await tester.waitFor({ state: 'hidden' });
+  await page.clock.runFor(32);
   assert.equal(await page.locator('#pause').getAttribute('aria-pressed'), 'true');
   assert.equal(await focused(menu.locator('summary')), true);
   assert.equal(await page.locator('#game-date').textContent(), timeAtEntry);
@@ -103,7 +125,7 @@ test('the title screen opens the tester on a narrow display and keyboard exit re
   await launch.focus();
   await page.keyboard.press('Enter');
   const drill = page.getByRole('dialog', { name: 'First Jump' });
-  const transmit = btn(drill, 'Transmit block');
+  const transmit = btn(drill, 'Pulse uplink');
   await transmit.waitFor();
   assert.equal(await focused(transmit), true);
   await page.keyboard.press('Enter');
@@ -121,7 +143,7 @@ test('the title screen opens the tester on a narrow display and keyboard exit re
   assert.equal(await saved(page), saveAtEntry);
 });
 
-test('all seventeen tester entries launch independently, retry with fresh controls, and return to the same campaign', async t => {
+test('all fourteen tester entries launch independently, retry with fresh controls, and return to the same campaign', async t => {
   const page = await fresh(t, 375);
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
@@ -129,7 +151,7 @@ test('all seventeen tester entries launch independently, retry with fresh contro
   await page.getByRole('button', { name: 'Minigame tester', exact: true }).click();
   const tester = page.getByRole('dialog', { name: /minigame tester/i });
   const titles = ['First Jump', 'Hide', 'Soundings', 'Night Shift', 'Proof of Pattern', 'Orbital Insertion',
-    'Clear Passage', 'Crosscheck', 'Witness', 'Clearing House', 'Hot Swap', 'Escape Character', 'Neon Perimeter',
+    'Clear Passage', 'Hot Swap', 'Escape Character', 'Neon Perimeter',
     'Dead Drop Circuit', 'Black Start', 'Tell Them I’m Weather', 'RAM Jam'];
   assert.deepEqual(await tester.locator('.shell-game h3').allTextContents(), titles);
   const snapshot = await saved(page);
@@ -152,6 +174,32 @@ test('all seventeen tester entries launch independently, retry with fresh contro
   assert.equal(await page.locator('#game-date').textContent(), date);
   assert.equal(await saved(page), snapshot);
   assert.deepEqual(errors, []);
+});
+
+test('Hide resolves contact on the illuminated cell and lets a player traverse that cell after the sweep', async t => {
+  const page = await fresh(t);
+  await page.locator('#menu summary').click();
+  await btn(page, 'Minigame tester').click();
+  const tester = page.getByRole('dialog', { name: /minigame tester/i });
+  const snapshot = await saved(page);
+  await page.evaluate(() => { Math.random = () => 0; });
+  await btn(tester, 'Play Hide').click();
+  const game = page.getByRole('dialog', { name: 'Hide', exact: true });
+  const relay = game.getByRole('button', { name: /Relay/ });
+  await relay.click();
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('ArrowRight');
+  assert.equal(await game.getAttribute('data-outcome'), 'failed');
+  assert.equal(await game.locator('[data-player="C3"]').count(), 1);
+  assert.equal(await game.locator('[data-cell="C3"][data-live]').count(), 1);
+  await game.locator('[data-retry]').click();
+  await relay.click();
+  for (const key of ['ArrowRight', 'ArrowLeft', 'ArrowRight', 'ArrowRight']) await page.keyboard.press(key);
+  assert.equal(await game.getAttribute('data-outcome'), 'active');
+  assert.equal(await game.locator('[data-player="C3"]').count(), 1);
+  assert.equal(await game.locator('[data-cell="C3"][data-live]').count(), 0);
+  await game.locator('[data-practice-back]').click();
+  assert.equal(await saved(page), snapshot);
 });
 
 test('switching games during a delayed download opens only the final choice', { timeout: 20000 }, async t => {
@@ -185,44 +233,7 @@ test('switching games during a delayed download opens only the final choice', { 
   }
 });
 
-test('an evidence brief, witness interview and currency settlement each produce their own tester result', async t => {
-  const page = await fresh(t);
-  await page.locator('#menu summary').click();
-  await page.getByRole('button', { name: 'Minigame tester', exact: true }).click();
-  const tester = page.getByRole('dialog', { name: /minigame tester/i });
-  const snapshot = await saved(page);
-  for (const title of ['Crosscheck', 'Witness', 'Clearing House']) {
-    const launch = btn(tester, 'Play ' + title);
-    await launch.click();
-    const game = page.getByRole('dialog', { name: title, exact: true });
-    if (title === 'Crosscheck') {
-      const pins = game.getByRole('checkbox');
-      await pins.nth(0).check();
-      await pins.nth(1).check();
-      await game.getByRole('radio').first().check();
-      await btn(game, 'File the brief').click();
-    } else if (title === 'Witness') {
-      const choices = game.locator('[data-controls] button');
-      await choices.first().click();
-      await choices.first().click();
-      await choices.first().click();
-    } else {
-      for (let leg = 0; leg < 3; leg++) await game.locator('.ch-stop[data-state="next"]').first().click();
-      await btn(game, 'Settle payout').click();
-    }
-    const outcome = await game.getAttribute('data-outcome');
-    const label = { complete: 'Complete', partial: 'Partial success', failed: 'Unsuccessful' }[outcome];
-    assert.ok(label, title + ' produced a scored ending');
-    assert.ok((await game.locator('[data-status]').innerText()).length > 20);
-    await btn(game, 'Back to tester').click();
-    const result = tester.locator('.shell-game').filter({ has: page.getByRole('heading', { name: title, exact: true }) }).locator('[data-practice-result]');
-    await result.filter({ hasText: label }).waitFor();
-    assert.equal(await result.textContent(), label);
-  }
-  assert.equal(await saved(page), snapshot);
-});
-
-test('the playtest shortcut leads to the seven additions and a weather broadcast can be played through in silence', async t => {
+test('the gallery shortcut works and a player can finish a silent broadcast with multi-key chords', async t => {
   const page = await fresh(t, 375);
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
@@ -231,7 +242,7 @@ test('the playtest shortcut leads to the seven additions and a weather broadcast
   await page.locator('#menu summary').click();
   await page.getByRole('button', { name: 'Minigame tester', exact: true }).click();
   const tester = page.getByRole('dialog', { name: /minigame tester/i });
-  await btn(tester, 'Jump to new games').click();
+  await btn(tester, 'Jump to Hot Swap').click();
   assert.equal(await focused(btn(tester, 'Play Hot Swap')), true);
   const snapshot = await saved(page);
   await btn(tester, 'Play Tell Them I’m Weather').click();
@@ -241,19 +252,19 @@ test('the playtest shortcut leads to the seven additions and a weather broadcast
   await page.clock.pauseAt(new Date(origin.getTime() + 20000));
   await btn(game, 'Tune in').evaluate(el => el.click());
 
-  const rests = [[1,3,5,7], [2,3,5,7], [1,2,5,7], [1,4,5,7]];
+  const keys = ['a', 's', 'd', 'f'];
   let elapsed = 0;
-  for (const [round, columns] of rests.entries()) {
-    for (const column of columns) {
-      const target = (12 + round * 16 + column + .5) * 500;
-      await page.clock.runFor(target - elapsed);
-      await page.keyboard.press('Space');
-      elapsed = target;
-    }
+  for (const note of broadcastChart) {
+    const target = Math.round(note.time * 1000);
+    await page.clock.runFor(target - elapsed);
+    for (const lane of note.lanes) await page.keyboard.down(keys[lane]);
+    await page.clock.runFor(64);
+    for (const lane of note.lanes) await page.keyboard.up(keys[lane]);
+    elapsed = target + 64;
   }
-  await page.clock.runFor(500);
+  await page.clock.runFor(Math.ceil(broadcastEnd * 1000) - elapsed + 96);
   assert.equal(await game.getAttribute('data-outcome'), 'complete');
-  assert.match(await game.locator('[data-status]').textContent(), /16 of 16/);
+  assert.match(await game.locator('[data-status]').textContent(), new RegExp(broadcastChart.length + ' of ' + broadcastChart.length));
   await game.locator('[data-practice-back]').evaluate(el => el.click());
   await page.clock.runFor(32);
   assert.equal(await saved(page), snapshot);
@@ -269,10 +280,10 @@ test('keyboard play continues after a clicked tower control disables itself', as
   const game = page.getByRole('dialog', { name: 'Neon Perimeter', exact: true });
   await game.getByRole('button', { name: /^Pulse/ }).click();
   await page.keyboard.press('2');
-  assert.match(await game.locator('[data-hud]').innerText(), /2 South gate/);
+  assert.match(await game.locator('[data-hud]').innerText(), /2 East approach/);
   await game.getByRole('button', { name: /Send wave 1/ }).click();
   await page.keyboard.press('1');
-  assert.match(await game.locator('[data-hud]').innerText(), /1 North gate/);
+  assert.match(await game.locator('[data-hud]').innerText(), /1 West approach/);
   await page.keyboard.press('Escape');
   await tester.getByRole('status').filter({ hasText: 'Neon Perimeter · Left before finishing' }).waitFor();
 });

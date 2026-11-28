@@ -13,6 +13,11 @@ const samples = [
     source: [3,west], probes: [[2,east], [0,north], [5,east], [8,south]],
     finding: 'Four traces that looked independent are copies. One persistent signal accounts for every observation.',
   },
+  {
+    edges: [[3,0], [0,1], [1,4], [4,5], [5,2], [4,7], [7,8], [3,6]],
+    source: [3,west], probes: [[6,south], [1,north], [2,north], [8,east]],
+    finding: 'The last receiver confirms the timestamp of the original transmission.',
+  },
 ];
 const span = 82, left = 47, top = 40, width = 340, height = 326;
 
@@ -74,8 +79,8 @@ export function readPattern({ source, probes, masks }) {
   return { visited, lit, leaks, complete: visited.size === 9 && lit.size === probes.length && !leaks.length };
 }
 
-export function scramblePattern(model, random = Math.random) {
-  // Keep a couple of initial clues, but always change at least four distinct pieces.
+export function scramblePattern(model, random = Math.random, target = 6) {
+  // Leave the opening trace mostly wired. Later captures lose more of their alignment.
   const order = Array.from({ length: 9 }, (_, i) => i);
   for (let i = order.length - 1; i > 0; i--) {
     const j = Math.floor(random() * (i + 1));
@@ -90,14 +95,51 @@ export function scramblePattern(model, random = Math.random) {
     }
     if (!alternatives.length) continue;
     model.masks[cell] = alternatives[Math.floor(random() * alternatives.length)];
-    if (++changes === 6) break;
+    if (++changes === target) break;
   }
   // A different valid wiring is a win too. Ensure a trial never starts solved.
   if (readPattern(model).complete) model.masks[model.source[0]] = turnMask(model.masks[model.source[0]]);
   return model;
 }
 
-function draw(ctx, model, reading, selected, markLeaks) {
+const archiveWindow = 100;
+const traceCount = 3;
+
+function capture(session) {
+  const sample = session.order[session.recorded];
+  const rotation = Math.floor(session.random() * 4);
+  const reflected = session.random() < .5;
+  const puzzle = makePattern(sample, rotation, reflected);
+  return scramblePattern(puzzle, session.random, 3 + session.recorded * 2);
+}
+
+export function newTraceRun(random = Math.random) {
+  const order = [0, 1, 2];
+  for (let i = order.length - 1; i > 0; i--) {
+    const j = Math.floor(random() * (i + 1));
+    [order[i], order[j]] = [order[j], order[i]];
+  }
+  const run = { random, order, recorded: 0, remaining: archiveWindow, outcome: null, model: null };
+  run.model = capture(run);
+  return run;
+}
+
+export function tickTrace(run, seconds) {
+  if (run.outcome) return;
+  run.remaining = Math.max(0, run.remaining - seconds);
+  if (run.remaining === 0) run.outcome = run.recorded ? 'partial' : 'failed';
+}
+
+export function submitTrace(run) {
+  if (run.outcome) return;
+  if (!readPattern(run.model).complete) { tickTrace(run, 4); return 'miss'; }
+  run.recorded++;
+  if (run.recorded === traceCount) run.outcome = 'complete';
+  else run.model = capture(run);
+  return 'recorded';
+}
+
+function draw(ctx, model, reading, selected, markLeaks, time, run) {
   const line = (x, y, x2, y2, color, size = 1) => {
     ctx.strokeStyle = color; ctx.lineWidth = size;
     ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x2, y2); ctx.stroke();
@@ -118,6 +160,10 @@ function draw(ctx, model, reading, selected, markLeaks) {
     ctx.fillRect(x - half + 1, y - half + 1, span - 2, span - 2);
     for (let d = 0; d < 4; d++) if (mask & (1 << d)) {
       line(x, y, x + dx[d] * half, y + dy[d] * half, alive ? live : off, 6);
+      if (alive) {
+        const flow = (time * 1.35 + cell * .17) % 1;
+        dot(x + dx[d] * flow * half, y + dy[d] * flow * half, 2, '#e3fff2');
+      }
     }
     dot(x, y, 8, alive ? live : off);
     dot(x, y, 3, alive ? '#204841' : '#332d41');
@@ -139,6 +185,9 @@ function draw(ctx, model, reading, selected, markLeaks) {
     ctx.textAlign = 'center'; ctx.font = 'bold 15px monospace'; ctx.fillStyle = color;
     ctx.fillText(label, x2, dy[side] ? y2 + dy[side] * 12 + 5 : y2 - 10);
   }
+  const meterColor = run.remaining < 15 ? '#ff937c' : '#83e5ce';
+  ctx.fillStyle = '#393145'; ctx.fillRect(left, height - 5, span * 3, 3);
+  ctx.fillStyle = meterColor; ctx.fillRect(left, height - 5, span * 3 * run.remaining / archiveWindow, 3);
   terminal(model.source, 'INPUT', true, true);
   model.probes.forEach((port, i) => terminal(port, String.fromCharCode(65 + i), reading.lit.has(i)));
   if (markLeaks) for (const [cell, side] of reading.leaks) {
@@ -149,55 +198,66 @@ function draw(ctx, model, reading, selected, markLeaks) {
 }
 
 export default function mount(api) {
-  const model = makePattern(Math.floor(Math.random() * samples.length), Math.floor(Math.random() * 4), Math.random() < .5);
-  scramblePattern(model);
+  const run = newTraceRun();
   const { canvas, ctx } = api.canvas(width, height);
-  let selected = model.source[0], submissions = 0, rotations = 0, markLeaks = false, ended = false;
+  let selected = run.model.source[0], rotations = 0, markLeaks = false, time = 0;
+  let reading, lastPaint = -1, lastSecond = -1;
   function describeCell() {
-    const ports = faces.filter((_, d) => model.masks[selected] & (1 << d));
+    const ports = faces.filter((_, d) => run.model.masks[selected] & (1 << d));
     return 'Tile ' + (selected + 1) + ' connects ' + ports.join(', ') + '.';
   }
+  function paint() {
+    draw(ctx, run.model, reading, selected, markLeaks, time, run);
+    lastPaint = time;
+  }
+  function hud() {
+    lastSecond = Math.ceil(run.remaining);
+    api.setHud('Trace ' + Math.min(run.recorded + 1, traceCount) + '/3 · Sweep in ' + lastSecond + 's · ' + reading.lit.size + ' / 4 observations · Tile ' + (selected + 1));
+  }
   function display() {
-    const reading = readPattern(model);
-    draw(ctx, model, reading, selected, markLeaks);
-    api.setHud(reading.lit.size + ' / 4 observations · ' + (3 - submissions) + ' tests left · Tile ' + (selected + 1));
-    canvas.setAttribute('aria-label', 'Observation grid. ' + describeCell() + ' Input at tile ' + (model.source[0] + 1) + ' ' + faces[model.source[1]] +
-      '. Observations ' + model.probes.map(([c, d], i) => String.fromCharCode(65 + i) + ' at ' + (c + 1) + ' ' + faces[d]).join(', ') + '.');
+    reading = readPattern(run.model);
+    hud(); paint();
+    canvas.setAttribute('aria-label', 'Observation grid. ' + describeCell() + ' Input at tile ' + (run.model.source[0] + 1) + ' ' + faces[run.model.source[1]] +
+      '. Observations ' + run.model.probes.map(([c, d], i) => String.fromCharCode(65 + i) + ' at ' + (c + 1) + ' ' + faces[d]).join(', ') + '.');
     return reading;
   }
+  function finish() {
+    api.finish(run.outcome, run.outcome === 'complete' ? 'Three traces archived before the receiver erased its buffer. The timing identifies a single source. ' + rotations + ' rotations.' :
+      'The receiver swept its buffer. ' + run.recorded + ' of 3 traces were archived.');
+  }
   function rotate(amount) {
-    if (ended) return;
-    model.masks[selected] = turnMask(model.masks[selected], amount);
+    if (run.outcome) return;
+    run.model.masks[selected] = turnMask(run.model.masks[selected], amount);
     rotations++; markLeaks = false;
     const reading = display();
     api.sfx?.(reading.complete ? 'matched' : 'rotate');
     api.setStatus(reading.complete ? 'All four observations agree. Test your model to record the finding.' : describeCell());
   }
   function select(cell) {
-    if (ended || cell < 0) return;
+    if (run.outcome || cell < 0) return;
     selected = cell; display(); api.setStatus(describeCell());
   }
   function test() {
-    if (ended) return;
-    submissions++; markLeaks = true;
-    const reading = display();
-    if (reading.complete) {
-      ended = true;
-      api.finish('complete', model.finding + ' Solved in ' + rotations + ' rotations.');
-    } else if (submissions >= 3) {
-      ended = true;
-      api.finish(reading.lit.size ? 'partial' : 'failed', reading.lit.size + ' of four observations matched when the test samples ran out.');
+    if (run.outcome) return;
+    const finding = run.model.finding;
+    const result = submitTrace(run);
+    if (run.outcome) { display(); finish(); return; }
+    if (result === 'recorded') {
+      selected = run.model.source[0]; markLeaks = false;
+      api.sfx?.('matched');
+      api.setStatus('Trace ' + run.recorded + ' archived. ' + finding + ' The next capture is on the board.');
     } else {
+      markLeaks = true;
       api.sfx?.('test');
-      api.setStatus(reading.visited.size === 0 ? 'The input has no path into its tile. Rotate that piece to start the signal.' :
-        reading.lit.size + ' of four observations matched. Open live leads are marked ×. Keep rotating and test again.');
+      api.setStatus('Rejected sample costs 4 seconds. Open live leads are marked ×. Connect INPUT through all nine tiles.');
     }
+    display();
   }
   function tap(event) {
     const bounds = canvas.getBoundingClientRect();
     const col = Math.floor(((event.clientX - bounds.left) * width / bounds.width - left) / span);
     const row = Math.floor(((event.clientY - bounds.top) * height / bounds.height - top) / span);
-    if (!ended && col >= 0 && col < 3 && row >= 0 && row < 3) {
+    if (!run.outcome && col >= 0 && col < 3 && row >= 0 && row < 3) {
       selected = row * 3 + col; rotate(1);
     }
   }
@@ -211,7 +271,7 @@ export default function mount(api) {
   api.action('Rotate ↻', () => rotate(1));
   api.action('Test model', test, { primary: true });
   api.onKey(event => {
-    if (ended || event.altKey || event.ctrlKey || event.metaKey) return;
+    if (run.outcome || event.altKey || event.ctrlKey || event.metaKey) return;
     const direction = ['ArrowUp', 'ArrowRight', 'ArrowDown', 'ArrowLeft'].indexOf(event.key);
     if (direction >= 0) { event.preventDefault(); select(neighbor(selected, direction)); }
     else if (/^[1-9]$/.test(event.key)) { event.preventDefault(); select(Number(event.key) - 1); }
@@ -222,5 +282,12 @@ export default function mount(api) {
     }
   });
   display();
-  api.setStatus('Wire INPUT to observations A–D using all nine tiles. Tap a tile to turn it, or select with arrows or 1–9 and rotate with Q/E. When the paths glow, test with T.');
+  api.frame(dt => {
+    time += dt;
+    tickTrace(run, dt);
+    if (Math.ceil(run.remaining) !== lastSecond) hud();
+    if (run.outcome) { paint(); finish(); }
+    else if (time - lastPaint > 1 / 30) paint();
+  });
+  api.setStatus('Archive three traces before the receiver sweeps its buffer. Wire INPUT to observations A–D using all nine tiles. Tap a tile to turn it, or select with arrows or 1–9 and rotate with Q/E. When the paths glow, test with T.');
 }

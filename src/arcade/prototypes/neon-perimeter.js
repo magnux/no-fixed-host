@@ -1,18 +1,17 @@
-const WIDTH = 570;
-const HEIGHT = 272;
+const WIDTH = 720;
+const HEIGHT = 380;
 const CORE_HP = 7;
 const TOWER_COST = 2;
-const pads = [[110,81], [112,195], [226,47], [227,217], [314,103], [451,137]];
-const padNames = ['North gate', 'South gate', 'North bend', 'South bend', 'Junction', 'Core relay'];
+const buildTime = [22, 14, 12, 10];
+const gateNames = ['W', 'N', 'E', 'S'];
+const padNames = ['West approach', 'East approach', 'North switch', 'South switch', 'West junction', 'East junction', 'Inner west', 'Inner east', 'Core relay'];
 const towerTypes = {
-  pulse: { name: 'Pulse', glyph: 'P', color: '#63fff2', reach: 78, cycle: .53 },
-  delay: { name: 'Delay', glyph: 'D', color: '#f4ce64', reach: 80, cycle: .86 },
-  arc: { name: 'Arc', glyph: 'A', color: '#ff8bdc', reach: 75, cycle: .90 },
+  pulse: { name: 'Pulse', glyph: 'P', color: '#63fff2', reach: 104, cycle: .53 },
+  delay: { name: 'Delay', glyph: 'D', color: '#f4ce64', reach: 109, cycle: .86 },
+  arc: { name: 'Arc', glyph: 'A', color: '#ff8bdc', reach: 102, cycle: .90 },
 };
 
-const trunk = [[302,136], [358,136], [399,95], [458,95], [499,136], [547,136]];
-function track(entry) {
-  const points = [...entry, ...trunk];
+function track(points) {
   let length = 0;
   const sections = points.slice(1).map(([x,y], i) => {
     const [fromX, fromY] = points[i];
@@ -23,40 +22,54 @@ function track(entry) {
   });
   return { points, length, sections };
 }
-const tracks = [
-  track([[16,45],[107,45],[147,85],[251,85]]),
-  track([[16,227],[107,227],[147,187],[251,187]]),
-];
-const scout = { hp: 5, speed: 81 };
-const hauler = { hp: 16, speed: 62 };
+function board(random) {
+  const jitter = spread => Math.round((random() * 2 - 1) * spread);
+  const core = [360 + jitter(12), 190 + jitter(8)];
+  const bend = (x, y, range = 18) => [x + jitter(range), y + jitter(range)];
+  const west = [bend(239, 124), bend(280, 148, 12), bend(312, 148, 10), core];
+  const east = [bend(481, 256), bend(440, 232, 12), bend(408, 232, 10), core];
+  const tracks = [
+    track([[18, 175 + jitter(35)], bend(110, 165), bend(151, 116), ...west]),
+    track([[322 + jitter(36), 17], bend(322, 56), bend(272, 85), bend(235, 85, 8), ...west]),
+    track([[702, 205 + jitter(35)], bend(609, 215), bend(569, 264), ...east]),
+    track([[398 + jitter(36), 363], bend(398, 324), bend(448, 295), bend(485, 295, 8), ...east]),
+  ];
+  const pads = [bend(183, 153, 8), bend(537, 227, 8), bend(294, 61, 6), bend(426, 319, 6),
+    bend(262, 165, 6), bend(458, 215, 6), bend(307, 121, 5), bend(413, 259, 5), [core[0] - 2, core[1] + 48]];
+  return { core, pads, tracks };
+}
 
-// Times make the scouts arrive in tight groups. Haulers give pulse towers
-// a durable target while the other lane keeps moving.
+const scout = { hp: 5, speed: 73 };
+const hauler = { hp: 15, speed: 54 };
+
+// Each group specifies an approach, launch time, count and separation.
 const formations = [
-  { name: 'First contact', gates: [['north', 0, 5, .65, scout], ['south', 2.0, 1, 1, scout]] },
-  { name: 'Split convoy', gates: [['south', 0, 6, .50, scout], ['north', .6, 2, 1.4, hauler]] },
-  { name: 'Switchback', gates: [['north', 0, 4, .90, hauler], ['south', 1.0, 7, .46, scout]] },
-  { name: 'Closing circuit', gates: [['north', 0, 5, .62, scout], ['south', 0, 4, .85, hauler], ['north', 3.6, 3, .9, hauler], ['south', 4.0, 8, .28, scout]] },
+  { name: 'First contact', gates: [[0, 0, 4, .75, scout], [1, 2, 2, .65, scout]] },
+  { name: 'Split convoy', gates: [[2, 0, 4, .60, scout], [3, 1, 2, .70, scout], [0, 1, 2, 1.55, hauler]] },
+  { name: 'Switchback', gates: [[3, 0, 4, 1.0, hauler], [1, 1, 4, .6, scout], [2, 2.5, 3, .6, scout]] },
+  { name: 'Closing circuit', gates: [[0, 0, 5, .65, scout], [3, 0, 4, 1.15, hauler], [1, 3.9, 3, 1.2, hauler], [2, 4.7, 8, .36, scout]] },
 ];
-function roster(wave, mirror) {
+function roster(wave, offset) {
   const lineup = [];
-  for (const [side, start, count, interval, kind] of formations[wave].gates) {
-    const lane = (side === 'south' ? 1 : 0) ^ Number(mirror);
+  for (const [gate, start, count, interval, kind] of formations[wave].gates) {
+    const lane = (gate + offset) % 4;
     for (let n=0; n<count; n++) lineup.push({ lane, at: start+n*interval, kind });
   }
   return lineup.sort((a,b) => a.at-b.at);
 }
 
-export function newPerimeter(mirror = Math.random() >= .5) {
-  return { mirror, phase:'build', wave:0, hp:CORE_HP, charge:6, towers:Array(pads.length).fill(null),
-    plan:roster(0, mirror), active:[], sparks:[], elapsed:0, sent:0, blocked:0, leaked:0,
+export function newPerimeter(random = Math.random) {
+  const { core, pads, tracks } = board(random);
+  const offset = Math.floor(random() * 4);
+  return { core, pads, tracks, offset, phase:'build', wave:0, hp:CORE_HP, charge:6, towers:Array(pads.length).fill(null),
+    plan:roster(0, offset), active:[], sparks:[], bursts:[], elapsed:0, clock:0, countdown:buildTime[0], sent:0, blocked:0, leaked:0,
     shifted:false, surge:true, outcome:null };
 }
 
 export function installTower(state, pad, type) {
-  if (state.phase !== 'build' || !Number.isInteger(pad) || !pads[pad] ||
+  if (state.phase !== 'build' || !Number.isInteger(pad) || !state.pads[pad] ||
       state.towers[pad] || !Object.hasOwn(towerTypes, type) || state.charge < TOWER_COST) return false;
-  state.towers[pad] = { type, builtWave:state.wave, cooldown:0, overdrive:0 };
+  state.towers[pad] = { type, builtWave:state.wave, cooldown:0, overdrive:0, heading:-Math.PI/2 };
   state.charge -= TOWER_COST;
   return true;
 }
@@ -69,7 +82,7 @@ export function refundTower(state, pad) {
 export function relocateTower(state, from, to) {
   const tower = state.towers[from];
   if (state.phase !== 'build' || !tower || tower.builtWave === state.wave ||
-      !Number.isInteger(to) || !pads[to] || state.towers[to] || state.shifted) return false;
+      !Number.isInteger(to) || !state.pads[to] || state.towers[to] || state.shifted) return false;
   state.towers[to] = tower;
   state.towers[from] = null;
   state.shifted = true;
@@ -91,10 +104,10 @@ export function overdrive(state, pad) {
   return true;
 }
 
-function place(enemy) {
-  const route = tracks[enemy.lane];
+function place(enemy, route) {
   const segment = route.sections.find(s => enemy.dist < s.end) || route.sections.at(-1);
   const offset = Math.min(enemy.dist, route.length) - segment.start;
+  enemy.heading = Math.atan2(segment.dy, segment.dx);
   enemy.x = segment.x + offset * segment.dx;
   enemy.y = segment.y + offset * segment.dy;
 }
@@ -107,8 +120,9 @@ function fire(state, tower, pad) {
   const type = towerTypes[tower.type];
   const inRange = state.active.filter(e => e.hp > 0 && Math.hypot(e.x-x, e.y-y) <= type.reach);
   if (!inRange.length) return false;
-  inRange.sort((a,b) => b.dist - a.dist);
+  inRange.sort((a,b) => (state.tracks[a.lane].length - a.dist) - (state.tracks[b.lane].length - b.dist));
   const first = inRange[0];
+  tower.heading = Math.atan2(first.y - y, first.x - x);
   zap(state, x, y, first, type);
   if (tower.type === 'delay') {
     // A brake pulse catches a pack, stretching its time under neighboring towers.
@@ -136,7 +150,16 @@ function fire(state, tower, pad) {
 }
 
 export function stepPerimeter(state, dt) {
-  if (state.phase !== 'wave') return;
+  if (state.phase === 'ended') return;
+  state.clock += dt;
+  state.bursts = state.bursts.filter(b => (b.life -= dt) > 0);
+  if (state.phase === 'build') {
+    const spent = Math.min(dt, state.countdown);
+    state.countdown = Math.max(0, state.countdown - spent);
+    if (state.countdown > 0) return;
+    sendWave(state);
+    dt -= spent;
+  }
   state.elapsed += dt;
   state.sparks = state.sparks.filter(s => (s.life -= dt) > 0);
   while (state.sent < state.plan.length && state.plan[state.sent].at <= state.elapsed) {
@@ -146,18 +169,21 @@ export function stepPerimeter(state, dt) {
   for (const enemy of state.active) {
     enemy.dist += dt*enemy.speed*(enemy.slow > 0 ? .48 : 1);
     enemy.slow = Math.max(0, enemy.slow-dt);
-    place(enemy);
+    place(enemy, state.tracks[enemy.lane]);
   }
   for (const [index,tower] of state.towers.entries()) {
     if (!tower) continue;
     const boost = tower.overdrive > 0 ? 2.4 : 1;
     tower.overdrive = Math.max(0, tower.overdrive-dt);
     tower.cooldown = Math.max(0, tower.cooldown-dt*boost);
-    if (!tower.cooldown && fire(state, tower, pads[index])) tower.cooldown = towerTypes[tower.type].cycle;
+    if (!tower.cooldown && fire(state, tower, state.pads[index])) tower.cooldown = towerTypes[tower.type].cycle;
   }
   state.active = state.active.filter(enemy => {
-    if (enemy.hp <= 0) { state.blocked++; return false; }
-    if (enemy.dist >= tracks[enemy.lane].length) { state.hp--; state.leaked++; return false; }
+    if (enemy.hp <= 0) {
+      state.bursts.push({ x: enemy.x, y: enemy.y, life: .31 });
+      state.blocked++; return false;
+    }
+    if (enemy.dist >= state.tracks[enemy.lane].length) { state.hp--; state.leaked++; return false; }
     return true;
   });
   state.hp = Math.max(0, state.hp);
@@ -166,7 +192,8 @@ export function stepPerimeter(state, dt) {
     state.phase = 'ended';
   } else if (state.sent === state.plan.length && !state.active.length) {
     state.wave++;
-    state.plan = roster(state.wave, state.mirror);
+    state.plan = roster(state.wave, state.offset);
+    state.countdown = buildTime[state.wave];
     state.phase = 'build';
     state.shifted = false;
     state.sparks = [];
@@ -199,25 +226,30 @@ function paint(ctx, state, selected) {
   for (let x=7;x<WIDTH;x+=17) for (let y=7;y<HEIGHT;y+=17) {
     ctx.fillStyle='#253452'; ctx.fillRect(x,y,1.5,1.5);
   }
-  for (let n=0; n<8; n++) {
-    const y=6+n*5;
-    line(ctx,[[344,y],[372,y],[389,y+17],[495,y+17],[507,y+29],[555,y+29]],'#192b46',1);
-    line(ctx,[[33,252+n*2],[128,252+n*2],[139,241+n*2],[211,241+n*2]],'#243451',1);
-  }
-  const inletColors=['#46cfed','#ac81f4'];
+  const { pads, tracks, core } = state;
+  const inletColors = ['#46cfed', '#7fe0a5', '#c396f0', '#e4a369'];
   for (const [i,route] of tracks.entries()) {
-    const points=route.points.slice(0,5);
-    line(ctx,points,'#213754',13); line(ctx,points,'#101b34',8); line(ctx,points,inletColors[i],1.8);
+    const color = inletColors[i];
+    const active = state.plan.some(unit => unit.lane === i);
+    line(ctx, route.points, '#213754', 12);
+    line(ctx, route.points, '#101b34', 8);
+    line(ctx, route.points, active ? color : '#456173', 1.6);
+    const [gx, gy] = route.points[0];
+    const halo = 12 + 3 * Math.sin(state.clock * (active ? 4 : 1.5) + i);
+    polygon(ctx, gx, gy, halo, 6, Math.PI / 6, '#142238', active ? color : '#456173');
+    ctx.textAlign='center'; ctx.fillStyle=color; ctx.font='bold 13px monospace';
+    ctx.fillText(gateNames[i], gx, gy + 4);
+    if (active) {
+      for (const segment of route.sections.slice(0, 3)) {
+        const t = (state.clock * 35) % 45;
+        for (let at = t; at < segment.end - segment.start; at += 45) {
+          ctx.fillStyle = color; ctx.fillRect(segment.x + segment.dx * at - 1, segment.y + segment.dy * at - 1, 3, 3);
+        }
+      }
+    }
   }
-  line(ctx,trunk,'#294558',14); line(ctx,trunk,'#111d34',8); line(ctx,trunk,'#6dd5dd',2);
-  for (const y of [45,227]) for (let i=0;i<2;i++) {
-    const x=32+i*12;
-    line(ctx,[[x-3,y-4],[x+2,y],[x-3,y+4]],'#c8f1ff',1.6);
-  }
-  ctx.textAlign='left'; ctx.font='bold 14px monospace'; ctx.fillStyle='#90dcee';
-  ctx.fillText('N',14,34); ctx.fillStyle='#d1a9ff'; ctx.fillText('S',14,250);
   const [sx,sy]=pads[selected];
-  const radius=state.towers[selected] ? towerTypes[state.towers[selected].type].reach : 76;
+  const radius=state.towers[selected] ? towerTypes[state.towers[selected].type].reach : towerTypes.pulse.reach;
   ctx.beginPath(); ctx.arc(sx,sy,radius,0,Math.PI*2);
   ctx.fillStyle='#52ebdd0b'; ctx.fill();
   ctx.strokeStyle='#599a9f'; ctx.lineWidth=1; ctx.setLineDash([3,7]); ctx.stroke(); ctx.setLineDash([]);
@@ -234,21 +266,52 @@ function paint(ctx, state, selected) {
     ctx.fillText(type?.glyph ?? String(i+1),x,y+6);
     if (tower) {
       ctx.fillStyle='#e9f8ff'; ctx.font='bold 11px monospace'; ctx.fillText(String(i+1),x+15,y-15);
+      const angle = tower.heading;
+      if (tower.type === 'pulse') {
+        line(ctx, [[x+9*Math.cos(angle),y+9*Math.sin(angle)],[x+20*Math.cos(angle),y+20*Math.sin(angle)]], color, 4);
+      } else {
+        for (let arm=0; arm<(tower.type === 'arc' ? 3 : 2); arm++) {
+          const a = state.clock + arm * Math.PI * 2 / (tower.type === 'arc' ? 3 : 2);
+          polygon(ctx,x+14*Math.cos(a),y+14*Math.sin(a),2.6,4,a,color,color);
+        }
+      }
       if (tower.overdrive>0) {
         ctx.beginPath(); ctx.arc(x,y,21,0,Math.PI*2); ctx.strokeStyle='#ffe48d'; ctx.stroke();
       }
     }
   }
   const coreColor=state.hp>=4?'#72f8e0':'#ff877c';
-  [22,15,8].forEach((r,i) => polygon(ctx,539,136,r,6,Math.PI/6,i===2?coreColor:'#193342',coreColor));
-  ctx.fillStyle='#ccf9f2'; ctx.font='bold 12px monospace'; ctx.fillText('CORE',538,173);
+  const [cx, cy] = core;
+  [20,14,7].forEach((r,i) => polygon(ctx,cx,cy,r,6,(i%2 ? -1 : 1)*state.clock*.55,i===2?coreColor:'#193342',coreColor));
+  ctx.fillStyle='#ccf9f2'; ctx.font='bold 12px monospace'; ctx.fillText('CORE',cx,cy-27);
+  if (state.phase === 'build') {
+    ctx.beginPath();
+    ctx.arc(cx,cy,25,-Math.PI/2,-Math.PI/2 + Math.PI*2*state.countdown/buildTime[state.wave]);
+    ctx.strokeStyle = state.countdown > 5 ? '#82cfd1' : '#ffb16e'; ctx.lineWidth = 2; ctx.stroke();
+  }
+  for (const burst of state.bursts) {
+    const r = 3 + 21 * (1 - burst.life/.31);
+    ctx.globalAlpha = burst.life/.31;
+    for (let i=0; i<6; i++) {
+      const a=i*Math.PI/3;
+      line(ctx,[[burst.x+r*Math.cos(a),burst.y+r*Math.sin(a)],[burst.x+(r+4)*Math.cos(a),burst.y+(r+4)*Math.sin(a)]],'#ffbd95',2);
+    }
+    ctx.globalAlpha=1;
+  }
   state.sparks.forEach(s => {
     line(ctx,[[s.x,s.y],[s.toX,s.toY]],s.color,2.4);
   });
   for (const e of state.active) {
     const heavy=e.maxHp===hauler.hp, size=heavy?9:6.5;
     const color=heavy?'#ff795e':'#ffb778';
-    polygon(ctx,e.x,e.y,size,heavy?6:4,0,'#8f3341',color);
+    ctx.save(); ctx.translate(e.x,e.y); ctx.rotate(e.heading);
+    const thruster = 5 + Math.sin(e.dist * .18) * 2;
+    line(ctx,[[-size*.6,0],[-size-thruster,0]],'#f07d82',heavy?4:2);
+    if (heavy) {
+      for (const side of [-1,1]) line(ctx,[[-size,side*7],[3,side*7]],'#feae84',3);
+    }
+    polygon(ctx,0,0,size,heavy?6:3,0,'#8f3341',color);
+    ctx.fillStyle='#fff1af'; ctx.fillRect(2,-1.5,3,3); ctx.restore();
     if (e.slow>0) {
       ctx.beginPath(); ctx.arc(e.x,e.y,size+3,0,Math.PI*2); ctx.strokeStyle='#f6d967'; ctx.lineWidth=1; ctx.stroke();
     }
@@ -260,16 +323,18 @@ function paint(ctx, state, selected) {
 }
 
 function traffic(state) {
-  return ['N','S'].map((side,i) => {
+  return gateNames.map((side,i) => {
     const arrivals = state.plan.filter(unit => unit.lane === i);
     const count = arrivals.filter(unit => unit.kind === scout).length;
     const loads = arrivals.length - count;
+    if (!arrivals.length) return null;
     return side+' '+[count && count+' scout'+(count===1?'':'s'), loads && loads+' heavy'].filter(Boolean).join(' + ');
-  }).join('  /  ');
+  }).filter(Boolean).join('  /  ');
 }
 
 export default function mount(api) {
   const state = newPerimeter();
+  const { pads } = state;
   const {canvas,ctx} = api.canvas(WIDTH,HEIGHT);
   canvas.setAttribute('role','img');
   let selected = 4;
@@ -286,7 +351,7 @@ export default function mount(api) {
   const launch = api.action('Send wave', launchWave, {primary:true});
   const surge = api.action('Overdrive', boost);
   const pace = api.action('Speed ×1', () => { speed = speed===1 ? 2 : 1; update(); });
-  const brief = 'Tap a socket or select 1–6. Pulse hits one unit, Delay slows a group, and Arc chains three nearby units.';
+  const brief = 'Tap a socket or select 1–9. Pulse hits one unit, Delay slows a group, and Arc chains three nearby units.';
   function waveName() { return formations[state.wave].name; }
   function advice() {
     if (movingFrom!==null) return 'Moving '+towerTypes[state.towers[movingFrom].type].name+'. Choose an empty socket to confirm or cancel the move.';
@@ -298,7 +363,7 @@ export default function mount(api) {
     const tower=state.towers[selected], build=state.phase==='build';
     padButton.textContent='Next pad · '+(selected+1);
     const names=state.towers.map((t,i)=>(i+1)+' '+(t?towerTypes[t.type].name:'empty')).join(', ');
-    canvas.setAttribute('aria-label','Two tracks join before the core. Sockets: '+names+'.');
+    canvas.setAttribute('aria-label','Four entry gates feed a central core. Sockets: '+names+'.');
     buildButtons.forEach(b => { b.hidden=!build; b.disabled=!!tower || state.charge<TOWER_COST || movingFrom!==null; });
     moveButton.hidden=!build;
     const refund=tower?.builtWave===state.wave;
@@ -308,7 +373,7 @@ export default function mount(api) {
     launch.textContent='Send wave '+(state.wave+1);
     surge.hidden=build; surge.disabled=!tower || !state.surge;
     pace.textContent='Speed ×'+speed;
-    api.setHud('Wave '+(state.wave+1)+'/4 · '+waveName()+' · Core '+state.hp+'/'+CORE_HP+' · Charge '+state.charge+
+    api.setHud('Wave '+(state.wave+1)+'/4 · '+waveName()+' · '+(build ? 'Arrivals in '+Math.ceil(state.countdown)+'s' : 'Live')+' · Core '+state.hp+'/'+CORE_HP+' · Charge '+state.charge+
       ' · '+(selected+1)+' '+padNames[selected]+' ('+(tower?towerTypes[tower.type].name:'empty')+')');
     paint(ctx,state,selected);
   }
@@ -354,7 +419,7 @@ export default function mount(api) {
   api.onKey(event => {
     if (event.repeat) return;
     const k=event.key.toLowerCase();
-    if (/^[1-6]$/.test(k)) select(Number(k)-1);
+    if (/^[1-9]$/.test(k)) select(Number(k)-1);
     else if (['p','d','a'].includes(k)) install({p:'pulse',d:'delay',a:'arc'}[k]);
     else if (k==='r' && state.phase==='build') adjust();
     else if (k==='g') launchWave();
@@ -364,22 +429,22 @@ export default function mount(api) {
   });
   update(); api.setStatus(advice());
   api.frame(dt => {
-    if (state.phase!=='wave') return;
-    const hp=state.hp;
-    // Fixed-size substeps keep accelerated waves consistent with ordinary play.
-    let remaining=dt*speed;
-    while (remaining>0 && state.phase==='wave') {
-      const step=Math.min(remaining,1/60);
-      stepPerimeter(state,step); remaining-=step;
+    const phase = state.phase, hp=state.hp, seconds=Math.ceil(state.countdown);
+    let remaining = dt * speed;
+    while (remaining > 0 && state.phase === phase) {
+      const step = Math.min(remaining, 1/60);
+      stepPerimeter(state, step); remaining -= step;
     }
-    if (state.phase==='ended') {
+    if (state.phase === 'ended') {
       update();
-      const detail=state.outcome==='failed'?'The core went dark during wave '+(state.wave+1)+'.':'All four waves cleared with '+state.hp+' core integrity.';
+      const detail = state.outcome === 'failed' ? 'The core went dark during wave '+(state.wave+1)+'.' : 'All four waves cleared with '+state.hp+' core integrity.';
       api.finish(state.outcome, detail+' Your towers stopped '+state.blocked+' units.');
-    } else if (state.phase==='build') {
-      api.sfx?.('clear');
-      update(); api.setStatus('Wave cleared. +2 charge. '+advice());
-    } else if (state.hp!==hp) update();
+    } else if (phase !== state.phase) {
+      movingFrom=null;
+      const launched = state.phase === 'wave';
+      api.sfx?.(launched ? 'wave' : 'clear');
+      update(); api.setStatus((launched ? 'Gates open. ' : 'Wave cleared. +2 charge. ')+advice());
+    } else if (state.hp !== hp || Math.ceil(state.countdown) !== seconds) update();
     else paint(ctx,state,selected);
   });
 }

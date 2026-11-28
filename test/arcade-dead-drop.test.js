@@ -1,60 +1,100 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  createRace, dispatch, ghostAt, recordBest, steerTo, stepRace,
+  createRace,
+  dispatch,
+  route,
+  steerTo,
+  stepRace,
+  recordBest,
+  ghostAt,
 } from '../src/arcade/prototypes/dead-drop-circuit.js';
 
-const boulevard = [[480,224], [510,220], [530,203], [536,170], [536,99], [523,79], [502,64]];
-const depot = [[200,224], [218,224], [273,178], [267,141], [331,63]];
-const handoff = [[109,63], [84,74], [69,99], [69,145]];
-
-function deliver(branch, wait = 0) {
-  const race = createRace();
+function deliver(seed, delay = 0) {
+  const race = createRace(seed);
   dispatch(race);
-  const course = [...branch, ...handoff];
-  let next = 0;
-  for (let frame = 0; frame < 2400 && race.phase === 'racing'; frame++) {
-    let [x, y] = course[next];
-    if (Math.hypot(x - race.x, y - race.y) < 11 && next < course.length - 1) [x, y] = course[++next];
-    stepRace(race, race.time < wait ? {} : steerTo(race, { x, y }), 1 / 60);
+  let anchor = race.nearest,
+    destination = anchor;
+  for (let frame = 0; frame < 6600 && race.phase === 'racing'; frame++) {
+    const stop = race.stops[race.gate];
+    const current = race.city.nodes[destination];
+    if (Math.hypot(current.x - race.x, current.y - race.y) < 5.5) {
+      anchor = destination;
+      destination = route(race.city, anchor, stop, race.closed)[1] ?? stop;
+    }
+    if (race.closed >= 0 && race.city.nodes[anchor].links.some(l => l.edge === race.closed && l.to === destination))
+      destination = anchor;
+    const input = steerTo(race, race.city.nodes[destination]);
+    if (anchor === stop) {
+      input.service = true;
+      input.brake = true;
+    }
+    stepRace(race, race.time < delay ? {} : input, 1 / 60);
   }
   return race;
 }
 
-test('both city routes deliver with the public steering controls and the depot saves time', () => {
-  const long = deliver(boulevard), short = deliver(depot);
-  assert.equal(long.phase, 'complete');
-  assert.equal(short.phase, 'complete');
-  assert.equal(long.shortcut, false);
-  assert.equal(short.shortcut, true);
-  assert.equal(short.gate, 3);
-  assert.ok(short.time + 2 < long.time);
+test('a district has 48 reachable intersections, passing traffic, randomized contracts and safe alternate routes during closures', () => {
+  for (let seed = 1; seed <= 18; seed++) {
+    const { city, stops, traffic, nearest } = createRace(seed);
+    assert.equal(city.nodes.length, 48);
+    assert.ok(city.w > 1150 && city.h > 670);
+    assert.equal(new Set(stops).size, 4);
+    assert.ok(traffic.length >= 12 && city.obstacles.length >= 7);
+    for (const closed of city.closures) for (const stop of stops) assert.ok(route(city, nearest, stop, closed).length);
+  }
+  const one = createRace(10),
+    again = createRace(10),
+    different = createRace(20);
+  assert.deepEqual(one.stops, again.stops);
+  assert.deepEqual(one.traffic, again.traffic);
+  assert.notDeepEqual(one.stops, different.stops);
+  assert.notDeepEqual(one.city.edges, different.city.edges);
 });
 
-test('missing the first window gives a late delivery, and the last call closes the route', () => {
-  assert.equal(deliver(boulevard, 10).phase, 'partial');
-  assert.equal(deliver(depot, 40).phase, 'failed');
-  const parked = createRace();
-  for (let i = 0; i < 2500; i++) stepRace(parked, { gas: true }, 1 / 60);
-  assert.equal(parked.phase, 'ready');
-  assert.equal(parked.time, 0);
-  // A straight cross-city line meets the curb and cannot trigger any gates.
-  dispatch(parked);
-  for (let i = 0; i < 240; i++) stepRace(parked, steerTo(parked, { x: 100, y: 64 }), 1 / 60);
-  assert.equal(parked.gate, 0);
-  assert.ok(parked.y > 201);
+test('normal steering and four stopped handoffs can complete both courier jobs with traffic and events active', () => {
+  for (const seed of [1, 7, 56]) {
+    const run = deliver(seed);
+    assert.equal(run.phase, 'complete', JSON.stringify([seed, run.gate, run.x, run.y, run.time]));
+    assert.equal(run.gate, 4);
+    assert.ok(run.eventIndex > 0);
+  }
 });
 
-test('ghost replays recorded position and retains the fastest finished run only', () => {
-  const baseline = deliver(boulevard), record = recordBest(null, baseline);
-  assert.ok(record);
-  assert.equal(recordBest(record, deliver(depot, 40)), record);
-  assert.equal(recordBest(record, deliver(boulevard, 10)), record);
-  const faster = recordBest(record, deliver(depot));
-  assert.ok(faster.time < record.time);
-  const [a, b] = faster.trace.slice(8, 10);
-  const ghost = ghostAt(faster, (a.t + b.t) / 2);
+test('traffic moves and damages a car, closed streets reroute, pickups require the handoff action, and last call ends the run', () => {
+  const run = createRace(7),
+    car = run.traffic[0];
+  const origin = { x: car.x, y: car.y };
+  stepRace(run, { gas: true }, 1);
+  assert.equal(run.time, 0);
+  dispatch(run);
+  run.x = car.x;
+  run.y = car.y;
+  stepRace(run, {}, 1 / 60);
+  assert.ok(run.collisions);
+  const pickup = run.city.nodes[run.stops[0]];
+  run.x = pickup.x;
+  run.y = pickup.y;
+  run.speed = 0;
+  for (let i = 0; i < 720; i++) stepRace(run, {}, 1 / 60);
+  assert.equal(run.gate, 0);
+  assert.notEqual(car.x + car.y, origin.x + origin.y);
+  for (let i = 0; i < 20; i++) stepRace(run, { service: true }, 1 / 60);
+  assert.equal(run.gate, 1);
+  assert.ok(run.closed >= 0);
+  while (run.phase === 'racing') stepRace(run, {}, 1 / 30);
+  assert.equal(run.phase, 'failed');
+});
+
+test('ghosts use only completed deliveries and match their district and their fastest trace', () => {
+  const run = deliver(7),
+    best = recordBest(null, run);
+  assert.equal(best.seed, 7);
+  assert.equal(recordBest(best, createRace(78)), best);
+  const slower = { ...run, time: run.time + 4 };
+  assert.equal(recordBest(best, slower), best);
+  const [a, b] = best.trace.slice(4, 6),
+    ghost = ghostAt(best, (a.t + b.t) / 2);
   assert.ok(Math.abs(ghost.x - (a.x + b.x) / 2) < 0.0001);
-  assert.ok(Math.abs(ghost.y - (a.y + b.y) / 2) < 0.0001);
-  assert.equal(ghostAt(faster, faster.time + 1), null);
+  assert.equal(ghostAt(best, best.time + 1), null);
 });

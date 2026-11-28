@@ -1,25 +1,48 @@
-const width = 640;
-const height = 300;
-const tau = Math.PI * 2;
-const convoyX = 107;
-const duration = 28;
-// Each pair gives a crossing offset at the tug and a vertical drift rate.
-const lanes = [
-  [0, 0],
-  [-62, -2],
-  [10, -9],
-  [59, 3],
-  [-8, 12],
-  [-55, 2],
-  [12, -14],
-  [0, 8],
-];
+const width = 640,
+  height = 300,
+  tau = Math.PI * 2,
+  duration = 40;
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-const convoyY = (time) => 151 + Math.sin(time * 0.5) * 6;
+const laneName = (lane) => ['upper', 'middle', 'lower'][lane + 1];
+const laneY = (lane) => 150 + lane * 85;
+
+function makeBelt(random) {
+  const routePhase = random() * tau;
+  const routeRate = 0.3 + random() * 0.12;
+  const plan = [];
+  let at = 0;
+  for (let i = 0; i < 15; i++) {
+    const giant = [1, 5, 9, 13].includes(i);
+    const lane = i === 1 ? 0 : Math.floor(random() * 3) - 1;
+    const vx = -78 - random() * 25,
+      vy = (random() - 0.5) * (giant ? 7 : 20);
+    const radius = giant ? 34 + random() * 8 : 13 + random() * 9;
+    const crossY = laneY(lane) + (random() - 0.5) * 30;
+    const startX = i === 0 ? 410 : width + radius;
+    const timeToCross = (startX - 104) / -vx;
+    plan.push({
+      at,
+      x: startX,
+      y: crossY - vy * timeToCross,
+      vx,
+      vy,
+      r: radius,
+      giant,
+      lane,
+      fragment: false,
+      shape: 1 + random() * 8,
+      spin: random() * tau,
+      rate: (random() - 0.5) * (giant ? 0.48 : 1.4),
+    });
+    at += 2 + random() * 0.4;
+  }
+  return { plan, routePhase, routeRate };
+}
 
 export function startConvoy(random = Math.random) {
+  const belt = makeBelt(random);
   return {
-    random,
+    ...belt,
     phase: 'ready',
     time: 0,
     wave: 0,
@@ -28,6 +51,9 @@ export function startConvoy(random = Math.random) {
     cooldown: 0,
     stun: 0,
     thrustTime: 0,
+    hull: 3,
+    formation: false,
+    tug: { x: 104, y: 150, lane: 0, roll: 0 },
     ship: { x: 185, y: 151, vx: 0, vy: 0, angle: 0 },
     rocks: [],
     shots: [],
@@ -36,45 +62,36 @@ export function startConvoy(random = Math.random) {
   };
 }
 
-function asteroid(game) {
-  const index = game.wave++;
-  const random = game.random;
-  const vx = -70 - random() * 7;
-  const [offset, drift] = lanes[index];
-  const vy = drift + (random() - 0.5) * 2;
-  const timeToCross = (width + 24 - convoyX) / -vx;
-  return {
-    x: width + 24,
-    y: convoyY(game.time + timeToCross) + offset + (random() - 0.5) * 7 - vy * timeToCross,
-    vx,
-    vy,
-    r: 18 + random() * 3,
-    fragment: false,
-    shape: 1 + random() * 8,
-    spin: random() * 3,
-    rate: random() - 0.5,
-  };
-}
-
 export function pilot(game, input) {
-  if (game.phase !== 'flight' || game.stun > 0) return;
+  if (game.phase !== 'flight') return;
   const ship = game.ship;
+  if (input === 'tugUp' || input === 'tugDown') {
+    game.tug.lane = clamp(game.tug.lane + (input === 'tugUp' ? -1 : 1), -1, 1);
+    game.message = 'Survey tug acknowledges ' + laneName(game.tug.lane) + ' lane.';
+    return;
+  }
+  if (game.stun > 0) return;
+  if (input === 'formation') {
+    game.formation = !game.formation;
+    return;
+  }
   if (input === 'left' || input === 'right') ship.angle += ((input === 'left' ? -1 : 1) * Math.PI) / 14;
   else if (input === 'thrust') {
-    ship.vx = clamp(ship.vx + Math.cos(ship.angle) * 45, -140, 140);
-    ship.vy = clamp(ship.vy + Math.sin(ship.angle) * 45, -140, 140);
+    game.formation = false;
+    ship.vx = clamp(ship.vx + Math.cos(ship.angle) * 55, -160, 160);
+    ship.vy = clamp(ship.vy + Math.sin(ship.angle) * 55, -160, 160);
     game.thrustTime = 0.26;
   } else if (input === 'fire' && game.cooldown <= 0) {
     const cos = Math.cos(ship.angle),
       sin = Math.sin(ship.angle);
     game.shots.push({
-      x: ship.x + cos * 13,
-      y: ship.y + sin * 13,
-      vx: ship.vx + cos * 335,
-      vy: ship.vy + sin * 335,
-      life: 1.6,
+      x: ship.x + cos * 15,
+      y: ship.y + sin * 15,
+      vx: ship.vx + cos * 360,
+      vy: ship.vy + sin * 360,
+      life: 1.65,
     });
-    game.cooldown = 0.19;
+    game.cooldown = 0.16;
   }
 }
 
@@ -86,6 +103,11 @@ function burst(game, x, y, color) {
 }
 
 function breakRock(game, rock) {
+  if (rock.giant) {
+    burst(game, rock.x, rock.y, '#ffc06b');
+    game.message = 'Monolith armor deflected the shot. Move the tug and escort into another lane.';
+    return;
+  }
   rock.gone = true;
   burst(game, rock.x, rock.y, '#eab78e');
   if (!rock.fragment) {
@@ -106,21 +128,37 @@ function breakRock(game, rock) {
 }
 
 function hitFreighter(game, rock) {
-  rock.gone = true;
-  if (game.shield > 0) return;
-  game.cargo--;
+  if (rock.tugHit || game.shield > 0) return;
+  rock.tugHit = true;
+  if (!rock.giant) rock.gone = true;
+  game.cargo = Math.max(0, game.cargo - (rock.giant ? 2 : 1));
   game.shield = 0.85;
-  burst(game, convoyX + 26, convoyY(game.time), '#ffaf79');
+  burst(game, game.tug.x + 26, game.tug.y, '#ffaf79');
   game.message = `Cargo hit. ${game.cargo} of 3 crates still aboard.`;
 }
 
 export function stepConvoy(game, dt) {
   if (game.phase !== 'flight') return;
   game.time += dt;
-  if (game.wave < lanes.length && game.time >= game.wave * 2.65) game.rocks.push(asteroid(game));
-  for (const name of ['shield', 'cooldown', 'stun', 'thrustTime'])
-    game[name] = Math.max(0, game[name] - dt);
+  while (game.wave < game.plan.length && game.plan[game.wave].at <= game.time) {
+    const next = game.plan[game.wave++];
+    game.rocks.push({ ...next });
+    if (next.giant)
+      game.message = 'Monolith on scope, ' + laneName(next.lane) + ' corridor. Signal a clear lane with Q/E.';
+  }
+  const tug = game.tug;
+  const oldY = tug.y;
+  const wavelength = game.time * game.routeRate + game.routePhase;
+  tug.x = 104 + Math.sin(wavelength * 0.68) * 14;
+  const flightLine = laneY(tug.lane) + Math.sin(wavelength) * 21 + Math.sin(wavelength * 2.3) * 7;
+  tug.y += (flightLine - tug.y) * (1 - Math.exp(-dt * 1.25));
+  tug.roll = clamp(((tug.y - oldY) / Math.max(0.001, dt)) * 0.0023, -0.18, 0.18);
+  for (const name of ['shield', 'cooldown', 'stun', 'thrustTime']) game[name] = Math.max(0, game[name] - dt);
   const ship = game.ship;
+  if (game.formation && !game.stun) {
+    ship.vx = (tug.x + 82 - ship.x) * 2.2;
+    ship.vy = (tug.y - ship.y) * 2.2;
+  }
   ship.x = clamp(ship.x + ship.vx * dt, 22, width - 22);
   ship.y = clamp(ship.y + ship.vy * dt, 22, height - 22);
   ship.vx *= Math.exp(-dt * 0.72);
@@ -144,13 +182,13 @@ export function stepConvoy(game, dt) {
   }
   for (const rock of game.rocks) {
     if (rock.gone) continue;
-    if (
-      Math.abs(rock.x - convoyX) < 34 + rock.r &&
-      Math.abs(rock.y - convoyY(game.time)) < 10 + rock.r * 0.8
-    )
+    if (Math.abs(rock.x - tug.x) < 34 + rock.r && Math.abs(rock.y - tug.y) < 10 + rock.r * 0.8)
       hitFreighter(game, rock);
-    else if (!game.stun && Math.hypot(rock.x - ship.x, rock.y - ship.y) < rock.r + 8) {
+    else if (!game.stun && !rock.shipHit && Math.hypot(rock.x - ship.x, rock.y - ship.y) < rock.r + 8) {
+      rock.shipHit = true;
+      game.hull = Math.max(0, game.hull - (rock.giant ? 2 : 1));
       game.stun = 0.75;
+      burst(game, ship.x, ship.y, '#f3b97e');
       const dy = ship.y - rock.y;
       ship.vy = dy < 0 ? -44 : 44;
       game.message = 'Escort clipped. Thrusters will recover in a moment.';
@@ -166,10 +204,15 @@ export function stepConvoy(game, dt) {
     (shot) => shot.life > 0 && shot.x >= 0 && shot.x <= width && shot.y >= 0 && shot.y <= height,
   );
   game.rocks = game.rocks.filter(
-    (rock) => !rock.gone && rock.x > -35 && rock.y > -40 && rock.y < height + 40,
+    (rock) => !rock.gone && rock.x > -55 && rock.y > -40 && rock.y < height + 40,
   );
-  if (!game.cargo || game.time >= duration) {
+  if (!game.cargo || !game.hull || game.time >= duration) {
     game.phase = 'arrived';
+    if (!game.hull)
+      return {
+        outcome: 'failed',
+        detail: 'Escort hull lost. Thrust clear of monoliths or use R to fly formation with the tug.',
+      };
     if (game.cargo === 3)
       return { outcome: 'complete', detail: 'All three survey crates reached the Far Reaches.' };
     if (game.cargo)
@@ -211,7 +254,7 @@ function drawField(ctx, game) {
   ctx.ellipse(535, 61, 38, 6, -0.38, 0, tau);
   ctx.stroke();
   // The dashed strip marks the freighter's route through the moving field.
-  const y = convoyY(game.time);
+  const y = laneY(game.tug.lane);
   ctx.strokeStyle = '#364c5c';
   ctx.lineWidth = 1;
   ctx.setLineDash([3, 8]);
@@ -232,10 +275,38 @@ function drawField(ctx, game) {
 }
 
 function drawFreighter(ctx, game) {
-  const x = convoyX,
-    y = convoyY(game.time);
+  const { x, y, roll } = game.tug;
   ctx.save();
   ctx.translate(x, y);
+  ctx.rotate(roll);
+  // Exposed truss, dual drive bells and a tracking survey dish identify the cargo vessel.
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = '#9c9f98';
+  ctx.strokeRect(-34, -10, 53, 19);
+  for (let i = -32; i < 14; i += 10) {
+    ctx.beginPath();
+    ctx.moveTo(i, -10);
+    ctx.lineTo(i + 9, 9);
+    ctx.stroke();
+  }
+  for (const side of [-1, 1]) {
+    ctx.fillStyle = '#687883';
+    ctx.fillRect(-42, side * 9 - 3, 19, 6);
+    ctx.fillStyle = '#f1a570';
+    ctx.fillRect(-45, side * 9 - 2, 5, 4);
+  }
+  ctx.strokeStyle = '#ceba99';
+  ctx.beginPath();
+  ctx.moveTo(9, -6);
+  ctx.lineTo(12, -18);
+  ctx.stroke();
+  ctx.save();
+  ctx.translate(12, -18);
+  ctx.rotate(Math.sin(game.time * 1.4) * 0.65);
+  ctx.beginPath();
+  ctx.arc(0, -3, 7, 0, Math.PI);
+  ctx.stroke();
+  ctx.restore();
   ctx.fillStyle = '#bc9978';
   ctx.beginPath();
   ctx.moveTo(-35, -7);
@@ -290,6 +361,18 @@ function drawEscort(ctx, game) {
     ctx.lineTo(-9, 4);
     ctx.fill();
   }
+  ctx.fillStyle = '#3591a2';
+  for (const side of [-1, 1]) {
+    ctx.beginPath();
+    ctx.moveTo(7, 2 * side);
+    ctx.lineTo(-9, 13 * side);
+    ctx.lineTo(-17, 13 * side);
+    ctx.lineTo(-7, 2 * side);
+    ctx.fill();
+    ctx.fillStyle = '#d0a86e';
+    ctx.fillRect(-13, 10 * side - 1, 12, 2);
+    ctx.fillStyle = '#3591a2';
+  }
   ctx.fillStyle = game.stun > 0 ? '#de9875' : '#a2e4db';
   ctx.strokeStyle = '#173e49';
   ctx.lineWidth = 2;
@@ -301,6 +384,12 @@ function drawEscort(ctx, game) {
   ctx.closePath();
   ctx.fill();
   ctx.stroke();
+  ctx.fillStyle = '#315d72';
+  ctx.beginPath();
+  ctx.ellipse(3, 0, 5, 2.7, 0, 0, tau);
+  ctx.fill();
+  ctx.fillStyle = '#d3ffff';
+  ctx.fillRect(4, -1, 3, 1.3);
   ctx.strokeStyle = '#629b9e';
   ctx.lineWidth = 1;
   ctx.beginPath();
@@ -324,6 +413,18 @@ function drawRocks(ctx, game) {
       ctx.stroke();
       ctx.setLineDash([]);
     }
+    if (rock.giant) {
+      ctx.strokeStyle = '#eeb473';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([3, 6]);
+      ctx.beginPath();
+      ctx.arc(0, 0, rock.r + 5, 0, tau);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#ebbd8d';
+      ctx.font = '9px monospace';
+      ctx.fillText('MONOLITH', -23, -rock.r - 9);
+    }
     ctx.rotate(rock.spin);
     ctx.beginPath();
     for (let i = 0; i < 9; i++) {
@@ -335,11 +436,19 @@ function drawRocks(ctx, game) {
       else ctx.lineTo(x, y);
     }
     ctx.closePath();
-    ctx.fillStyle = rock.fragment ? '#947e71' : '#6f6a68';
+    ctx.fillStyle = rock.giant ? '#775c62' : rock.fragment ? '#947e71' : '#6f6a68';
     ctx.fill();
     ctx.strokeStyle = '#bba58c';
     ctx.lineWidth = 1.5;
     ctx.stroke();
+    for (let i = 0; i < (rock.giant ? 8 : 3); i++) {
+      const a = rock.shape + i * 2.9,
+        r = rock.r * (0.27 + 0.25 * Math.sin(i * 3.1));
+      ctx.beginPath();
+      ctx.ellipse(Math.cos(a) * r, Math.sin(a) * r, rock.r * 0.15, rock.r * 0.09, a, 0, tau);
+      ctx.fillStyle = rock.giant ? '#53414e' : '#56545b';
+      ctx.fill();
+    }
     ctx.strokeStyle = '#514e51';
     ctx.beginPath();
     ctx.moveTo(-rock.r * 0.55, rock.r * 0.3);
@@ -379,7 +488,7 @@ export default function mount(api) {
     fire.focus();
     canvas.style.cursor = 'crosshair';
     api.setStatus(
-      'Escort underway. Tap a rock to aim and fire, or rotate and fire from the controls. Break threats early so fragments pass wide.',
+      'Tap rocks to fire. Q/E orders the tug up/down one lane. R flies your escort in formation, or steer and thrust independently. Both ships must avoid ringed monoliths.',
     );
     render();
   }
@@ -393,7 +502,10 @@ export default function mount(api) {
   const thrust = api.action('Thrust (↑)', () => control('thrust'));
   const right = api.action('Turn right (→)', () => control('right'));
   const fire = api.action('Fire (F)', () => control('fire'), { primary: true });
-  const flightControls = [left, thrust, right, fire];
+  const tugUp = api.action('Tug ↑ (Q)', () => control('tugUp'));
+  const tugDown = api.action('Tug ↓ (E)', () => control('tugDown'));
+  const formation = api.action('Fly formation (R)', () => control('formation'));
+  const flightControls = [left, thrust, right, fire, tugUp, tugDown, formation];
   for (const b of flightControls) b.hidden = true;
   const keyMap = {
     arrowleft: 'left',
@@ -403,12 +515,16 @@ export default function mount(api) {
     d: 'right',
     w: 'thrust',
     f: 'fire',
+    q: 'tugUp',
+    e: 'tugDown',
+    r: 'formation',
   };
   api.onKey((event) => {
     const input = keyMap[event.key.toLowerCase()];
     if (!input || game.phase !== 'flight') return;
     event.preventDefault();
-    control(input);
+    if (!event.repeat || input === 'thrust' || input === 'fire' || input === 'left' || input === 'right')
+      control(input);
   });
   function aim(event) {
     if (game.phase !== 'flight' || game.stun > 0 || event.button !== 0) return;
@@ -421,7 +537,7 @@ export default function mount(api) {
   canvas.addEventListener('pointerdown', aim);
   api.onCleanup(() => canvas.removeEventListener('pointerdown', aim));
   api.setStatus(
-    'Bring three crates through a 28-second asteroid belt. The broad ship carries cargo. You fly the arrow-shaped escort.',
+    'Bring three crates across a new 40-second belt. Split small rocks, escort the survey tug and route both ships around indestructible monoliths.',
   );
   let lastHud = '';
   function render() {
@@ -432,7 +548,8 @@ export default function mount(api) {
       drawEscort(ctx, game);
     }
     const seconds = Math.max(0, Math.ceil(duration - game.time));
-    const hud = `Cargo ${game.cargo}/3 · ${seconds} s to clear · Wave ${game.wave}/${lanes.length}`;
+    formation.setAttribute('aria-pressed', String(game.formation));
+    const hud = `Cargo ${game.cargo}/3 · Escort hull ${game.hull}/3 · Tug: ${laneName(game.tug.lane)} · ${game.formation ? 'Formation' : 'Free flight'} · ${seconds} s to clear`;
     if (hud !== lastHud) {
       api.setHud(hud);
       lastHud = hud;

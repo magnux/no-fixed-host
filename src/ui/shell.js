@@ -126,7 +126,7 @@ export function initShell({ getState, pause, setRate, restore, restartUnsupporte
       </li>`;
     }).join('');
     return `<div class="shell-gallery-head"><p>${t('Practice while the campaign is paused. Results stay in the tester.')}</p>
-      <div class="shell-actions">${check('sound','Enable audio',prefs.sound) + button('latest-games','Jump to new games')}</div></div><ul class="shell-games">${cards}</ul>`;
+      <div class="shell-actions">${check('sound','Enable audio',prefs.sound) + button('jump-hot-swap','Jump to Hot Swap')}</div></div><ul class="shell-games">${cards}</ul>`;
   }
   async function playGame(game, options, ready = () => true) {
     const [play, library] = await Promise.all([
@@ -357,10 +357,10 @@ export function initShell({ getState, pause, setRate, restore, restartUnsupporte
     try {
       const act = trigger.dataset.shellAction;
       if (Object.hasOwn(screens,act)) open(act);
-      else if (act === 'latest-games') {
-        const firstNew = body.querySelector('[data-minigame="hot-swap"]');
-        firstNew.focus({ preventScroll: true });
-        firstNew.closest('.shell-game').scrollIntoView({ block: 'center' });
+      else if (act === 'jump-hot-swap') {
+        const hotSwap = body.querySelector('[data-minigame="hot-swap"]');
+        hotSwap.focus({ preventScroll: true });
+        hotSwap.closest('.shell-game').scrollIntoView({ block: 'center' });
       }
       else if (act === 'preview') audio.playCampaignCue('preview');
       else if (act === 'play') await playPractice(trigger);
