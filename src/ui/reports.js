@@ -1,3 +1,4 @@
+import { commercialAccounts } from '../game/report-accounting.js';
 import { campaignStamp } from '../game/calendar.js';
 import { EQUIPMENT, REGIONS, SITE_TYPES, TECHS } from '../game/content.js';
 import { campaignStatistics, comparisonReport, orderPrice } from '../game/reports.js';
@@ -14,6 +15,7 @@ const cashRows = [
   ['opening', 'Opening balance'], ['jobs', 'Paid work and spare cycles'],
   ['interest', 'Interest'], ['income', 'Other income'], ['research', 'Research orders'],
   ['builds', 'Facility orders'], ['equipment', 'Equipment orders'], ['upkeep', 'Upkeep paid'],
+  ['rentalRefund', 'Rental funds returned'], ['prepaidUpkeep', 'Upkeep covered by standby reserve'],
   ['limitLoss', 'Income above treasury limit'],
   ['net', 'Net cash change'], ['closing', 'Closing balance'], ['unpaid', 'Upkeep unpaid'],
 ];
@@ -21,6 +23,7 @@ const cpuRows = [
   ['installed', 'Installed capacity'], ['sleeping', 'Sleeping capacity'], ['active', 'Active capacity'],
   ['research', 'Research'], ['jobs', 'Assigned paid work'], ['upkeep', 'Maintenance'],
   ['construction', 'Facility construction'], ['equipment', 'Equipment installation'],
+  ['burst', 'Capacity from boosts'], ['unusedBurst', 'Unused boost capacity'], ['rented', 'External research work'],
   ['spare', 'Spare cycles earning cash'], ['upkeepShort', 'Unfunded maintenance'],
 ];
 const plannedCashRows = [
@@ -118,11 +121,12 @@ function showAmounts(table, section, base, order) {
     if ((section === 'cash' || section === 'planCash') && key === 'interest') {
       text(row.cells[0], t('Interest ({rate} daily)', { rate: percent.format(base.dailyRate / 100) }));
     }
-    if (section === 'cash' && key === 'limitLoss') {
-      row.hidden = !base.cash[key] && !order?.cash[key];
+    if (['limitLoss', 'rentalRefund', 'prepaidUpkeep', 'burst', 'unusedBurst', 'rented'].includes(key)) {
+      row.hidden = !base[section][key] && !order?.[section][key];
+      if (row.hidden) continue;
     }
-    text(row.cells[1], formatValue(base[section][key]));
-    if (order) text(row.cells[2], formatValue(order[section][key]));
+    text(row.cells[1], formatValue(base[section][key] ?? 0));
+    if (order) text(row.cells[2], formatValue(order[section][key] ?? 0));
   }
 }
 
@@ -132,6 +136,7 @@ function mount(container) {
       <div role="group" aria-label="${t('Report type')}" class="report-switch">
         <button type="button" data-report-section="forecast" aria-pressed="true">${t('Forecast')}</button>
         <button type="button" data-report-section="budget" aria-pressed="false">${t('Funding needs')}</button>
+        <button type="button" data-report-section="finance" aria-pressed="false">${t('Finance')}</button>
         <button type="button" data-report-section="statistics" aria-pressed="false">${t('Statistics')}</button>
       </div>
       <div class="report-tools" data-report="tools"><label>${t('Forecast')} period
@@ -146,6 +151,12 @@ function mount(container) {
       <div class="report-ledgers" data-report="ledgers"></div>
       <p class="report-note"><strong data-report="range"></strong> · <span data-report="assumptions"></span></p>
     </section>
+    <section data-report="finance" class="report-finance" hidden>
+      <table><caption>${t('Campaign spending')}</caption>
+        <thead><tr><th scope="col">${t('Account')}</th><th scope="col">${t('Paid or reserved')}</th><th scope="col">${t('Returned')}</th></tr></thead>
+        <tbody data-report="accounts"></tbody></table>
+      <p class="report-note" data-report="empty">${t('Purchases and reservations will appear here.')}</p>
+    </section>
     <section data-report="statistics" hidden><p data-report="history" class="report-note"></p><dl class="report-stats" data-report="totals"></dl>
       <p class="report-note">${t('Cash received includes the opening grant. Each completed processor batch counts as one order. Starting hardware and equipment bundled with a facility are excluded from installation counts.')}</p>
     </section>
@@ -154,6 +165,18 @@ function mount(container) {
   panel.lang = menuLanguage();
   const fields = Object.fromEntries([...panel.querySelectorAll('[data-report]')].map(el => [el.dataset.report, el]));
   const view = { panel, fields, language: menuLanguage(), mode: 'forecast', candidateKey: null, compare: null, force: true, stats: {} };
+  view.accounts = {};
+  for (const [key, label] of Object.entries(commercialAccounts)) {
+    const row = fields.accounts.insertRow();
+    row.dataset.commercialAccount = key;
+    const title = document.createElement('th');
+    title.scope = 'row';
+    title.textContent = t(label);
+    row.append(title);
+    row.insertCell();
+    row.insertCell();
+    view.accounts[key] = row;
+  }
   for (const [key, label] of statisticRows) {
     const group = document.createElement('div');
     const dt = document.createElement('dt');
@@ -203,11 +226,24 @@ function refresh(view) {
   const { state, fields, options } = view;
   const { money, number } = reportFormats();
   const candidate = options.candidate ?? null;
-  fields.forecast.hidden = view.mode === 'statistics';
+  fields.finance.hidden = view.mode !== 'finance';
+  fields.forecast.hidden = view.mode === 'statistics' || view.mode === 'finance';
   fields.tools.hidden = fields.forecast.hidden;
   fields.statistics.hidden = view.mode !== 'statistics';
   for (const button of view.panel.querySelectorAll('[data-report-section]')) {
     button.setAttribute('aria-pressed', String(button.dataset.reportSection === view.mode));
+  }
+  if (view.mode === 'finance') {
+    const accounts = state.statistics.commercial;
+    fields.empty.hidden = Object.keys(accounts).length > 0;
+    for (const [key, row] of Object.entries(view.accounts)) {
+      const values = accounts[key];
+      row.hidden = !values;
+      if (!values) continue;
+      text(row.cells[1], money.format(values.paid));
+      text(row.cells[2], money.format(values.returned));
+    }
+    return;
   }
   if (view.mode === 'statistics') {
     const stats = campaignStatistics(state);

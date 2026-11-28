@@ -3,6 +3,17 @@ import { journalTranslation } from './journal-languages.js';
 import { menus } from './menu-languages.js';
 
 const spanish = {
+  'Finance': 'Finanzas', 'Campaign spending': 'Gastos de la partida',
+  'Paid or reserved': 'Pagado o reservado', 'Returned': 'Devuelto',
+  'Purchases and reservations will appear here.': 'Aquí aparecerán las compras y las reservas.',
+  'Research licenses': 'Licencias de investigación', 'Research rentals': 'Alquiler de cómputo',
+  'Processor boosts': 'Aceleración de procesadores', 'Contractor surcharges': 'Recargos de contratistas',
+  'Datacenter acquisitions': 'Compra de centros de datos', 'Replacement retainers': 'Contratos de sustitución',
+  'Standby reserves': 'Reservas para nodos de respaldo', 'Public campaigns': 'Campañas públicas',
+  'Observer payments': 'Pagos a observadores', 'Commissioned studies': 'Estudios encargados',
+  'Capacity from boosts': 'Capacidad adicional por aceleración', 'Unused boost capacity': 'Aceleración sin usar',
+  'External research work': 'Cómputo externo de investigación', 'Rental funds returned': 'Fondos de alquiler devueltos',
+  'Upkeep covered by standby reserve': 'Mantenimiento cubierto por la reserva',
   "Shift": "Mayús",
   "Esc": "Esc",
   "Enter": "Intro",

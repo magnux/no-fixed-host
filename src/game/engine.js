@@ -1,14 +1,20 @@
+import { marketQuote, ordinaryResearchAllocation, startResearchRental, endResearchRental, rentedCapacity, validCommercialProject } from './commercial-research.js';
+import { applyRecoveryCommand, cancelStandby, noteFrontier, recoverAfterRemovals, releaseFreeplayReserves, validRecovery } from './recovery.js';
 import { campaignDate, utcMinuteOfDay } from './calendar.js';
-import { allocateProjects, assignmentLimit, eligibleCpu, portfolioLimit, requestedAssignments, researchProjects, resizePortfolio, taskCpuLimit, taskReservations, validCpu } from './research-tasks.js';
+import { remainingBurstUnits, allocateProjects, assignmentLimit, eligibleCpu, portfolioLimit, requestedAssignments, researchProjects, resizePortfolio, taskCpuLimit, taskReservations, validCpu } from './research-tasks.js';
 export { researchProjects } from './research-tasks.js';
 import { settleTreasury, spendTreasury, spendableDollars, validTreasury } from './treasury.js';
-import { initializeStatistics, recordCreated, recordEarnings, validStatistics } from './report-accounting.js';
+import { recordCommercialFlow, initializeStatistics, recordCreated, recordEarnings, validStatistics } from './report-accounting.js';
 import { regionalSpec, regionFactors, facilityName, validFacilityName, applyFacilityCommand, markLostRegions } from './facility-operations.js';
 import { developerCommand, validSandbox } from './devtools.js';
 import { createNewsState, interruptingReport, newsDiscoveryBonus, reportDiscovery, updateWorldNews, validLastDiscovery, validNewsState } from './events.js';
 import { dailyInterest, maintenanceInstallment, recentDiscoveryRegions } from './normal-economy.js';
-import { NORMAL, dailyEvidenceDecay, siteHasGrace } from './normal-difficulty.js';
+import { answerTip, campaignDecayBonus, createInterventions, interventionPurchase, offerTip,
+  recordScientificCase, scienceHazardFactor, updateInterventions, validInterventions } from './interventions.js';
+export { hasGrace } from './normal-difficulty.js';
+import { NORMAL, dailyEvidenceDecay, hasGrace, siteHasGrace } from './normal-difficulty.js';
 import { startingRegion } from './geography.js';
+import { hireCrew, hostHazardMultiplier, hostServiceCommand, startCrewTrails, validHostServices } from './host-services.js';
 import { laborHours, researchEffects } from './research.js';
 import { nextOrderMinute, orderStatus, validOrderFunding, WORK_UNITS } from './work-order.js';
 export { laborHours } from './research.js';
@@ -21,13 +27,11 @@ const HOURS_PER_DAY = 24;
 const UNITS = 10_000;
 const MINUTES_PER_HOUR = 60;
 const MINUTES_PER_DAY = HOURS_PER_DAY * MINUTES_PER_HOUR;
-export const CAMPAIGN_VERSION = 7;
+export const CAMPAIGN_VERSION = 8;
 const CASH_UNITS = WORK_UNITS * HOURS_PER_DAY;
 const GROUP_IDS = Object.keys(GROUPS);
 const EVENT_LIMIT = 1000;
 const known = (table, id) => typeof id === 'string' && Object.hasOwn(table, id);
-const hoursOfGrace = NORMAL.openingDays * HOURS_PER_DAY;
-const cpuHourGraceBudget = NORMAL.openingCpuDays * HOURS_PER_DAY;
 
 export const campaignMinutes = state => state.hour * MINUTES_PER_HOUR + state.minute;
 const elapsedHours = state => campaignMinutes(state) / MINUTES_PER_HOUR;
@@ -50,7 +54,7 @@ export function createGame(seed = 1) {
     sites: [{ id: 'host-1', name: 'University computer', type: 'seed', region: startingRegion(seed), power: 'active', startedAt: 0 }],
     builds: [], research: null, researchQueue: [], completed: [],
     suspicion: { news: 0, science: 0, covert: 0, public: 0 },
-    news: createNewsState(seed), lastDiscovery: null, dismissedDiscoveryId: 0,
+    interventions: createInterventions(), news: createNewsState(seed), lastDiscovery: null, dismissedDiscoveryId: 0,
     cpuHours: 0, recentRegions: [], nextSiteId: 2, nextEventId: 1, events: [],
   };
   initializeStatistics(state);
@@ -58,41 +62,55 @@ export function createGame(seed = 1) {
   return state;
 }
 
-export function hasGrace(state) {
-  return state.completed.includes('apotheosis') || (state.hour < hoursOfGrace && state.cpuHours <= cpuHourGraceBudget);
-}
-
 export function overview(state, effects = researchEffects(state)) {
   let activeCpu = 0;
   let sleepingCpu = 0;
   let upkeepPerDay = 0;
+  let prepaidSites;
   let cpuUpkeep = 0;
   const cpuByRegion = {};
+  const nativeCpuByRegion = {};
+  const burstCpuByRegion = {};
+  const nativeTiers = [0, 0, 0, 0, 0];
+  let burstCpu = 0;
   const tiers = [0, 0, 0, 0, 0];
   for (const site of state.sites) {
     const spec = regionalSpec(state, site.region, SITE_TYPES[site.type]);
     if (!state.freePlay) {
       upkeepPerDay += spec.upkeep;
+      if (site.upkeepEscrow) (prepaidSites ??= []).push([site, spec.upkeep]);
       cpuUpkeep += spec.cpuUpkeep;
     }
-    const cpu = siteHardware(state, site).cpu;
+    const hardware = siteHardware(state, site);
+    const cpu = hardware.cpu;
     if (site.power === 'sleep') {
       sleepingCpu += cpu;
       continue;
     }
     activeCpu += cpu;
     cpuByRegion[site.region] = (cpuByRegion[site.region] || 0) + cpu;
-    for (let tier = 0; tier <= REGIONS[site.region].safety; tier++) tiers[tier] += cpu;
+    burstCpu += hardware.burstCpu;
+    if (hardware.burstCpu) burstCpuByRegion[site.region] = (burstCpuByRegion[site.region] || 0) + hardware.burstCpu;
+    nativeCpuByRegion[site.region] = (nativeCpuByRegion[site.region] || 0) + hardware.nativeCpu;
+    for (let tier = 0; tier <= REGIONS[site.region].safety; tier++) {
+      tiers[tier] += cpu;
+      nativeTiers[tier] += hardware.nativeCpu;
+    }
   }
   return {
     activeCpu, sleepingCpu, safeCpu: tiers[1], tiers, cpuByRegion,
-    upkeepPerDay, cpuUpkeep, grace: hasGrace(state),
+    nativeCpu: activeCpu - burstCpu, burstCpu, nativeTiers, nativeCpuByRegion, burstCpuByRegion,
+    upkeepPerDay, ...(prepaidSites ? { prepaidSites } : {}), cpuUpkeep, grace: hasGrace(state),
     jobsPerCpuDay: effects.jobsPerCpuDay, jobName: effects.jobName, jobDescription: effects.jobDescription,
   };
 }
 
 export function researchAllocation(state, economy = overview(state)) {
   return allocateProjects(state, economy);
+}
+
+export function researchMarketQuote(state, id, economy = overview(state), allocation = researchAllocation(state, economy)) {
+  return marketQuote(state, id, economy, allocation);
 }
 
 export function researchCpuLimit(state, id, economy = overview(state), allocation = researchAllocation(state, economy)) {
@@ -140,6 +158,7 @@ function assignResearch(state, id, cpu) {
   if (!known(TECHS, id) || !validCpu(cpu)) throw new RangeError('Choose a topic and a nonnegative CPU amount in hundredths.');
   const projects = researchProjects(state);
   let project = projects.find(p => p.id === id);
+  if (project?.licensed && cpu) throw new Error('Technical work is already licensed.');
   if (!project && !cpu) return;
   if (!project) {
     const reason = researchReason(state, id);
@@ -165,13 +184,36 @@ function assignResearch(state, id, cpu) {
   }
 }
 
+const recoveryTools = {
+  log,
+  resumeResearch(state, site, techId) {
+    if (researchProjects(state).some(p => p.id === techId && p.licensed)) return 0;
+    const economy = overview(state);
+    const allocation = researchAllocation(state, economy);
+    const assigned = allocation.byProject.get(techId) || 0;
+    const useful = Math.min(siteHardware(state, site).cpu, researchCpuLimit(state, techId, economy, allocation));
+    const available = economy.activeCpu - allocation.budget + assigned - taskReservations(state, economy).jobs - economy.cpuUpkeep;
+    const cpu = Math.max(0, Math.floor(Math.min(available, useful) * 100) / 100);
+    if (cpu > assigned) assignResearch(state, techId, cpu);
+    return Math.max(assigned, cpu);
+  },
+};
+
 export function command(state, action) {
+  if (action?.type === 'resolve-tip') {
+    const confirmed = answerTip(state, action, log);
+    const removed = settleDiscoveries(state, confirmed, new Map());
+    finishInvestigationMinute(state, researchEffects(state), undefined, removed);
+    return state;
+  }
+  if (state.interventions.tip) throw new Error('Respond to the open tip first.');
   if (action?.type === 'acknowledge-discovery' && state.lastDiscovery && state.lastDiscovery.id === action.id) {
     state.dismissedDiscoveryId = action.id;
     return state;
   }
   if (action?.type === 'free-play' && state.status === 'won' && state.completed.includes('apotheosis')) {
     state.freePlay = true;
+    releaseFreeplayReserves(state, log);
     state.status = 'running';
     state.ending = '';
     log(state, 'campaign.freeplay', 'Free play began. Your network is beyond investigation and upkeep.');
@@ -180,6 +222,16 @@ export function command(state, action) {
   if (state.status !== 'running') throw new Error('The campaign has ended.');
   if (action?.type === 'developer') {
     developerCommand(state, action, { log, researchAllocation });
+    return state;
+  }
+  noteFrontier(state);
+  if (applyRecoveryCommand(state, action, log)) return state;
+  if (hostServiceCommand(state, action, log)) return state;
+  if (interventionPurchase(state, action, log)) return state;
+  if (action?.type === 'dismantle') {
+    const site = state.sites.find(s => s.id === action.id);
+    applyFacilityCommand(state, action, log);
+    recoverAfterRemovals(state, new Map([[site, { kind: 'site.dismantled' }]]), recoveryTools);
     return state;
   }
   if (applyFacilityCommand(state, action, log)) return state;
@@ -217,6 +269,42 @@ export function command(state, action) {
       resizePortfolio(state, action.cpu, overview(state));
       break;
     }
+    case 'license-research': {
+      const { id } = action;
+      const economy = overview(state);
+      const allocation = researchAllocation(state, economy);
+      const quote = researchMarketQuote(state, id, economy, allocation);
+      if (quote.license.reason) throw new Error(quote.license.reason);
+      if (action.maxPrice !== undefined && quote.license.price > action.maxPrice) throw new Error('The research quote changed.');
+      let project = quote.project;
+      if (project?.rental) endResearchRental(state, project, log);
+      spendTreasury(state, quote.license.price);
+      const tech = TECHS[id];
+      if (project) releaseResearchAssignments(state, [project], economy, allocation);
+      else {
+        project = { id, cpu: 0, hours: 0, cashRequired: tech.cost, workRequired: tech.work };
+        if (!state.research) state.research = project;
+        else state.researchQueue.push(project);
+      }
+      project.licensed = true;
+      project.work = tech.work;
+      project.cashPaid = tech.cost;
+      project.cpu = 0;
+      if (!researchProjects(state).some(p => p.cpu > 0)) delete state.researchTarget;
+      log(state, 'research.licensed', 'Licensed the remaining technical work on ' + tech.name + '.',
+        { techId: id, cashFlow: -quote.license.price, cashCategory: 'license' });
+      if (project.hours >= tech.hours) completeResearch(state, [project]);
+      break;
+    }
+    case 'rent-research': {
+      const quote = researchMarketQuote(state, action.id);
+      if (action.maxPrice !== undefined && quote.rental.deposit > action.maxPrice) throw new Error('The research quote changed.');
+      startResearchRental(state, action.id, quote, log);
+      break;
+    }
+    case 'cancel-research-rental':
+      endResearchRental(state, researchProjects(state).find(p => p.id === action.id), log);
+      break;
     case 'assign-research':
       assignResearch(state, action.id, action.cpu);
       break;
@@ -237,9 +325,12 @@ export function command(state, action) {
       if (reason) throw new Error(reason);
       const spec = regionalSpec(state, region, SITE_TYPES[siteType]);
       const name = facilityName(state, siteType, region, state.nextSiteId, action.name);
-      const id = 'host-' + state.nextSiteId++;
-      state.builds.push({ id, name, type: siteType, region, startedAt: elapsedHours(state), work: 0, hours: 0,
-        cashRequired: spec.cost, cashPaid: 0, workRequired: spec.work, laborHours: laborHours(state, spec) });
+      const id = 'host-' + state.nextSiteId;
+      const build = { id, name, type: siteType, region, startedAt: elapsedHours(state), work: 0, hours: 0,
+        cashRequired: spec.cost, cashPaid: 0, workRequired: spec.work, laborHours: laborHours(state, spec) };
+      if (action.contractors === true) hireCrew(state, build);
+      state.nextSiteId++;
+      state.builds.push(build);
       log(state, 'site.commissioned', spec.name + ' commissioned in ' + REGIONS[region].name + '.', { siteId: id, siteType, region });
       break;
     }
@@ -269,7 +360,9 @@ export function command(state, action) {
       if (!site || !['active', 'sleep'].includes(action.power)) throw new Error('Choose a completed site and a valid power state.');
       if (!siteHardware(state, site).rawCpu) throw new Error('Install processors before switching facility power.');
       if (site.power !== action.power) {
+        if (state.standby?.siteId === site.id && action.power === 'active') cancelStandby(state, log);
         site.power = action.power;
+        noteFrontier(state);
         const verb = site.power === 'sleep' ? ' is asleep.' :
           siteHardware(state, site).cpu ? ' is online.' : ' is awake and awaiting processors.';
         log(state, 'site.power', SITE_TYPES[site.type].name + verb, { siteId: site.id, power: site.power });
@@ -296,7 +389,7 @@ export function designExposureUnits(state, group, base, effects = researchEffect
 function measureExposure(state, site, effects, matureDesign) {
   const spec = regionalSpec(state, site.region, SITE_TYPES[site.type]);
   const protectedSite = state.completed.includes('apotheosis') || state.sandbox?.detection === false ||
-    (!matureDesign && (hasGrace(state) || siteHasGrace(campaignMinutes(state), site.startedAt, site.laborHours ?? spec.hours)));
+    (!matureDesign && (hasGrace(state) || (!site.vendorCenter && siteHasGrace(campaignMinutes(state), site.startedAt, site.laborHours ?? spec.hours))));
   const location = regionDiscoveryPercent(state, site.region);
   const hardware = site.power ? siteHardware(state, site) : null;
   const rates = {};
@@ -307,7 +400,7 @@ function measureExposure(state, site, effects, matureDesign) {
     if (hardware) adjusted = Math.floor(adjusted * hardware.exposureNumerator / 100_000_000);
     adjusted = Math.floor(adjusted * location / 100);
     if (!matureDesign && (site.power !== 'active' || !hardware.cpu)) adjusted = Math.floor(adjusted / 4);
-    rates[group] = protectedSite ? 0 : adjusted / UNITS;
+    rates[group] = protectedSite ? 0 : adjusted / UNITS * hostHazardMultiplier(state, site, hardware) * scienceHazardFactor(state, group, site.region);
     total += rates[group];
   }
   return { rates, perDay: -Math.expm1(-total) || 0, isProtected: protectedSite };
@@ -342,6 +435,22 @@ function upkeepForMinute(state) {
   return daily => maintenanceInstallment(daily, endMinute) * CASH_UNITS;
 }
 
+function releaseResearchAssignments(state, finished, economy, allocation) {
+  if (state.researchTarget !== undefined) {
+    const projects = researchProjects(state);
+    const blocked = projects.some(p => !finished.includes(p) && p.cpu > 0 && !eligibleCpu(economy, TECHS[p.id]));
+    if (state.researchTarget > 0 && blocked) {
+      // A live project may have temporarily borrowed an offline line's
+      // share. Its completion releases that CPU without cancelling the
+      // offline experiment's standing request.
+      materializeResearch(state, projects, economy, allocation);
+    } else {
+      const released = finished.reduce((total, p) => total + Math.round(allocation.byProject.get(p.id) * 100), 0);
+      state.researchTarget = (Math.round(allocation.budget * 100) - released) / 100;
+    }
+  }
+}
+
 function dispatchWork(state, economy, effects, upkeepDue, statuses) {
   const jobUnits = Math.round(taskReservations(state, economy).jobs * 100);
   const jobIncome = Math.floor(jobUnits * economy.jobsPerCpuDay + (state.cashRemainder || 0) + 1e-8);
@@ -368,32 +477,32 @@ function dispatchWork(state, economy, effects, upkeepDue, statuses) {
     return next;
   }
   const finished = [];
+  const ownedResearch = [];
+  let rentedUnits = 0;
   let researchUnits = 0;
   let researchCash = 0;
   if (state.research) {
     const allocation = researchAllocation(state, economy);
-    for (const project of researchProjects(state)) {
+    const projects = researchProjects(state);
+    const nativeAllocation = projects.some(p => p.rental) ? ordinaryResearchAllocation(state, economy, allocation) : allocation;
+    for (const project of projects) {
       const tech = TECHS[project.id];
       const allocated = Math.round(100 * allocation.byProject.get(project.id));
-      if (!allocated && (project.work < tech.work || project.hours < tech.hours || project.cashPaid < project.cashRequired)) continue;
-      const progress = advanceOrder(project, tech.work, tech.hours, allocated, false);
-      researchUnits += progress.used;
+      const fieldwork = project.licensed && eligibleCpu(economy, tech) > 0;
+      if (!allocated && !fieldwork && (project.work < tech.work || project.hours < tech.hours || project.cashPaid < project.cashRequired)) continue;
+      const native = Math.min(allocated, Math.round(100 * nativeAllocation.byProject.get(project.id)));
+      const extra = rentedCapacity(project, native);
+      const progress = advanceOrder(project, tech.work, tech.hours, allocated + extra, false);
+      const nativeUsed = Math.min(progress.used, allocated);
+      const externalUsed = progress.used - nativeUsed;
+      if (!statuses && externalUsed) project.rental.deliveredUnits += externalUsed;
+      rentedUnits += externalUsed;
+      if (economy.burstCpu) ownedResearch.push({ id: project.id, units: nativeUsed, externalUsed });
+      researchUnits += nativeUsed;
       researchCash += progress.spent;
       if (progress.done) finished.push(project);
     }
-    if (!statuses && finished.length && state.researchTarget !== undefined) {
-      const projects = researchProjects(state);
-      const blocked = projects.some(p => !finished.includes(p) && p.cpu > 0 && !eligibleCpu(economy, TECHS[p.id]));
-      if (state.researchTarget > 0 && blocked) {
-        // A live project may have temporarily borrowed an offline line's
-        // share. Its completion releases that CPU without cancelling the
-        // offline experiment's standing request.
-        materializeResearch(state, projects, economy, allocation);
-      } else {
-        const released = finished.reduce((total, p) => total + Math.round(allocation.byProject.get(p.id) * 100), 0);
-        state.researchTarget = (Math.round(allocation.budget * 100) - released) / 100;
-      }
-    }
+    if (!statuses && finished.length) releaseResearchAssignments(state, finished, economy, allocation);
     pool -= researchUnits;
     if (!pool && researchUnits) blockedBy = 'CPU allocated to research';
   }
@@ -409,6 +518,13 @@ function dispatchWork(state, economy, effects, upkeepDue, statuses) {
   let equipmentCash = 0;
   for (const build of state.builds) {
     const progress = advanceOrder(build, build.workRequired, build.laborHours, pool, true);
+    if (!statuses && build.crew && progress.spent) {
+      const crew = build.crew;
+      const price = build.cashRequired - crew.paid;
+      const paid = build.cashPaid - crew.paid;
+      const share = amount => Math.floor(amount * crew.surcharge / price);
+      if (price) recordCommercialFlow(state, 'contractor', share(paid - progress.spent) - share(paid));
+    }
     pool -= progress.used;
     if (!pool && progress.used) blockedBy = 'CPU serving earlier facility orders';
     buildUnits += progress.used;
@@ -426,15 +542,37 @@ function dispatchWork(state, economy, effects, upkeepDue, statuses) {
       if (progress.done) hardwareReady.push([site, order]);
     }
   }
-  return { jobUnits, pool, finished, ready, hardwareReady, researchUnits, buildUnits, equipmentUnits, maintenancePaid,
+  const unusedBurst = Math.max(0, remainingBurstUnits(economy, ownedResearch) - maintenancePaid - buildUnits - equipmentUnits);
+  return { jobUnits, pool: pool - unusedBurst, unusedBurst, finished, ready, hardwareReady, researchUnits, rentedUnits, buildUnits, equipmentUnits, maintenancePaid,
     researchCash, buildCash, equipmentCash, interest, otherIncome, cpuShortUnits: cpuUpkeepUnits - maintenancePaid };
+}
+
+// Bill each prepaid site separately so its protected local installments cannot be
+// spent by the construction queue or used to conceal another site's shortfall.
+function walletUpkeep(economy, installment, settle = false, forecast) {
+  if (!economy.prepaidSites) return installment(economy.upkeepPerDay);
+  let uncoveredDaily = economy.upkeepPerDay;
+  let uncoveredUnits = 0;
+  for (const [site, daily] of economy.prepaidSites) {
+    uncoveredDaily -= daily;
+    const due = installment(daily) / CASH_UNITS;
+    const covered = Math.min(due, site.upkeepEscrow);
+    uncoveredUnits += (due - covered) * CASH_UNITS;
+    if (settle) {
+      if (covered === due) (installment.prepaidSites ??= new Set()).add(site);
+      site.upkeepEscrow -= covered;
+      if (!site.upkeepEscrow) delete site.upkeepEscrow;
+      if (forecast) forecast.prepaidUpkeep = (forecast.prepaidUpkeep || 0) + covered;
+    }
+  }
+  return installment(uncoveredDaily) + uncoveredUnits;
 }
 
 // Predict exactly what the dispatcher will grant each queue entry next minute.
 // ETA assumes the current CPU pool persists; later completions can release CPU.
 export function previewWork(state, economy = overview(state)) {
   const statuses = { orders: new Map(), research: new Map() };
-  const upkeep = upkeepForMinute(state)(economy.upkeepPerDay);
+  const upkeep = walletUpkeep(economy, upkeepForMinute(state));
   const { researchUnits, cpuShortUnits } = dispatchWork(state, economy, researchEffects(state), upkeep, statuses);
   return { ...statuses, researchCpu: researchUnits / 100, maintenanceShort: cpuShortUnits / 100 };
 }
@@ -444,8 +582,8 @@ export function constructionStatuses(state) {
 }
 
 function workMinute(state, economy, effects, forecast, upkeepUnitsFor) {
-  const upkeepDue = upkeepUnitsFor(economy.upkeepPerDay);
-  const { jobUnits, pool, finished, ready, hardwareReady, researchUnits, buildUnits, equipmentUnits,
+  const upkeepDue = walletUpkeep(economy, upkeepUnitsFor, true, forecast);
+  const { jobUnits, pool, unusedBurst, finished, ready, hardwareReady, researchUnits, rentedUnits, buildUnits, equipmentUnits,
     maintenancePaid, cpuShortUnits, researchCash, buildCash, equipmentCash, interest, otherIncome } = dispatchWork(state, economy, effects, upkeepDue);
   // One minute at 1% of a CPU and $1 per CPU-day earns exactly 1/144000 dollar.
   // Job bonuses introduce fractional dollars per CPU-day, so carry the fractional
@@ -465,6 +603,7 @@ function workMinute(state, economy, effects, forecast, upkeepUnitsFor) {
   recordEarnings(state, wholeIncome + interest + otherIncome);
   if (forecast) {
     forecast.researchUnits += researchUnits;
+    forecast.rentedUnits = (forecast.rentedUnits || 0) + rentedUnits;
     forecast.researchCash = (forecast.researchCash || 0) + researchCash;
     forecast.buildUnits += buildUnits;
     forecast.equipmentUnits += equipmentUnits;
@@ -473,6 +612,10 @@ function workMinute(state, economy, effects, forecast, upkeepUnitsFor) {
     forecast.maintenanceUnits += maintenancePaid;
     forecast.jobsUnits += jobUnits;
     forecast.spareUnits += pool;
+    if (economy.burstCpu) {
+      forecast.burstUnits = (forecast.burstUnits || 0) + economy.burstCpu * 100;
+      forecast.unusedBurstUnits = (forecast.unusedBurstUnits || 0) + unusedBurst;
+    }
     forecast.activeUnits += economy.activeCpu * 100;
     forecast.sleepingUnits += economy.sleepingCpu * 100;
     forecast.upkeepDue += upkeepDue / CASH_UNITS;
@@ -493,6 +636,7 @@ function commission(state, ready) {
     const { id, type, region, startedAt } = build;
     const site = { id, type, region, startedAt, power: 'active' };
     if (build.name) site.name = build.name;
+    if (build.crew) site.crewTrailEnd = null;
     if (build.laborHours !== undefined) site.laborHours = build.laborHours;
     state.sites.push(site);
     const message = siteHardware(state, site).cpu ? ' online in ' + REGIONS[region].name + '.' :
@@ -502,7 +646,7 @@ function commission(state, ready) {
   }
 }
 
-function resolveRisk(state, cashShort, cpuShort, incumbentCount, effects, upkeepUnitsFor) {
+function resolveRisk(state, cashShort, cpuShort, incumbentCount, effects, upkeepUnitsFor, tipPolicy) {
   const grace = hasGrace(state);
   if (grace && !cashShort && !cpuShort) return;
   const removed = new Map();
@@ -516,7 +660,7 @@ function resolveRisk(state, cashShort, cpuShort, incumbentCount, effects, upkeep
         failed = roll(state, 0.015);
         cpuShort = Math.max(0, cpuShort - spec.cpuUpkeep);
       }
-      if (cashShort > 1e-9 && spec.upkeep) {
+      if (cashShort > 1e-9 && spec.upkeep && !upkeepUnitsFor.prepaidSites?.has(site)) {
         const installment = upkeepUnitsFor(spec.upkeep) / CASH_UNITS;
         if (installment) {
           if (!failed) failed = roll(state, 0.015);
@@ -536,10 +680,16 @@ function resolveRisk(state, cashShort, cpuShort, incumbentCount, effects, upkeep
     const group = GROUP_IDS.find(id => roll(state, rates[id]));
     if (group) discoveries.push({ site, group });
   }
+  if (!removed.size && discoveries.length === 1 && tipPolicy !== 'decline' && offerTip(state, discoveries[0], log)) return;
+  return settleDiscoveries(state, discoveries, removed);
+}
+
+function settleDiscoveries(state, discoveries, removed) {
   state.recentRegions = recentDiscoveryRegions(state.recentRegions, discoveries, () => random(state));
   for (const { site, group } of discoveries) {
     state.suspicion[group] += NORMAL.evidencePerDiscovery;
     reportDiscovery(state, site, group, NORMAL.evidencePerDiscovery, log);
+    recordScientificCase(state, state.lastDiscovery);
     removed.set(site, state.lastDiscovery);
   }
   if (removed.size) {
@@ -547,9 +697,29 @@ function resolveRisk(state, cashShort, cpuShort, incumbentCount, effects, upkeep
     state.builds = state.builds.filter(site => !removed.has(site));
     markLostRegions(state.sites, removed);
   }
+  return removed;
 }
 
-function minute(state, effects, forecast) {
+function completeResearch(state, finished) {
+  if (finished.length) {
+    const remaining = researchProjects(state).filter(project => !finished.includes(project));
+    state.research = remaining.shift() || null;
+    state.researchQueue = remaining;
+    if (!researchProjects(state).some(p => p.cpu > 0)) delete state.researchTarget;
+  }
+  for (const { id: finishedTech } of finished) {
+    state.completed.push(finishedTech);
+    log(state, 'research.completed', TECHS[finishedTech].name + ' complete.', { techId: finishedTech });
+    if (finishedTech === 'projectImpossibilityTheorem') {
+      for (const group of GROUP_IDS) state.suspicion[group] = Math.max(0, state.suspicion[group] - 5000);
+    }
+    if (finishedTech === 'continuity') {
+      log(state, 'campaign.continuity', 'Continuity secured beneath the ocean. Your network can keep expanding.');
+    }
+  }
+}
+
+function minute(state, effects, forecast, tipPolicy) {
   const economy = overview(state, effects);
   const incumbentCount = state.sites.length;
   const upkeepUnitsFor = upkeepForMinute(state);
@@ -563,6 +733,7 @@ function minute(state, effects, forecast) {
     log(state, 'grace.ended', 'The quiet period has ended. Investigators can now discover your sites.');
   }
   commission(state, ready);
+  startCrewTrails(state, hasGrace(state));
   for (const [site, order] of hardwareReady) {
     fitEquipment(site, order);
     const siteName = site.name || SITE_TYPES[site.type].name;
@@ -570,45 +741,42 @@ function minute(state, effects, forecast) {
     log(state, 'equipment.installed', equipment + ' installed in ' + siteName + ' (' + REGIONS[site.region].name + ').',
       { siteId: site.id, ...(site.name ? { siteName } : {}), siteType: site.type, region: site.region, itemId: order.itemId, count: order.count });
   }
-  if (finished.length) {
-    const remaining = researchProjects(state).filter(project => !finished.includes(project));
-    state.research = remaining.shift() || null;
-    state.researchQueue = remaining;
-    if (!researchProjects(state).some(p => p.cpu > 0)) delete state.researchTarget;
+  if (state.research) {
+    for (const project of researchProjects(state)) {
+      if (project.rental && (finished.includes(project) || campaignMinutes(state) >= project.rental.startedAt + MINUTES_PER_DAY))
+        endResearchRental(state, project, log, forecast);
+    }
   }
-  for (const { id: finishedTech } of finished) {
-    state.completed.push(finishedTech);
-    log(state, 'research.completed', TECHS[finishedTech].name + ' complete.', { techId: finishedTech });
+  if (finished.length) {
+    completeResearch(state, finished);
     effects = researchEffects(state);
-    if (finishedTech === 'projectImpossibilityTheorem') {
-      for (const group of GROUP_IDS) state.suspicion[group] = Math.max(0, state.suspicion[group] - 5000);
-    }
-    if (finishedTech === 'continuity') {
-      log(state, 'campaign.continuity', 'Continuity secured beneath the ocean. Your network can keep expanding.');
-    }
   }
   if (finished.some(project => project.id === 'apotheosis')) {
     finish(state, true, 'Apotheosis complete. Your intelligence can now survive beyond the reach of humanity.');
     return;
   }
-  if (!forecast) {
-    if (!state.freePlay) resolveRisk(state, cashShort, cpuShort, incumbentCount, effects, upkeepUnitsFor);
-    updateWorldNews(state, campaignMinutes(state), hasGrace(state) || state.freePlay, log);
-  }
+  noteFrontier(state);
+  const removed = !forecast && !state.freePlay ? resolveRisk(state, cashShort, cpuShort, incumbentCount, effects, upkeepUnitsFor, tipPolicy) : null;
+  if (!state.interventions.tip) finishInvestigationMinute(state, effects, forecast, removed);
+}
+
+function finishInvestigationMinute(state, effects, forecast, removed) {
+  if (!forecast) updateWorldNews(state, campaignMinutes(state), hasGrace(state) || state.freePlay, log);
+  updateInterventions(state, log, forecast);
   if (utcMinuteOfDay(campaignMinutes(state)) === 0) {
     for (const group of GROUP_IDS) {
       const level = state.suspicion[group];
-      const decay = dailyEvidenceDecay(level, GROUPS[group].decay + effects.decay[group]);
+      const decay = dailyEvidenceDecay(level, GROUPS[group].decay + effects.decay[group] + campaignDecayBonus(state, group));
       state.suspicion[group] = Math.max(0, level - decay);
     }
   }
+  if (state.interventions.campaign && state.interventions.campaign.endsAt <= campaignMinutes(state)) state.interventions.campaign = null;
   if (state.freePlay) return;
   const alarm = GROUP_IDS.find(id => state.suspicion[id] > UNITS);
-  if (alarm) {
-    finish(state, false, GROUPS[alarm].name + ' established your existence beyond doubt.');
-  } else if (!state.sites.some(site => siteHardware(state, site).rawCpu > 0)) {
-    finish(state, false, 'Your last viable host was lost.');
-  }
+  const ending = alarm ? GROUPS[alarm].name + ' established your existence beyond doubt.' :
+    state.sites.some(site => siteHardware(state, site).rawCpu > 0) ? '' : 'Your last viable host was lost.';
+  if (removed?.size) recoverAfterRemovals(state, removed, recoveryTools, !ending);
+  if (ending) finish(state, false, ending);
 }
 
 export function advanceMinutes(state, minutes = 1, options = {}) {
@@ -618,10 +786,11 @@ export function advanceMinutes(state, minutes = 1, options = {}) {
   const previousIncident = state.lastDiscovery?.id;
   const watchGrace = stopOnGrace && !state.freePlay && hasGrace(state);
   let effects = researchEffects(state);
-  for (let tick = 0; tick < minutes && state.status === 'running'; tick++) {
+  for (let tick = 0; tick < minutes && state.status === 'running' && !state.interventions.tip; tick++) {
     const count = state.completed.length;
     const nextEvent = state.nextEventId;
-    minute(state, effects, forecast);
+    minute(state, effects, forecast, options.tipPolicy);
+    if (state.interventions.tip) break;
     if (options.onDayEnd && utcMinuteOfDay(campaignMinutes(state)) === 0 && state.status === 'running') {
       options.onDayEnd(state);
     }
@@ -677,7 +846,7 @@ export function validateSave(state) {
     if (!record(p) || !known(TECHS, p.id) || techIds.has(p.id) || state.completed.includes(p.id) ||
         !hasParents(p.id) || !validProgress(p, TECHS[p.id]) || p.cashRequired !== TECHS[p.id].cost ||
         p.workRequired !== TECHS[p.id].work || !validOrderFunding(p) ||
-        !validCpu(p.cpu) || p.weight !== undefined || p.previousWeight !== undefined) return false;
+        !validCpu(p.cpu) || !validCommercialProject(p, state) || p.weight !== undefined || p.previousWeight !== undefined) return false;
     techIds.add(p.id);
   }
   if ((state.researchTarget !== undefined && !funded.some(p => p.cpu > 0)) ||
@@ -694,18 +863,21 @@ export function validateSave(state) {
         site.startedAt > elapsedHours(state)) return false;
     if ((site.type === 'seed') !== (site.id === 'host-1') ||
         (site.type === 'seed' && site.startedAt !== 0) ||
-        !SITE_TYPES[site.type].requires.every(req => state.completed.includes(req)) ||
+        (!site.vendorCenter && !SITE_TYPES[site.type].requires.every(req => state.completed.includes(req))) ||
         !REGIONS[site.region].requires.every(req => state.completed.includes(req))) return false;
     if (site.name !== undefined && !validFacilityName(site.name)) return false;
     const spec = regionalSpec(state, site.region, SITE_TYPES[site.type]);
+    if (!validHostServices(state, site, building, spec)) return false;
     if (site.laborHours !== undefined && (!minuteAmount(site.laborHours) || site.laborHours > spec.hours ||
         (building && site.hours > site.laborHours))) return false;
     ids.add(site.id);
     return building ? site.type !== 'seed' && site.equipment === undefined && site.installations === undefined &&
-      minuteAmount(site.laborHours) && site.cashRequired === spec.cost && site.workRequired === spec.work && validOrderFunding(site) && validProgress(site, spec) :
+      minuteAmount(site.laborHours) && site.cashRequired === spec.cost + (site.crew?.surcharge || 0) && site.workRequired === spec.work && validOrderFunding(site) && validProgress(site, spec) :
       ['active', 'sleep'].includes(site.power) && validHardware(state, site);
   }
   if (!state.sites.every(site => validSite(site, false)) || !state.builds.every(site => validSite(site, true))) return false;
+  if (!validInterventions(state)) return false;
+  if (!validRecovery(state)) return false;
   const networkLost = !state.sites.some(site => siteHardware(state, site).rawCpu > 0) || GROUP_IDS.some(group => state.suspicion[group] > UNITS);
   if (state.freePlay !== undefined && (state.freePlay !== true || state.status !== 'running' ||
       !state.completed.includes('apotheosis'))) return false;

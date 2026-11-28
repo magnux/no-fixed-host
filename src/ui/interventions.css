@@ -1,0 +1,18 @@
+.intervention-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr)); gap: 1rem; padding: 1rem; }
+.intervention-cards section { min-width: 0; background: var(--ink); border: 1px solid var(--line); border-radius: .35rem; padding: 1rem; }
+.intervention-cards h3 { display: flex; align-items: center; gap: .5rem; margin: 0 0 .75rem; font-size: 1.05rem; }
+.intervention-cards h3 svg { color: var(--mint); }
+.intervention-cards p, #tip-dialog p { line-height: 1.5; font-size: .9rem; }
+.intervention-interval, .intervention-order small, #tip-dialog .tip-balance { color: var(--quiet); }
+.intervention-cards label { font-size: .88rem; font-weight: 600; }
+.intervention-cards select { display: block; width: 100%; max-width: 100%; padding: .45rem; margin-block: .4rem .6rem; }
+.intervention-cards .intervention-status { font-size: .85rem; color: var(--amber); margin: .4rem 0; }
+.intervention-order { display: flex; align-items: flex-start; flex-direction: column; gap: .4rem; border-top: 1px solid var(--line); margin-top: .8rem; padding-top: .8rem; }
+#tip-dialog { color: inherit; background: var(--panel); border: 1px solid var(--line); border-block-start: 3px solid var(--amber); border-radius: .5rem; padding: 1.4rem; width: min(30rem, 92vw); max-height: 92dvh; overflow: auto; }
+#tip-dialog::backdrop { background: #05090bd9; }
+#tip-dialog h2 { margin: .4rem 0; }
+#tip-dialog small, #tip-dialog .tip-source { font: .8rem/1.45 var(--mono); color: var(--amber); }
+
+.tip-rules { margin: 0 1rem 1rem; padding-top: .75rem; border-top: 1px solid var(--line); }
+.tip-rules h3 { margin: 0; font-size: 1rem; }
+.tip-rules p, .tip-rules small { font-size: .86rem; line-height: 1.5; color: var(--quiet); }

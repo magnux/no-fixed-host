@@ -10,6 +10,11 @@ export const NORMAL = Object.freeze({
   siteGraceMultiplier: 2,
 });
 
+export function hasGrace(state) {
+  return state.completed.includes('apotheosis') ||
+    (state.hour < NORMAL.openingDays * 24 && state.cpuHours <= NORMAL.openingCpuDays * 24);
+}
+
 export function dailyEvidenceDecay(evidence, decayRate) {
   return Math.max(1, Math.floor(evidence * Math.max(1, decayRate) / 10_000));
 }

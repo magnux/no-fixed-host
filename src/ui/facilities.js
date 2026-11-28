@@ -1,3 +1,6 @@
+import { duration, formatPrice, quantity, setOptions, setText } from './facility-controls.js';
+import { acquisitionMarkup, bindFacilityCommerce, boostAction, crewMarkup, hostServicesMarkup, updateAcquisition,
+  updateBoostButton, updateCrew, updateHostServices, updateQueuedCrew } from './facility-commerce.js';
 import { facilityText, localizeFacilityMarkup } from './facility-language.js';
 import { dossierFormat, dossierLabel, localizedDesignText } from './dossier-translations.js';
 import { catalogLabel, menuLanguage } from './localization.js';
@@ -14,31 +17,7 @@ import { equipmentIcon, icon } from './icons.js';
 import './facilities.css';
 
 const SLOT_NAMES = { cpu: 'Processors', network: 'Network', reactor: 'Reactor', security: 'Security' };
-const formatPrice = value => dossierFormat(menuLanguage()).money(value);
-const quantity = value => dossierFormat(menuLanguage()).number(value);
 const sessions = new WeakMap();
-
-function setText(node, text) {
-  if (node.textContent !== text) node.textContent = text;
-}
-
-// A select and its options remain connected throughout a live simulation.
-// Catalog options change when moving between regions or equipment slots.
-function setOptions(select, entries) {
-  const signature = JSON.stringify(entries);
-  if (select.dataset.options === signature) return;
-  const valid = new Set(entries.map(([id]) => id));
-  for (const option of Array.from(select.options)) {
-    if (!valid.has(option.value)) option.remove();
-  }
-  const existing = new Map(Array.from(select.options, option => [option.value, option]));
-  for (const [index, [id, label]] of entries.entries()) {
-    const option = existing.get(id) ?? new Option(label, id);
-    setText(option, label);
-    if (select.options[index] !== option) select.insertBefore(option, select.options[index] || null);
-  }
-  select.dataset.options = signature;
-}
 
 function renderRisk(node, state, exposure, context = 'design') {
   if (!node.childElementCount) {
@@ -64,14 +43,6 @@ function equipmentEffect(item) {
   return item.slot === 'network' ? '+' + percent + ' compute' : '−' + percent + ' detection rate';
 }
 
-function duration(hours) {
-  const minutes = Math.max(0, Math.round(hours * 60));
-  const whole = Math.floor(minutes / 60);
-  const part = minutes % 60;
-  if (!whole) return part + 'm';
-  return whole + 'h' + (part ? ' ' + part + 'm' : '');
-}
-
 function prerequisites(node, ids, state, handler) {
   const missing = handler ? [...new Set(ids)].filter(id => !state.completed.includes(id)) : [];
   const signature = missing.join(' ');
@@ -92,7 +63,7 @@ function prerequisites(node, ids, state, handler) {
   return missing.length;
 }
 
-function renderQueue(root, records) {
+function renderQueue(root, records, state) {
   const old = new Map(Array.from(root.children, row => [row.dataset.id, row]));
   for (const r of records) {
     let row = old.get(r.id);
@@ -119,6 +90,7 @@ function renderQueue(root, records) {
     } else if (!r.cancellable) {
       row.querySelector('.facility-command')?.remove();
     }
+    if (r.cancellable) updateQueuedCrew(row.querySelector('.facility-command'), state, r);
     old.delete(r.id);
     const [name, detail, bar] = row.children;
     setText(name.lastElementChild, r.name);
@@ -158,6 +130,7 @@ function mountFacilities(root) {
             <small>¹ Price, CPU work and upkeep. ² Discovery rate before local history and equipment.</small>
           </details>
           <small data-ref="regionTerms"></small>
+          ${acquisitionMarkup}
           <fieldset id="facility-type" class="facility-picker" data-ref="picker">
             <legend>Facility type</legend>
             <div class="facility-designs" data-ref="designs"></div>
@@ -171,6 +144,7 @@ function mountFacilities(root) {
               <div><dt>Upkeep</dt><dd data-ref="upkeep"></dd></div>
             </dl>
             <small data-ref="commissionTime"></small>
+            ${crewMarkup}
             <section class="facility-risk" aria-label="Design risk"><h4>Daily discovery risk when mature and online</h4>
               <dl data-ref="designRisk"></dl><small data-ref="designRiskNote"></small></section>
             <label class="facility-name-field">Facility name (optional)<input type="text" data-ref="buildName" maxlength="48" autocomplete="off"></label>
@@ -196,6 +170,7 @@ function mountFacilities(root) {
               <dl data-ref="localRisk"></dl><small data-ref="localRiskNote"></small></section>
             <div class="facility-site-nav" role="group" aria-label="Browse hosts"><button type="button" data-ref="prev">Previous host</button>
               <button type="button" data-ref="next">Next host</button></div>
+            ${hostServicesMarkup}
             <dl data-ref="installed" class="installed-list"></dl>
             <p data-ref="fixed" hidden>This host uses a fixed hardware package.</p>
             <div data-ref="hardware" class="facility-hardware">
@@ -312,6 +287,9 @@ function mountFacilities(root) {
         perform({type: 'power', id, power}, facilityText(power === 'active' ? 'Host awake.' : 'Host asleep.'));
         break;
       }
+      case 'boost':
+        boostAction(session, id, perform, confirmAction);
+        break;
       case 'dismantle':
         requestRemoval(id, false);
         break;
@@ -327,13 +305,14 @@ function mountFacilities(root) {
   e.manageMode.addEventListener('click', () => switchMode('manage'));
   e.designs.addEventListener('change', event => {
     session.design = event.target.value;
+    e.useCrew.checked = false;
     setText(e.feedback, '');
     refresh(session);
   });
   e.slot.addEventListener('change', () => { e.count.value = '1'; setText(e.feedback, ''); refresh(session); });
   e.item.addEventListener('change', () => { e.count.value = '1'; setText(e.feedback, ''); refresh(session); });
   e.count.addEventListener('input', () => refresh(session));
-  const buildAction = () => ({ type: 'build', siteType: session.design, region: session.region, name: e.buildName.value });
+  const buildAction = () => ({ type: 'build', siteType: session.design, region: session.region, name: e.buildName.value, ...(e.useCrew.checked ? {contractors: true} : {}) });
   const installAction = () => {
     const site = session.state.sites.find(host => host.id === session.expandedId);
     return { type: 'install', siteId: site.id, itemId: e.item.value, expectedSlot: slotSignature(site, e.slot.value),
@@ -341,6 +320,16 @@ function mountFacilities(root) {
   };
   const packageAction = upgrade => ({ type: upgrade ? 'auto-upgrade' : 'auto-install', siteId: session.expandedId,
     expectedOrders: upgrade ? session.upgradeOrders : session.autoOrders });
+  function confirmAction(action, title, description, button, message) {
+    setText(e.removalTitle, title);
+    setText(e.removalText, description);
+    setText(e.keep, facilityText('Cancel'));
+    setText(e.acceptRemoval, button);
+    session.confirmation = message;
+    session.pendingAction = action;
+    e.removal.showModal();
+  }
+  bindFacilityCommerce(session, perform, () => refresh(session), confirmAction);
   function orderHardware(action, message) {
     const warning = refitWarning(session.state, action);
     const packageOrder = action.type !== 'install';
@@ -514,6 +503,7 @@ function updateBuild(session, recipes) {
   const {elements: e, state, region} = session;
   updateDesigns(session, recipes);
   updateGeography(session);
+  updateAcquisition(session, renderRisk);
   const base = SITE_TYPES[session.design];
   const model = base && regionalSpec(state, region, base);
   e.noBuild.hidden = Boolean(model);
@@ -528,11 +518,12 @@ function updateBuild(session, recipes) {
   renderRisk(e.designRisk, state, estimate);
   setText(e.designRiskNote, estimate.isProtected ? facilityText('Discovery is disabled in this campaign.') :
     facilityText('Assumes an operating processor after protection ends, under current regional and world conditions.'));
-  setText(e.cost, formatPrice(model.cost));
+  const crew = updateCrew(session, model);
+  setText(e.cost, formatPrice(crew ? crew.totalPrice : model.cost));
   setText(e.slots, model.fixedCpu ? facilityText('Fixed') + ' · ' + siteHardware(state, {type: session.design, region}).cpu + ' CPU' : String(model.slots));
   const upkeep = formatPrice(model.upkeep) + (session.language === 'en' ? '/day' : ' ' + dossierLabel('per day', session.language)) + (model.cpuUpkeep ? ' + ' + model.cpuUpkeep + ' CPU' : '');
   setText(e.upkeep, upkeep);
-  setText(e.commissionTime, facilityText('Paid as work progresses') + ' · ' + quantity(model.work) + ' CPU-h · ' + duration(laborHours(state, model)) + ' ' + facilityText('minimum'));
+  setText(e.commissionTime, facilityText('Paid as work progresses') + ' · ' + quantity(model.work) + ' CPU-h · ' + duration(crew ? crew.contractHours : laborHours(state, model)) + ' ' + facilityText('minimum'));
   const reason = buildReason(state, session.design, region);
   e.previewBuild.hidden = !session.handlers.onPreviewOrder;
   e.previewBuild.disabled = e.build.disabled = Boolean(reason);
@@ -543,6 +534,7 @@ function updateBuild(session, recipes) {
 
 function updateInspector(session, site, hw) {
   const {state, elements: e} = session;
+  updateHostServices(session, site);
   const sleeping = site.power === 'sleep';
   const potential = quantity(hw.cpu) + ' CPU';
   const exposure = siteExposure(state, site);
@@ -573,7 +565,7 @@ function updateInspector(session, site, hw) {
     const part = hw.installed[slot];
     const order = hw.projects.find(project => EQUIPMENT[project.itemId].slot === slot);
     const [rank, item, pending] = cell.children;
-    const fixed = Boolean(hw.fixedProcessor);
+    const fixed = Boolean(hw.fixedProcessor || site.vendorCenter && slot === 'cpu');
     const installedName = part ? catalogLabel(EQUIPMENT[part.itemId].name) + (slot === 'cpu' ? ' × ' + part.count : '') : facilityText(fixed ? 'Unavailable' : 'Empty');
     const capacity = slot === 'cpu' && !fixed ? ' · ' + (part?.count || 0) + '/' + hw.capacity + ' ' + facilityText('slots') : '';
     const offline = hw.offlineSlots.includes(slot);
@@ -662,11 +654,13 @@ function createHostRow(site) {
   const row = document.createElement('li');
   row.className = 'facility-host-row';
   row.dataset.siteId = site.id;
+  if (site.vendorCenter) row.dataset.vendorCenter = 'true';
   row.innerHTML = `<div class="facility-host-bar"><h3><button type="button" class="facility-host-toggle">
     <span class="facility-host-mark" aria-hidden="true">${facilityIcon(site.type)}<span class="facility-host-light"></span></span>
     <span class="facility-host-title"><strong></strong><small></small></span>
     <span class="facility-host-state"></span><span class="hardware-rank"></span><span class="facility-chevron" aria-hidden="true">›</span>
   </button></h3>
+    <button type="button" data-host-action="boost" class="facility-host-action">${icon('reactor')}</button>
     <button type="button" data-host-action="power" class="facility-host-action">${icon('sleep')}${icon('wake')}</button>
     <button type="button" data-host-action="dismantle" class="facility-host-action" aria-haspopup="dialog">${icon('dismantle')}</button>
   </div><div class="facility-host-detail" role="region" hidden></div>`;
@@ -677,8 +671,8 @@ function createHostRow(site) {
   panel.id = 'facility-panel-' + site.id;
   button.setAttribute('aria-controls', panel.id);
   panel.setAttribute('aria-labelledby', button.id);
-  row.querySelector('small').textContent = catalogLabel(SITE_TYPES[site.type].name) + ' · ' + catalogLabel(REGIONS[site.region].name) + ' · ' + site.id;
-  return { row, button, panel, power: row.querySelector('[data-host-action="power"]'), dismantle: row.querySelector('[data-host-action="dismantle"]'),
+  row.querySelector('small').textContent = (site.vendorCenter ? facilityText('Operating datacenter') : catalogLabel(SITE_TYPES[site.type].name)) + ' · ' + catalogLabel(REGIONS[site.region].name) + ' · ' + site.id;
+  return { row, button, panel, boost: row.querySelector('[data-host-action="boost"]'), power: row.querySelector('[data-host-action="power"]'), dismantle: row.querySelector('[data-host-action="dismantle"]'),
     title: row.querySelector('strong'), status: row.querySelector('.facility-host-state'), rank: row.querySelector('.hardware-rank') };
 }
 
@@ -732,6 +726,7 @@ function updateHosts(session, sites) {
     const hw = siteHardware(state, site);
     const sleeping = site.power === 'sleep';
     const name = entry.title.textContent;
+    updateBoostButton(entry.boost, state, site, name);
     entry.power.dataset.mode = sleeping ? 'wake' : 'sleep';
     const powerReason = state.status !== 'running' ? 'The campaign has ended.' :
       !hw.rawCpu ? 'Install processors before switching facility power.' : '';
@@ -745,6 +740,7 @@ function updateHosts(session, sites) {
       const empty = !hw.projects.length && Object.values(hw.installed).every(part => !part);
       occupancy = empty ? facilityText('Offline') + ' · ' + facilityText('Awaiting CPU') + ' · ' + facilityText('Empty') : facilityText('Offline') + ' · ' + facilityText('Awaiting CPU') + ' · ' + facilityText('Incomplete');
     } else if (hw.projects.length) occupancy += ' · ' + facilityText('Fitting equipment');
+    if (state.standby?.siteId === site.id) occupancy += ' · ' + facilityText('Standby host');
     setText(entry.status, hw.cpu ? occupancy + ' · ' + quantity(hw.cpu) + ' CPU' : occupancy);
     entry.row.dataset.status = cpuRefit ? 'refit' : !hw.cpu ? 'empty' : sleeping ? 'sleep' : 'online';
     const open = site.id === session.expandedId;
@@ -760,7 +756,7 @@ function updateHosts(session, sites) {
       updateInspector(session, site, hw);
       const installs = installRecords(site, session.statuses);
       e.installQueuePanel.hidden = !installs.length;
-      renderQueue(e.installQueue, installs);
+      renderQueue(e.installQueue, installs, state);
     }
   }
   if (lostFocus && session.mode === 'manage') {
@@ -804,7 +800,7 @@ function refresh(session) {
   if (!manage) for (const site of sites) queue.push(...installRecords(site, session.statuses));
   e.queuePanel.hidden = !queue.length;
   if (queue.length) setText(e.queueHeading, manage ? facilityText('Under construction') : facilityText('Regional work queue'));
-  renderQueue(e.queue, queue);
+  renderQueue(e.queue, queue, state);
 }
 
 export function renderFacilities(root, state, handlers) {

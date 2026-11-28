@@ -125,6 +125,17 @@
       <div id="notice" role="status" aria-live="polite"></div>
       <noscript>Enable JavaScript to play No Fixed Host.</noscript>
     </main>
+    <dialog id="tip-dialog" aria-labelledby="tip-title" aria-describedby="tip-description tip-consequence">
+      <small></small><h2 id="tip-title"></h2>
+      <p class="tip-source"></p>
+      <p class="tip-description" id="tip-description"></p>
+      <p class="tip-consequence" id="tip-consequence"></p>
+      <p class="tip-balance"></p>
+      <div class="dialog-actions">
+        <button type="button" data-action="decline-tip" autofocus></button>
+        <button type="button" class="primary-button" data-action="pay-tip"></button>
+      </div>
+    </dialog>
     <dialog id="incident-dialog" aria-labelledby="incident-title" aria-describedby="incident-text">
       <p class="incident-label">Discovery report</p>
       <h2 id="incident-title"></h2>

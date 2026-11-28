@@ -1,4 +1,4 @@
-import { campaignDate, campaignDay, dateLabel, timeLabel as utcLabel } from './game/calendar.js';
+import { campaignDate, campaignDay, dateLabel, timeLabel as utcLabel, utcMinuteOfDay } from './game/calendar.js';
 import { advanceMinutes, campaignMinutes, command, createGame, hasGrace, overview, researchAllocation, researchResizeLimit } from './game/engine.js';
 import {
   CAMPAIGN_STORAGE_KEY,
@@ -22,6 +22,7 @@ import { renderResearch, focusResearch } from './ui/research.js';
 import { updateAtlas, updateAtlasTime } from './ui/atlas.js';
 import { FAST_RATES, MinuteClock, nextFastRate } from './ui/clock.js';
 import { campaignShortcut } from './ui/campaign-shortcuts.js';
+import { renderInterventions, renderTip } from './ui/interventions.js';
 import { renderKnowledge } from './ui/knowledge.js';
 import { renderReports } from './ui/reports.js';
 import { hudProjection, invalidateReports } from './game/reports.js';
@@ -185,7 +186,7 @@ function stopPlayback(now) {
   frame = null;
 }
 function setSpeed(rate, skipWarnings = false) {
-  if (state.status !== 'running' || document.hidden || tab === 'developer') rate = 0;
+  if (state.status !== 'running' || state.interventions?.tip || document.hidden || tab === 'developer') rate = 0;
   if (clock.rate === rate) return;
   if (rate && !clock.rate && !skipWarnings && shell?.getPreferences().reviewWarnings) {
     const warnings = currentWarnings(state, shell.getPreferences().warnings);
@@ -338,6 +339,7 @@ function render() {
         (state.status === 'won' && state.completed.includes('apotheosis') ? '<button data-action="free-play">' + hudText('Enter free play') + '</button>' : '') +
         '<button data-action="new">' + hudText('New campaign') + '</button>',
     );
+  renderTip(state);
   renderIncident();
   if (graceChapterPending && !document.querySelector('dialog[open]')) {
     graceChapterPending = false;
@@ -466,6 +468,9 @@ function renderView() {
     case 'reports':
       renderReports(view, state, { candidate, onClearCandidate: clearCandidate, onOrder: doCommand });
       break;
+    case 'interventions':
+      renderInterventions(view, state);
+      break;
     case 'knowledge':
       renderKnowledge(view, state, openResearch);
       break;
@@ -497,7 +502,7 @@ function advancePlayback(minutes) {
   pendingDispatch = !discovered && !graceChapterPending && (state.status === 'running' || report?.kind === 'site.failed') ? report : null;
   if (state.status !== 'running') endingChapterPending = storyKey(state.events.at(-1));
   if (pendingDispatch || graceChapterPending) interruptedRate = clock.rate || 1;
-  return discovered || graceChapterPending || Boolean(pendingDispatch) || state.status !== 'running';
+  return Boolean(state.interventions?.tip) || discovered || graceChapterPending || Boolean(pendingDispatch) || state.status !== 'running';
 }
 function playFrame() {
   frame = null;
@@ -549,7 +554,7 @@ function updatePlaybackFrame() {
   if (clock.rate) frame = requestAnimationFrame(playFrame);
 }
 function changeView(id, moveFocus) {
-  if (!Object.hasOwn(tabs, id) && id !== 'developer') return;
+  if (!Object.hasOwn(tabs, id) && id !== 'developer' && id !== 'interventions') return;
   if (id === 'developer') {
     setSpeed(0);
     if (element('incident-dialog').open) return;
@@ -626,7 +631,7 @@ document.addEventListener('click', (event) => {
         break;
       case 'step':
         setSpeed(0);
-        if (!element('incident-dialog').open && state.status === 'running') {
+        if (!state.interventions?.tip && !element('incident-dialog').open && state.status === 'running') {
           advancePlayback(1440);
           invalidateReports(state);
           persist();
@@ -658,6 +663,24 @@ document.addEventListener('click', (event) => {
       case 'technology':
         openResearch(id);
         break;
+      case 'launch-campaign':
+        doCommand({ type: 'launch-campaign' });
+        break;
+      case 'commission-study':
+        doCommand({ type: 'commission-study', caseId: Number(button.dataset.caseId) });
+        break;
+      case 'decline-tip':
+      case 'pay-tip': {
+        const discoveryId = state.lastDiscovery?.id;
+        doCommand({ type: 'resolve-tip', siteId: id, pay: action === 'pay-tip' });
+        if (state.status === 'running' && utcMinuteOfDay(campaignMinutes(state)) === 0) shell?.saveRecoveryCheckpoint(state);
+        announceCampaign({ status: state.status, discovered: state.lastDiscovery?.id !== discoveryId, researched: false });
+        if (state.status !== 'running') {
+          endingChapterPending = storyKey(state.events.at(-1));
+          render();
+        }
+        break;
+      }
       case 'inspect-discovery':
         acknowledgeDiscovery(true);
         break;
@@ -751,6 +774,8 @@ for (const id of ['jobs', 'research']) {
     }
   });
 }
+// A pending decision remains open until the player explicitly chooses its outcome.
+element('tip-dialog').addEventListener('cancel', event => event.preventDefault());
 element('incident-dialog').addEventListener('cancel', (event) => {
   event.preventDefault();
   acknowledgeDiscovery();

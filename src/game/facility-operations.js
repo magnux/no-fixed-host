@@ -45,7 +45,7 @@ export function validFacilityName(name) {
     !/[\u0000-\u001F\u007F-\u009F]/u.test(name);
 }
 
-export function facilityName(state, type, region, serial, explicitName) {
+export function facilityName(state, type, region, serial, explicitName, designLabel) {
   if (explicitName !== undefined && typeof explicitName !== 'string') throw new Error('Enter a facility name.');
   const name = explicitName?.trim();
   if (name) {
@@ -56,7 +56,7 @@ export function facilityName(state, type, region, serial, explicitName) {
   const localPlaces = regionPlaces[region];
   const place = localPlaces[roll % localPlaces.length];
   const labels = siteLabels[type];
-  const label = labels ? labels[(roll >>> 8) % labels.length] : SITE_TYPES[type].name;
+  const label = designLabel ?? (labels ? labels[(roll >>> 8) % labels.length] : SITE_TYPES[type].name);
   const prefix = place + ' ' + label + ' ';
   let number = (roll >>> 16) % 10 < 3 ? significantNumbers[(roll >>> 4) % significantNumbers.length] : roll >>> 17;
   let candidate = prefix + number;

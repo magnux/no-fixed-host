@@ -28,6 +28,15 @@ The AI starts as `^-^` and develops six forms as it learns, from its first pixel
 | Look up a rule or a completed experiment | Search **Knowledge**. The research entry links back to the project and records the AI’s findings after completion. |
 | Keep a checkpoint or change the presentation | Open **Campaign menu → Save library** or **Options**. Named checkpoints coexist with autosave and portable JSON. **About** lists the keyboard shortcuts. |
 
+## Spending campaign money
+
+- **Research → select a topic → Research market.** Buy Intrusion for $60 at the start, or assign owned CPU and rent extra capacity for a game day. Licensed fieldwork still needs time. Work requiring a lunar or safer host and the offshore Continuity protocol must stay on your own network.
+- **Facilities.** Hire contractors when ordering a ground shell or during construction. Use the lightning button on a host for a seven-day processor boost. Expand an equipped backup to designate a standby and select the research it should resume. Operating a lunar or Far Reaches host unlocks cash-only urban datacenter purchases and optional replacement coverage.
+- **Group suspicion → Interventions.** After opening protection, Media Manipulation unlocks a $25,000 public campaign. After a Scientists discovery, commission a $50,000 study of that case. Each has its own 30-game-day cooldown starting at purchase. A lone observer may also interrupt play with a tip that you can pay or let through.
+- **Reports → Finance.** Review purchases, deposits and returned funds. Forecast includes external research work, unused boost capacity and upkeep paid from standby reserves when applicable.
+
+[Prices, exposure, cooldowns and recovery rules](docs/money-redesign-todo.md)
+
 ## Campaign and development
 
 - [Campaign rules and game loops](docs/base-game.md) covers compute, construction, equipment, discovery, news and the Normal probability benchmark.

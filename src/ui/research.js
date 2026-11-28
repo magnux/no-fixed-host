@@ -1,7 +1,9 @@
 import { EQUIPMENT, REGIONS, SITE_TYPES, TECHS } from '../game/content.js';
-import { overview, previewWork, researchAllocation, researchProjects, researchReason, researchCpuLimit } from '../game/engine.js';
+import { overview, previewWork, researchAllocation, researchProjects, researchReason, researchCpuLimit, researchMarketQuote } from '../game/engine.js';
 import { eligibleCpu, taskCpuLimit, taskReservations } from '../game/research-tasks.js';
 import { researchProgress, SAFETY_GUIDANCE } from '../game/research.js';
+import { rentalRefund } from '../game/commercial-research.js';
+import { WORK_UNITS } from '../game/work-order.js';
 import { icon } from './icons.js';
 import { navigateDirectory } from './directory-keys.js';
 import { catalogLabel, menuLanguage } from './localization.js';
@@ -138,6 +140,16 @@ function mount(container) {
           <label><span data-label="Preview CPU"></span> <input type="number" data-field="forecastCpu" min="0.01" step="0.01" inputmode="decimal"></label>
           <button type="button" data-field="preview" data-research-preview data-label="Forecast allocation"></button>
         </div>
+        <details class="research-market" data-field="market">
+          <summary data-label="Research market"></summary>
+          <small data-field="marketReason"></small>
+          <div data-field="marketOffers">
+            <div><button type="button" data-field="license" data-label="License finding"></button><small data-field="licenseCost"></small></div>
+            <div><button type="button" data-field="rental" data-label="Rent for 24h"></button><small data-field="rentCost"></small></div>
+            <small class="research-rent-terms" data-field="rentTerms"></small>
+            <button type="button" data-field="cancelRental" data-label="End rental"></button>
+          </div>
+        </details>
         <dl class="research-links" data-field="links"></dl>
       </article>
       <p class="research-empty" data-field="empty" data-label="No unfinished research is available."></p>
@@ -248,7 +260,18 @@ function mount(container) {
   panel.addEventListener('click', event => {
     const button = event.target.closest('button');
     if (!button) return;
-    if (button === fields.release) {
+    if ([fields.license, fields.rental, fields.cancelRental].includes(button)) {
+      const quote = view.marketQuote;
+      const id = view.selected;
+      try {
+        if (button === fields.license) view.onCommand({ type: 'license-research', id, maxPrice: quote.license.price });
+        else if (button === fields.rental) view.onCommand({ type: 'rent-research', id, maxPrice: quote.rental.deposit });
+        else view.onCommand({ type: 'cancel-research-rental', id });
+      } catch (error) {
+        setText(fields.feedback, dossierLabel(error.message, view.language));
+      }
+      refresh(view);
+    } else if (button === fields.release) {
       try {
         view.onCommand({ type: 'assign-research', id: view.selected, cpu: 0 });
         setText(fields.feedback, '');
@@ -275,6 +298,49 @@ function inputRange(language, max) {
 function paintSlider(slider) {
   const percent = Number(slider.max) > 0 ? slider.valueAsNumber * 100 / Number(slider.max) : 0;
   slider.style.setProperty('--position', percent + '%');
+}
+
+function showMarket(view, quote, format) {
+  const { fields, state } = view;
+  const { license, rental, project } = quote;
+  const lease = project?.rental;
+  view.marketQuote = quote;
+  fields.market.hidden = state.completed.includes(view.selected);
+  const reason = quote.sharedReason || (project?.licensed ? 'Licensed · fieldwork in progress' : '');
+  fields.marketOffers.hidden = Boolean(reason) && !lease;
+  setText(fields.marketReason, reason ? format.label(reason) : '');
+  if (fields.marketOffers.hidden || fields.market.hidden) return;
+  fields.license.disabled = Boolean(license.reason);
+  fields.rental.disabled = Boolean(rental.reason);
+  fields.rental.hidden = Boolean(lease);
+  fields.cancelRental.hidden = !lease;
+  const approximateSaving = info => info.hoursSaved === null ? '' : ' · ' +
+    format.message('Saves about {n} h', { n: format.number(info.hoursSaved) });
+  const balance = n => n >= 0 ? format.message('{n} left', { n: format.money(n) }) :
+    format.message('Short by {n}', { n: format.money(-n) });
+  let licenseTerms = format.money(license.price) + ' · ' + balance(license.balance);
+  if (quote.hours) licenseTerms += ' · ' + format.message('{n} h fieldwork', { n: format.number(quote.hours) });
+  if (license.hoursSaved !== null) licenseTerms += ' · ' +
+    format.message('Saves about {n} h at {cpu} CPU', { n: format.number(license.hoursSaved), cpu: format.number(license.comparisonCpu) });
+  setText(fields.licenseCost, licenseTerms);
+  fields.rentTerms.hidden = !lease && !rental.deposit;
+  if (!fields.rentTerms.hidden) {
+    const rate = (lease ? lease.wage : rental.dailyRate) * 1.5 / 24;
+    setText(fields.rentTerms, format.message('${rate}/CPU-h delivered. Unused funds return to the treasury.',
+      { rate: format.number(rate) }));
+  }
+  if (lease) {
+    const left = (lease.startedAt + 1440 - state.hour * 60 - state.minute) / 60;
+    setText(fields.rentCost, format.message('Rental · {left} h left · {work} CPU-h delivered',
+      { left: format.number(left), work: format.number(lease.deliveredUnits / WORK_UNITS) }) + ' · ' +
+      format.message('{n} refundable', { n: format.money(rentalRefund(lease)) }));
+  } else if (rental.deposit && (!rental.reason || rental.reason === 'Insufficient funds.')) {
+    setText(fields.rentCost, format.message('Reserve {fee} for up to {cpu} CPU', {
+      fee: format.money(rental.deposit), cpu: format.number(rental.capacity / 100),
+    }) + ' · ' + balance(rental.balance) + approximateSaving(rental));
+  } else {
+    setText(fields.rentCost, format.label(rental.reason));
+  }
 }
 
 function refresh(view) {
@@ -307,7 +373,8 @@ function refresh(view) {
     const actual = allocation.byProject.get(id) || 0;
     let summary = '';
     if (funded.has(id)) {
-      if (actual) summary = format.number(actual) + ' CPU';
+      if (funded.get(id).licensed) summary = format.label('Fieldwork');
+      else if (actual) summary = format.number(actual) + ' CPU';
       else if (!funded.get(id).cpu) summary = format.label('Paused');
       else summary = state.researchTarget === 0 ? format.label('Portfolio paused') : '0 CPU';
       const percent = Math.floor(100 * researchProgress(funded.get(id), TECHS[id]));
@@ -337,6 +404,7 @@ function refresh(view) {
   const id = view.selected;
   const spec = TECHS[id];
   const project = funded.get(id);
+  showMarket(view, researchMarketQuote(state, id, economy, allocation), format);
   const actual = allocation.byProject.get(id) || 0;
   const eligible = eligibleCpu(economy, spec);
   const host = view.language !== 'en' ? format.safety(spec) : spec.regions ? spec.regions.map(r => catalogLabel(REGIONS[r].name)).join(', ') : safety[spec.safety];
@@ -356,6 +424,7 @@ function refresh(view) {
         format.label('No eligible CPU is online.') + ' ' + format.safety(spec);
     }
   }
+  if (!note && project?.licensed && eligible) note = format.label('Licensed · fieldwork in progress');
   if (!note && project?.cpu > 0 && state.researchTarget === 0) {
     note = format.label('Research is paused. Raise the main research slider to resume the previous split.');
   } else if (!note && !eligible) {
@@ -368,7 +437,7 @@ function refresh(view) {
   const work = project && actual ? previewWork(state, economy).research.get(project) : null;
   const waitingForFunds = work?.stalled && work.reason === 'Waiting for project funds';
   if (!note && work?.stalled && !waitingForFunds) note = format.label(work.reason + '.');
-  if (!reason && limit > 0) {
+  if (!reason && !project?.licensed && limit > 0) {
     note += (note ? ' ' : '') + format.message('{n} more CPU available.', {n: format.number(idle)});
   }
   fields.release.hidden = !(project?.cpu > 0 && !actual && state.status === 'running');
@@ -377,7 +446,7 @@ function refresh(view) {
   fields.funding.classList.toggle('waiting', Boolean(waitingForFunds));
   const editing = view.edit?.id === id;
   for (const control of [fields.slider, fields.amount]) {
-    control.disabled = Boolean(reason) || limit === 0;
+    control.disabled = Boolean(reason || project?.licensed) || limit === 0;
     const label = format.message(control === fields.slider ? 'CPU allocation for {topic}' : 'Assigned CPU for {topic}',
       {topic: catalogLabel(spec.name)});
     if (control.getAttribute('aria-label') !== label) control.setAttribute('aria-label', label);

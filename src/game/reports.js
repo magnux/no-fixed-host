@@ -4,7 +4,7 @@ import { TECHS } from './content.js';
 import { spendableDollars, treasuryBalance } from './treasury.js';
 import { installQuote, siteHardware } from './equipment.js';
 import { CASH_UNITS_PER_DOLLAR } from './report-accounting.js';
-import { taskReservations } from './research-tasks.js';
+import { ordinaryResearchAllocation, remainingBurstUnits, taskReservations } from './research-tasks.js';
 import { researchEffects } from './research.js';
 import { NORMAL } from './normal-difficulty.js';
 import { dailyInterest } from './normal-economy.js';
@@ -75,10 +75,21 @@ function fundingPlan(state, minutes) {
   };
   const dailyRate = (NORMAL.dailyInterest + effects.interest) / 100;
   if (!minutes) return { planCpu: cpu, planCash: { ...cash, closing: treasuryBalance(state) }, dailyRate };
-  for (const p of researchProjects(state)) {
-    const assigned = allocation.byProject.get(p.id);
+  for (const [site, daily] of economy.prepaidSites || []) {
+    cash.upkeep -= Math.min(site.upkeepEscrow, daily * days);
+  }
+  const projects = researchProjects(state);
+  const owned = projects.some(p => p.rental) ? ordinaryResearchAllocation(state, economy, allocation) : allocation;
+  for (const p of projects) {
+    const assigned = Math.round(100 * (allocation.byProject.get(p.id) || 0));
     if (!assigned) continue;
-    cash.research += orderInterval(p, p.workRequired, TECHS[p.id].hours, Math.round(assigned * 100) * minutes,
+    let units = assigned * minutes;
+    if (p.rental) {
+      const time = Math.min(minutes, p.rental.startedAt + DAY - campaignMinutes(state));
+      const native = Math.round((owned.byProject.get(p.id) || 0) * 100);
+      units += Math.min(p.rental.limitUnits - p.rental.deliveredUnits, time * Math.min(native, assigned, p.rental.unitsPerMinute));
+    }
+    cash.research += orderInterval(p, p.workRequired, TECHS[p.id].hours, units,
       p.cashRequired - p.cashPaid, minutes).spent;
   }
   let available = poolUnits;
@@ -93,7 +104,9 @@ function fundingPlan(state, minutes) {
     cash.construction += supported.spent;
   }
   cpu.balance = pool - cpu.upkeep - cpu.construction;
-  cash.jobs = (jobs * hours + Math.max(0, cpu.balance)) * economy.jobsPerCpuDay / 24;
+  const planned = [...allocation.byProject].map(([id, amount]) => ({ id, units: Math.round(amount * 100) }));
+  const unusedBurst = Math.max(0, remainingBurstUnits(economy, planned) * minutes / WORK_UNITS - cpu.upkeep - cpu.construction);
+  cash.jobs = (jobs * hours + Math.max(0, cpu.balance - unusedBurst)) * economy.jobsPerCpuDay / 24;
   cash.net = cash.jobs + cash.interest + cash.income - cash.research - cash.construction - cash.upkeep;
   cash.closing = treasuryBalance(state) + cash.net;
   return { planCpu: cpu, planCash: cash, dailyRate };
@@ -106,7 +119,7 @@ export function projectResources(state, horizon = '24h', candidate = null) {
   const target = start + forecastMinutes(state, horizon);
   const { copy, price } = quotedCampaign(state, candidate);
   const opening = treasuryBalance(state);
-  const plan = fundingPlan(copy, copy.status === 'running' ? target - start : 0);
+  const plan = fundingPlan(copy, copy.status === 'running' && !copy.interventions.tip ? target - start : 0);
   const ledger = {
     researchUnits: 0, buildUnits: 0, equipmentUnits: 0, maintenanceUnits: 0, jobsUnits: 0,
     spareUnits: 0, activeUnits: 0, sleepingUnits: 0, cpuShortUnits: 0,
@@ -119,6 +132,8 @@ export function projectResources(state, horizon = '24h', candidate = null) {
     jobs: ledger.jobsCash, interest: ledger.interest, income: ledger.otherIncome,
     research: -ledger.researchCash, builds: -ledger.buildCash, equipment: -ledger.equipmentCash,
     upkeep: -(ledger.upkeepDue - ledger.cashShort), unpaid: ledger.cashShort,
+    rentalRefund: ledger.rentalRefund || 0,
+    prepaidUpkeep: ledger.prepaidUpkeep || 0,
     limitLoss: -ledger.limitLoss,
     net: (copy.cash - state.cash) + ((copy.cashReserve || 0) - (state.cashReserve || 0)),
     closing: treasuryBalance(copy),
@@ -126,7 +141,10 @@ export function projectResources(state, horizon = '24h', candidate = null) {
   const cpu = {
     installed: (ledger.activeUnits + ledger.sleepingUnits) / WORK_UNITS,
     active: ledger.activeUnits / WORK_UNITS,
+    burst: (ledger.burstUnits || 0) / WORK_UNITS,
+    unusedBurst: (ledger.unusedBurstUnits || 0) / WORK_UNITS,
     sleeping: ledger.sleepingUnits / WORK_UNITS,
+    rented: (ledger.rentedUnits || 0) / WORK_UNITS,
     jobs: ledger.jobsUnits / WORK_UNITS, research: ledger.researchUnits / WORK_UNITS,
     upkeep: ledger.maintenanceUnits / WORK_UNITS,
     construction: ledger.buildUnits / WORK_UNITS,

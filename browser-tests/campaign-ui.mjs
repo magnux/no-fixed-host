@@ -960,10 +960,10 @@ test('host bar actions fit a touch viewport and keep another host’s unsaved na
   for (const width of [375, 1366]) {
     await page.setViewportSize({width, height:812});
     const geometry = await bar.evaluate(el => {
-      const [toggle, power, remove] = [...el.querySelectorAll('button')].map(b => b.getBoundingClientRect());
-      return { separate: toggle.right <= power.left && power.right <= remove.left,
+      const [toggle, boost, power, remove] = [...el.querySelectorAll('button')].map(b => b.getBoundingClientRect());
+      return { separate: toggle.right <= boost.left && boost.right <= power.left && power.right <= remove.left,
         inside: remove.right <= el.getBoundingClientRect().right && el.getBoundingClientRect().right <= innerWidth,
-        touchTargets: [power, remove].every(r => r.width >= 44 && r.height >= 44) };
+        touchTargets: [boost, power, remove].every(r => r.width >= 44 && r.height >= 44) };
     });
     assert.deepEqual(geometry, {separate:true, inside:true, touchTargets:true});
   }

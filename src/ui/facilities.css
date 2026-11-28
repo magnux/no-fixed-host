@@ -61,7 +61,7 @@
 .facility-hosts { display: grid; gap: .45rem; list-style: none; padding: 0; margin: 0; }
 .facility-host-row { min-width: 0; border: 1px solid var(--line); border-radius: .35rem; }
 .facility-host-bar {
-  display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: .25rem;
+  display: grid; grid-template-columns: minmax(0, 1fr) repeat(3, auto); align-items: center; gap: .25rem;
   padding-inline-end: .4rem; background: #19252a; border-radius: inherit;
 }
 .facility-host-bar h3 { margin: 0; min-width: 0; }
@@ -201,3 +201,21 @@
 .facility-risk dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(5rem, 1fr)); gap: .25rem .5rem; margin: 0; }
 .facility-risk dt { color: var(--quiet); font-size: .7rem; }
 .facility-risk dd { margin: .1rem 0 0; font: .78rem var(--mono); }
+
+.facility-offer { min-width: 0; border: 1px solid var(--line); border-radius: .32rem; padding: .5rem .65rem; }
+.facility-offer summary { cursor: pointer; color: var(--mint); font-size: .84rem; }
+.facility-offer-body, .facility-crew { display: grid; gap: .4rem; }
+.facility-offer-body { padding-top: .45rem; }
+.facility-offer label, .facility-crew label { font-size: .82rem; }
+.facility-offer label select { display: block; margin-top: .2rem; }
+.facility-offer small, .facility-crew small { color: var(--quiet); line-height: 1.4; }
+.facility-host-action[data-host-action="boost"][aria-pressed="true"] { border-color: var(--mint); color: var(--mint); }
+.facility-service-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); gap: .5rem; }
+.facility-command .facility-crew-summary { flex-basis: 100%; }
+.facility-crew input { accent-color: var(--mint); }
+@media (max-width: 580px) {
+  .facility-host-bar { gap: .12rem; padding-inline-end: .18rem; }
+  .facility-host-toggle { gap: .25rem; padding-inline: .3rem; flex-wrap: wrap; }
+  .facility-host-title { flex: 1 1 4rem; }
+  .facility-host-state { overflow-wrap: anywhere; }
+}

@@ -15,17 +15,23 @@ export const validCpu = cpu => Number.isFinite(cpu) && cpu >= 0 &&
 export function taskReservations(state, economy) {
   const capacity = units(economy.activeCpu);
   const pool = Math.min(capacity, units(state.allocations.poolCpu || 0));
+  const saleable = units(economy.nativeCpu ?? economy.activeCpu);
   const requested = state.allocations.jobsCpu === undefined
-    ? economy.activeCpu * state.allocations.jobs
+    ? saleable * state.allocations.jobs / 100
     : units(state.allocations.jobsCpu);
-  const jobs = Math.min(capacity - pool, requested);
+  const jobs = Math.min(capacity - pool, saleable, requested);
   return { jobs: jobs / 100, pool: pool / 100, researchLimit: (capacity - jobs - pool) / 100 };
 }
 
 export function taskCpuLimit(state, task, economy, allocation) {
   const reservations = taskReservations(state, economy);
   const peer = task === 'jobs' ? reservations.pool : reservations.jobs;
-  return Math.max(0, units(economy.activeCpu) - units(allocation.budget) - units(peer)) / 100;
+  const available = Math.max(0, units(economy.activeCpu) - units(allocation.budget) - units(peer)) / 100;
+  if (task !== 'jobs' || !economy.burstCpu) return available;
+  const usage = [...allocation.byProject].map(([id, cpu]) => ({ id, units: units(cpu) }));
+  const assignedBurst = units(economy.burstCpu) - remainingBurstUnits(economy, usage);
+  const committedNative = units(allocation.budget) - assignedBurst;
+  return Math.min(available, (units(economy.nativeCpu) - committedNative) / 100);
 }
 
 export function eligibleCpu(economy, tech) {
@@ -76,7 +82,29 @@ function budgets(state, economy, projects) {
     const members = select(tech => tech.safety >= level);
     if (members.length) constraints.push({ members, cap: units(economy.tiers[level]) });
   }
-  constraints.push({ members: projects.map((_, i) => i), cap: units(taskReservations(state, economy).researchLimit) });
+  const reservations = taskReservations(state, economy);
+  if (economy.burstCpu && reservations.jobs) {
+    // Jobs need ordinary silicon. The native machines outside a restricted
+    // group cover those jobs first. Only the excess reduces its research cap.
+    const narrow = projects.map(p => TECHS[p.id]).find(tech => tech.regions);
+    const regions = Object.keys(economy.cpuByRegion);
+    const addSupply = (members, matches) => {
+      if (!members.length) return;
+      const available = regions.filter(matches);
+      const effective = sum(available.map(r => economy.cpuByRegion[r]));
+      const ordinary = sum(available.map(r => economy.nativeCpuByRegion[r] || 0));
+      const reservedHere = Math.max(0, reservations.jobs - (economy.nativeCpu - ordinary));
+      constraints.push({ members, cap: units(effective - reservedHere) });
+    };
+    if (narrow) addSupply(select(t => t.regions), r => narrow.regions.includes(r));
+    for (let level = economy.tiers.length - 1; level >= 1; level--) {
+      addSupply(select(t => t.safety >= level), r => REGIONS[r].safety >= level);
+      if (narrow && level > narrow.safety) {
+        addSupply(select(t => t.regions || t.safety >= level), r => narrow.regions.includes(r) || REGIONS[r].safety >= level);
+      }
+    }
+  }
+  constraints.push({ members: projects.map((_, i) => i), cap: units(reservations.researchLimit) });
   return constraints;
 }
 
@@ -88,6 +116,58 @@ function clampGrants(grants, constraints, distribute = proportion) {
     members.forEach((index, i) => { grants[index] = limited[i]; });
   }
   return grants;
+}
+
+// Serve field and high-security work first. A less restricted topic may use
+// any remaining eligible bank. The units of each bank retain their provenance.
+function matchResearch(economy, usage) {
+  const banks = Object.keys(economy.cpuByRegion).map(region => ({
+    region, native: units(economy.nativeCpuByRegion[region] || 0), burst: units(economy.burstCpuByRegion[region] || 0),
+  })).sort((a, b) => REGIONS[a.region].safety - REGIONS[b.region].safety);
+  const specificity = id => TECHS[id].regions ? 10 : TECHS[id].safety;
+  const matches = [...usage].sort((a, b) => specificity(b.id) - specificity(a.id)).map(row => {
+    const tech = TECHS[row.id];
+    const eligible = banks.filter(bank => REGIONS[bank.region].safety >= tech.safety && (!tech.regions || tech.regions.includes(bank.region)));
+    // Each rented cycle must have an ordinary, locally eligible partner.
+    const burst = consume(eligible, 'burst', row.units - (row.externalUsed || 0));
+    const native = consume(eligible, 'native', row.units - burst);
+    return { id: row.id, eligible, native, burst };
+  });
+  return { banks, matches };
+}
+
+function consume(banks, field, wanted) {
+  let remaining = wanted;
+  for (const bank of banks) {
+    const given = Math.min(bank[field], remaining);
+    bank[field] -= given;
+    remaining -= given;
+    if (!remaining) break;
+  }
+  return wanted - remaining;
+}
+
+export function remainingBurstUnits(economy, usage) {
+  if (!economy.burstCpu) return 0;
+  return sum(matchResearch(economy, usage).banks.map(bank => bank.burst));
+}
+
+export function ordinaryResearchAllocation(state, economy, allocation) {
+  if (!economy.burstCpu) return allocation;
+  const usage = [...allocation.byProject].map(([id, cpu]) => ({ id, units: units(cpu) }));
+  const { banks, matches } = matchResearch(economy, usage);
+  // Only genuinely available ordinary silicon can be paired with a rental.
+  // In particular a burst on Earth cannot free the last lunar CPU for a job.
+  let headroom = Math.max(0, sum(banks.map(bank => bank.native)) - units(taskReservations(state, economy).jobs));
+  const leases = new Set(researchProjects(state).filter(p => p.rental).map(p => p.id));
+  matches.sort((a, b) => Number(leases.has(b.id)) - Number(leases.has(a.id)));
+  const byProject = new Map();
+  for (const match of matches) {
+    const extra = consume(match.eligible, 'native', Math.min(match.burst, headroom));
+    headroom -= extra;
+    byProject.set(match.id, (match.native + extra) / 100);
+  }
+  return { ...allocation, byProject };
 }
 
 export function allocateProjects(state, economy) {

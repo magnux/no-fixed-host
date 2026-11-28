@@ -16,11 +16,13 @@
 .report-order strong, .report-order small { display: block; }
 .report-order strong { font-size: .88rem; }
 .report-ledgers { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); align-items: start; gap: .85rem; padding: .72rem 1rem; }
-.report-ledgers table { width: 100%; border-collapse: collapse; text-align: left; font-size: .77rem; }
-.report-ledgers caption { text-align: left; font-size: .95rem; font-weight: 650; color: var(--mint); padding-bottom: .35rem; }
-.report-ledgers th, .report-ledgers td { padding: .34rem .24rem; border-bottom: 1px solid #27363b; }
-.report-ledgers td, .report-ledgers thead th:not(:first-child) { text-align: right; }
-.report-ledgers td { font: .72rem/1.45 var(--mono); overflow-wrap: anywhere; }
+.report-finance { padding: .75rem 1rem; }
+.report-finance .report-note { padding: .75rem 0; }
+:is(.report-ledgers, .report-finance) table { width: 100%; border-collapse: collapse; text-align: left; font-size: .77rem; }
+:is(.report-ledgers, .report-finance) caption { text-align: left; font-size: .95rem; font-weight: 650; color: var(--mint); padding-bottom: .35rem; }
+:is(.report-ledgers, .report-finance) th, :is(.report-ledgers, .report-finance) td { padding: .34rem .24rem; border-bottom: 1px solid #27363b; }
+:is(.report-ledgers, .report-finance) td, :is(.report-ledgers, .report-finance) thead th:not(:first-child) { text-align: right; }
+:is(.report-ledgers, .report-finance) td { font: .72rem/1.45 var(--mono); overflow-wrap: anywhere; }
 .report-ledgers tbody th { font-weight: 440; }
 .report-ledgers thead th { color: var(--quiet); font-size: .69rem; }
 .report-ledgers [data-account="net"] th, .report-ledgers [data-account="closing"] th { font-weight: 650; }
@@ -38,7 +40,7 @@
   .report-console .card-header, .report-order { padding-block: .32rem; }
   .report-console .card-header { min-height: 2.65rem; }
   .report-ledgers { padding-block: .42rem; }
-  .report-ledgers th, .report-ledgers td { padding-block: .12rem; }
+  :is(.report-ledgers, .report-finance) th, :is(.report-ledgers, .report-finance) td { padding-block: .12rem; }
   .report-note { padding-block: .24rem; line-height: 1.36; }
 }
 @media (min-width: 65rem) and (max-height: 45rem) {

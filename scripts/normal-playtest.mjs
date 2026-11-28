@@ -1,10 +1,13 @@
 // Runs the production minute simulation with the same commands available in the browser.
 import {
-  advanceMinutes, autoInstallQuote, autoUpgradeQuote, campaignMinutes, command, createGame,
+  advanceMinutes as simulate, autoInstallQuote, autoUpgradeQuote, campaignMinutes, command, createGame,
   overview, researchCpuLimit, siteHardware, validateSave,
 } from '../src/game/engine.js';
 
 const DAY = 1440;
+// This baseline strategy lets every investigation proceed.
+const advanceMinutes = (state, minutes = 1, options = {}) =>
+  simulate(state, minutes, { ...options, tipPolicy: 'decline' });
 
 function compareDiscoveries(seeds) {
   if (!Number.isSafeInteger(seeds) || seeds < 1) throw new Error('Use a positive whole number of seeds.');

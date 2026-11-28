@@ -66,7 +66,7 @@ That release migrated older saves and tracked lifetime production from the migra
 
 ## Expansion sequence after the base release
 
-The [money redesign TODO](money-redesign-todo.md) tracks agreed purchases, host recovery and standby, plus the investigation proposals under review.
+Version 0.9.0 adds [campaign spending and recovery](money-redesign-todo.md), including research purchases, standby hosts and investigation interventions.
 
 | Stage | Work and dependency | Playable milestone |
 | --- | --- | --- |

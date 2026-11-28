@@ -1,6 +1,7 @@
 import { campaignDay, minutesToMidnight, utcMinuteOfDay } from './calendar.js';
 import { GROUPS, REGIONS, SITE_TYPES } from './content.js';
 import { researchEffects } from './research.js';
+import { campaignDecayBonus } from './interventions.js';
 import { NORMAL, dailyEvidenceDecay } from './normal-difficulty.js';
 import { updateNewsDesk, validDeskCoverage } from './news-desk.js';
 
@@ -191,5 +192,5 @@ export function groupDanger(suspicion, discoveriesPerDay, suspicionPerDiscovery,
 
 export function groupDangerForState(state, group, discoveriesPerDay) {
   return groupDanger(state.suspicion[group], discoveriesPerDay, NORMAL.evidencePerDiscovery,
-    GROUPS[group].decay + researchEffects(state).decay[group]);
+    GROUPS[group].decay + researchEffects(state).decay[group] + campaignDecayBonus(state, group));
 }

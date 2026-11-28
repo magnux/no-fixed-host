@@ -54,8 +54,7 @@ export function settleTreasury(state, proposedUnits) {
   return { unpaid: Math.max(0, -balance) / units, clipped: 0 };
 }
 
-// Sandbox grants use whole dollars and share the normal treasury ceiling.
-export function creditTreasury(state, dollars) {
+function depositWholeDollars(state, dollars) {
   const liquid = Math.min(dollars, WALLET_LIMIT - Math.ceil(state.cash));
   const reserve = state.cashReserve || 0;
   const banked = Math.min(dollars - liquid, Math.max(0, MAX_TREASURY - Math.ceil(state.cash) - liquid - reserve));
@@ -67,6 +66,24 @@ export function creditTreasury(state, dollars) {
     state.cashReserve = reserve + banked - shift;
     if (!state.cashReserve) delete state.cashReserve;
   }
-  state.statistics.earnedDollars += liquid + banked;
   return dollars - liquid - banked;
+}
+
+// An escrow release transfers existing funds back to the wallet without counting new income.
+export function restoreTreasury(state, dollars) {
+  if (!Number.isFinite(dollars) || dollars < 0 || !Number.isSafeInteger(Math.floor(dollars))) {
+    throw new RangeError('Invalid treasury refund.');
+  }
+  const whole = Math.floor(dollars);
+  const clipped = depositWholeDollars(state, whole);
+  const fractionUnits = Math.round((dollars - whole) * units);
+  if (!fractionUnits) return clipped;
+  return clipped + settleTreasury(state, Math.round(state.cash * units) + fractionUnits).clipped;
+}
+
+// Sandbox grants use whole dollars and share the normal treasury ceiling.
+export function creditTreasury(state, dollars) {
+  const clipped = depositWholeDollars(state, dollars);
+  state.statistics.earnedDollars += dollars - clipped;
+  return clipped;
 }

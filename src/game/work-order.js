@@ -19,6 +19,19 @@ function nearest(amount) {
 // amounts already invested forward. Extending a processor batch can leave
 // more cash or CPU invested than its restarted assembly clock.
 export function orderInterval(order, targetWork, targetHours, cpu, cash, elapsedMinutes) {
+  // Hiring a crew starts a fresh payment schedule for the remaining labor.
+  // Money and CPU invested before hiring stay credited at their original rates.
+  if (order.crew) {
+    const start = order.crew;
+    const phase = {
+      work: order.work - start.work, hours: order.hours - start.hours,
+      cashRequired: order.cashRequired - start.paid, cashPaid: order.cashPaid - start.paid,
+    };
+    const progress = orderInterval(phase, targetWork - start.work, targetHours - start.hours, cpu, cash, elapsedMinutes * 2);
+    return { ...progress,
+      work: Math.round((progress.work + start.work) * WORK_UNITS) / WORK_UNITS,
+      hours: Math.round((progress.hours + start.hours) * 60) / 60 };
+  }
   const work = Math.round(order.work * WORK_UNITS);
   const minutes = Math.round(order.hours * 60);
   const required = Math.round(targetWork * WORK_UNITS);
@@ -44,7 +57,7 @@ export function nextOrderMinute(order, targetWork, targetHours, cpu, cash = 0) {
 
 export function orderStatus(order, work, hours, cpu, cash, next, cpuBlocker) {
   const workRemaining = Math.max(0, work - order.work);
-  const hoursRemaining = Math.max(0, hours - order.hours);
+  const hoursRemaining = Math.round(Math.max(0, hours - order.hours) * 60) / (order.crew ? 120 : 60);
   const cashPaid = order.cashPaid;
   const cashRemaining = order.cashRequired - cashPaid;
   const stalled = !next.done && !next.used && !next.spent && next.hours === order.hours;

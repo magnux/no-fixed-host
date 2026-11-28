@@ -79,7 +79,7 @@ test('a midnight discovery is followed by overnight decay before the final suspi
     state.minute = minute;
     state.suspicion.news = 9001;
     state.sites.push({ id: 'host-2', type: 'cluster', region: 'europe', power: 'active', startedAt: state.hour, laborHours: 24 });
-    advanceMinutes(state, 1);
+    advanceMinutes(state, 1, { tipPolicy: 'decline' });
     assert.equal(state.lastDiscovery.group, 'news');
     assert.equal(state.sites.length, 1);
     assert.equal(state.status, outcome);

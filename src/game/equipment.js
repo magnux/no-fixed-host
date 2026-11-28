@@ -2,6 +2,7 @@ import { EQUIPMENT, SITE_TYPES, TECHS } from './content.js';
 import { regionFactors } from './geography.js';
 import { validOrderFunding } from './work-order.js';
 import { laborHours } from './research.js';
+import { boostActive } from './host-services.js';
 
 const SLOTS = ['cpu', 'network', 'reactor', 'security'];
 const slotsOf = site => SITE_TYPES[site.type];
@@ -46,9 +47,10 @@ export function siteHardware(state, site) {
   const rawCpu = spec.fixedCpu ? spec.cpu : quality('cpu') * (installed.cpu?.count || 0);
   const networkBonus = quality('network');
   const exposureNumerator = (10_000 - quality('reactor')) * (10_000 - quality('security'));
-  const cpu = rawCpu ? Math.max(1, Math.floor(rawCpu * (10_000 + networkBonus) / 10_000 * regionFactors(state, site.region).cpu)) : 0;
+  const nativeCpu = rawCpu ? Math.max(1, Math.floor(rawCpu * (10_000 + networkBonus) / 10_000 * regionFactors(state, site.region).cpu)) : 0;
+  const burstCpu = site.power === 'active' && boostActive(state, site) ? nativeCpu : 0;
   return {
-    installed, cpu, rawCpu, capacity: spec.slots, fixedProcessor: spec.fixedCpu || null,
+    installed, cpu: nativeCpu + burstCpu, nativeCpu, burstCpu, rawCpu, capacity: spec.slots, fixedProcessor: spec.fixedCpu || null,
     networkBonus, exposureNumerator, exposureFactor: exposureNumerator / 100_000_000,
     projects, offlineSlots,
   };
@@ -79,7 +81,7 @@ export function slotSignature(site, slot) {
 function room(site, itemId) {
   const spec = slotsOf(site);
   const item = EQUIPMENT[itemId];
-  if (spec.fixedCpu || !item.regions.includes(site.region)) return 0;
+  if (spec.fixedCpu || (site.vendorCenter && item.slot === 'cpu') || !item.regions.includes(site.region)) return 0;
   const pending = site.installations?.find(order => EQUIPMENT[order.itemId].slot === item.slot);
   const installed = installedEquipment(site)[item.slot];
   if (item.slot !== 'cpu') return (pending || installed)?.itemId === itemId ? 0 : 1;
@@ -101,6 +103,8 @@ export function installReason(state, siteId, itemId, count = 1) {
   if (!site) return 'Choose a completed facility.';
   if (!Object.hasOwn(EQUIPMENT, itemId)) return 'Unknown equipment.';
   const item = EQUIPMENT[itemId];
+  if (site.vendorCenter && item.slot === 'cpu') return 'The vendor processor bank is sealed.';
+  if (state.standby?.siteId === site.id && item.slot === 'cpu') return 'Cancel standby before refitting its processor bank.';
   if (slotsOf(site).fixedCpu) return 'This facility includes a fixed hardware package.';
   if (!item.regions.includes(site.region)) return 'Unavailable in this environment.';
   const prerequisite = item.requires.find(id => !state.completed.includes(id));
@@ -129,6 +133,7 @@ function equipmentPackage(state, siteId, upgrading) {
   const installed = installedEquipment(site);
   for (const slot of SLOTS) {
     const current = installed[slot];
+    if (slot === 'cpu' && (site.vendorCenter || state.standby?.siteId === site.id)) continue;
     if (upgrading !== Boolean(current) || site.installations?.some(p => EQUIPMENT[p.itemId].slot === slot)) continue;
     const best = Object.entries(EQUIPMENT)
       .filter(([, item]) => item.slot === slot && item.regions.includes(site.region) &&
@@ -210,6 +215,7 @@ export function fitEquipment(site, project) {
 export function validHardware(state, site) {
   const spec = slotsOf(site);
   const equipment = site.equipment;
+  if (site.vendorCenter && (equipment?.cpu?.itemId !== 'quantumComputer' || equipment.cpu.count !== 64)) return false;
   const validItem = (id, slot) => typeof id === 'string' && Object.hasOwn(EQUIPMENT, id) &&
     EQUIPMENT[id].slot === slot && EQUIPMENT[id].regions.includes(site.region);
   if (equipment !== undefined) {
@@ -220,7 +226,7 @@ export function validHardware(state, site) {
       if (unit === null) continue;
       if (!unit || !validItem(unit.itemId, slot) || !Number.isSafeInteger(unit.count) ||
           unit.count < 1 || unit.count > (slot === 'cpu' ? spec.slots : 1)) return false;
-      if (EQUIPMENT[unit.itemId].requires.some(id => !state.completed.includes(id))) return false;
+      if (!(site.vendorCenter && slot === 'cpu') && EQUIPMENT[unit.itemId].requires.some(id => !state.completed.includes(id))) return false;
     }
   }
   if (site.installations === undefined) return true;
@@ -232,6 +238,7 @@ export function validHardware(state, site) {
     if (!p || p.siteId !== site.id || typeof p.itemId !== 'string' ||
         !Object.hasOwn(EQUIPMENT, p.itemId) || !Number.isSafeInteger(p.count) || p.count < 1) return false;
     const item = EQUIPMENT[p.itemId];
+    if (site.vendorCenter && item.slot === 'cpu') return false;
     if (p.replacesBank !== undefined && (item.slot !== 'cpu' || p.replacesBank !== true || installed.cpu)) return false;
     if (seen.has(item.slot) || !validItem(p.itemId, item.slot) ||
         item.requires.some(id => !state.completed.includes(id))) return false;

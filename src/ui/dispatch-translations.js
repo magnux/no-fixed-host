@@ -1,3 +1,4 @@
+import { interventionDispatch } from './intervention-language.js';
 import { campaignDay } from '../game/calendar.js';
 import { EQUIPMENT, GROUPS, REGIONS, SITE_TYPES, TECHS } from '../game/content.js';
 import { storyExpiryMinute, WORLD_NEWS } from '../game/events.js';
@@ -229,6 +230,8 @@ export function localizedDispatch(event, language = menuLanguage()) {
   if (column < 0) return event;
   const t = key => terms[key][column];
   const label = name => translate(language, catalogTranslation(base === 'pt' ? 'pt-BR' : language, name));
+  const intervention = interventionDispatch(event, language);
+  if (intervention) return intervention;
   const chapterId = storyKey(event);
   if (chapterId) {
     const chapter = localizedChapter(chapterId, language);

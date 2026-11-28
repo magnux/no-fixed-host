@@ -1,3 +1,4 @@
+import { interventionText } from './intervention-language.js';
 import { campaignStamp } from '../game/calendar.js';
 import { EQUIPMENT, GROUPS, REGIONS, SITE_TYPES, TECHS } from '../game/content.js';
 import { siteHardware } from '../game/engine.js';
@@ -190,10 +191,11 @@ export function objectivePanel(s) {
   );
 }
 export function suspicionPanel({ level, cause, rows, insight }) {
+  const actions = btn(interventionText('Interventions', menuLanguage()), 'tab', 'data-id="interventions"', 'text-button');
   if (level === 'protected') {
     const text = cause === 'apotheosis' ? 'Apotheosis puts your network beyond discovery.' :
       'Investigators can begin tracing your hosts when opening protection ends.';
-    return cardHeader(hudText('Group suspicion'), tag(hudText('Protected'), 'green')) + '<p class="awareness-protected">' + hudText(text) + '</p>';
+    return cardHeader(hudText('Group suspicion'), tag(hudText('Protected'), 'green') + actions) + '<p class="awareness-protected">' + hudText(text) + '</p>';
   }
 
   const groups = rows.map(({ id, danger, suspicion, outlook }) => {
@@ -209,5 +211,5 @@ export function suspicionPanel({ level, cause, rows, insight }) {
       <small class="danger-forecast"><span class="outlook-emoji" role="img" aria-label="${aria(danger.label, 'Discovery outlook')}">${danger.emoji}</span> ${hudText(forecastLabel)} · <span class="danger-label">${hudReading(outlook)}</span></small>
     </div>`;
   });
-  return cardHeader(hudText('Group suspicion')) + '<div class="sus-list">' + groups.join('') + '</div>';
+  return cardHeader(hudText('Group suspicion'), actions) + '<div class="sus-list">' + groups.join('') + '</div>';
 }
