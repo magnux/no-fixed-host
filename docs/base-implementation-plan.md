@@ -66,6 +66,8 @@ That release migrated older saves and tracked lifetime production from the migra
 
 ## Expansion sequence after the base release
 
+The [money redesign TODO](money-redesign-todo.md) tracks agreed purchases, host recovery and standby, plus the investigation proposals under review.
+
 | Stage | Work and dependency | Playable milestone |
 | --- | --- | --- |
 | E1 · Expeditions | Connect an explicit start, outcome, save and retry flow to a facility order. Use the existing Phaser drill to test the interface. Once the interface is stable, prototype underwater exploration, a lunar launch and an asteroid flight in parallel. | The first remote foothold has a playable mission. Its outcome survives reload and later routine construction can follow the campaign rules. |
