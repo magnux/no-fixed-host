@@ -1,6 +1,9 @@
 import { startCampaign } from './support/start-campaign.mjs';
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
+import { CAMPAIGN_STORAGE_KEY, encodeCampaign } from '../src/persistence.js';
+import { createGame } from '../src/game/engine.js';
+import { PREF_KEY, RECOVERY_SLOT } from '../src/shell-storage.js';
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
 
@@ -9,7 +12,7 @@ let server;
 let url;
 
 before(async () => {
-  server = await createServer({ logLevel: 'error', server: { host: '127.0.0.1', port: 0 } });
+  server = await createServer({ logLevel: 'error', server: { host: '127.0.0.1', port: 0, hmr: false, watch: null } });
   await server.listen();
   url = 'http://127.0.0.1:' + server.httpServer.address().port;
   browser = await chromium.launch({ executablePath: process.env.CHROMIUM_EXECUTABLE_PATH });
@@ -111,4 +114,132 @@ test('options translate the shell, change map lighting and persist independently
   assert.equal(await shell.getByLabel('Solo queda un servidor viable').isChecked(), false);
   await shell.getByLabel('Idioma de los menús').selectOption('en');
   assert.equal(await shell.getByRole('heading', { name: 'Options' }).isVisible(), true);
+});
+
+test('options preview, discard and publish individual preference edits across tabs', async t => {
+  const page = await fresh(t);
+  const peer = await page.context().newPage();
+  await peer.goto(url);
+  await page.bringToFront();
+  await page.keyboard.press('o');
+  const shell = page.locator('#campaign-shell');
+  await shell.getByLabel('Theme').selectOption('amber');
+  await shell.getByLabel('Audio latency').selectOption('interactive');
+  assert.equal(await page.locator('html').getAttribute('data-theme'), 'amber');
+  assert.notEqual(await peer.locator('html').getAttribute('data-theme'), 'amber');
+  await shell.getByRole('button', { name: 'Cancel' }).click();
+  assert.equal(await page.locator('html').getAttribute('data-theme'), 'night');
+  await page.keyboard.press('o');
+  assert.equal(await shell.getByLabel('Audio latency').inputValue(), 'balanced');
+  await shell.getByLabel('Theme').selectOption('amber');
+  await peer.evaluate(key => localStorage.setItem(key, JSON.stringify({theme:'night', daylight:false})), PREF_KEY);
+  await shell.getByLabel('Day and night on map').waitFor();
+  await page.waitForFunction(() => document.documentElement.dataset.daylight === 'false');
+  await shell.getByRole('button', {name:'Apply changes'}).click();
+  await peer.waitForFunction(() => document.documentElement.dataset.theme === 'amber');
+  assert.equal(await peer.evaluate(key => JSON.parse(localStorage.getItem(key)).daylight, PREF_KEY), false);
+});
+
+test('checkpoint chooser accepts unordered words, row shortcuts and the last explicit save name', async t => {
+  const page = await fresh(t);
+  await page.keyboard.press('l');
+  const shell = page.locator('#campaign-shell');
+  const name = shell.getByLabel('Name this checkpoint');
+  await name.fill('Mars early relay');
+  await shell.getByRole('button', {name:'Save checkpoint', exact:true}).click();
+  await shell.locator('strong', {hasText:'Mars early relay'}).waitFor();
+  await name.fill('Mars final relay');
+  await shell.getByRole('button', {name:'Save checkpoint', exact:true}).click();
+  const latest = shell.locator('.shell-slots li').filter({hasText:'Mars final relay'});
+  await latest.waitFor();
+  await shell.locator('.shell-head button').click();
+  await page.keyboard.press('l');
+  assert.equal(await name.inputValue(), 'Mars final relay');
+  const filter = shell.getByLabel('Search saves');
+  await filter.fill('relay Mars');
+  assert.equal(await shell.locator('[data-slot-key]').count(), 2);
+  await filter.press('ArrowDown');
+  await page.keyboard.press('End');
+  await page.keyboard.press('Enter');
+  const confirm = shell.locator('.shell-confirm');
+  assert.match(await confirm.innerText(), /Mars early relay/);
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Home');
+  await page.keyboard.press('Delete');
+  assert.match(await confirm.innerText(), /Delete the checkpoint.*Mars final relay/);
+  await confirm.getByRole('button', {name:'Delete'}).click();
+  await latest.waitFor({state:'detached'});
+  await shell.locator('.shell-head button').click();
+  await page.keyboard.press('F5');
+  await page.locator('#notice').filter({hasText:'Saved.'}).waitFor();
+  await page.keyboard.press('F9');
+  await confirm.waitFor();
+  assert.match(await confirm.innerText(), /Quicksave/);
+});
+
+test('the three-day midnight is a selectable recovery point independent from the live autosave', async t => {
+  const state = createGame(714);
+  state.hour = 71;
+  state.minute = 59;
+  const context = await browser.newContext();
+  t.after(() => context.close());
+  const page = await context.newPage();
+  await page.addInitScript(({key, save}) => {
+    if (!localStorage.getItem(key)) localStorage.setItem(key,save);
+  }, {key:CAMPAIGN_STORAGE_KEY, save:encodeCampaign(state)});
+  await page.goto(url);
+  await page.locator('#step').click();
+  await page.keyboard.press('l');
+  const shell = page.locator('#campaign-shell');
+  const row = shell.locator('.shell-slots li').filter({hasText:'Automatic checkpoint'});
+  await row.waitFor();
+  assert.match(await row.innerText(), /Day 4 · 00:00/);
+  assert.equal(await page.evaluate(key => JSON.parse(localStorage.getItem(key)).data.campaign.hour, RECOVERY_SLOT),72);
+  await row.getByRole('button',{name:'Load'}).click();
+  await shell.locator('.shell-confirm').getByRole('button',{name:'Load'}).click();
+  await shell.waitFor({state:'hidden'});
+  assert.equal(await page.evaluate(key => JSON.parse(localStorage.getItem(key)).campaign.minute, CAMPAIGN_STORAGE_KEY),0);
+});
+
+test('system locale initializes the title, atlas and facility catalog in the same language', async t => {
+  const context = await browser.newContext({locale:'fr-FR'});
+  t.after(() => context.close());
+  const page = await context.newPage();
+  await page.goto(url);
+  const shell = page.locator('#campaign-shell');
+  await shell.getByRole('button',{name:'Commencer la campagne'}).waitFor();
+  await page.keyboard.press('n');
+  await page.getByRole('button',{name:/Skip \/ close story|Passer/}).click();
+  await page.keyboard.press('l');
+  await shell.getByLabel('Nom de la sauvegarde').fill('Relais « 1 »');
+  await shell.getByRole('button',{name:'Enregistrer', exact:true}).click();
+  await shell.locator('.shell-slots [data-shell-action="load"]').click();
+  assert.equal(await shell.locator('.shell-confirm p').innerText(), 'Restaurer la sauvegarde « Relais « 1 » » et remplacer la sauvegarde automatique actuelle ?');
+  await page.keyboard.press('Escape');
+  await page.locator('#file').setInputFiles({name:'broken.json',mimeType:'application/json',buffer:Buffer.from('broken')});
+  await shell.locator('.shell-notice').filter({hasText:'Choisissez une sauvegarde JSON de No Fixed Host.'}).waitFor();
+  await shell.locator('.shell-head button').click();
+  const region = page.locator('#world-atlas [data-id="coast"]');
+  assert.match(await region.innerText(), /Amérique du Nord/);
+  await region.click();
+  await page.locator('[data-ref="buildMode"]').click();
+  assert.match(await page.locator('.facility-design-name').first().innerText(), /Relais loué|Box de stockage/);
+});
+
+test('a damaged checkpoint stays visible and can be deleted without losing another checkpoint', async t => {
+  const page = await fresh(t);
+  const key = 'no-fixed-host.checkpoint.named.broken';
+  await page.evaluate(key => localStorage.setItem(key, '{'), key);
+  await page.locator('#pause').focus();
+  await page.keyboard.press('F5');
+  await page.locator('#notice').filter({hasText:'Saved.'}).waitFor();
+  await page.keyboard.press('l');
+  const shell = page.locator('#campaign-shell');
+  const broken = shell.locator('[data-slot-key]').filter({hasText:'Damaged checkpoint'});
+  assert.equal(await broken.getByRole('button',{name:'Load'}).isDisabled(), true);
+  await broken.getByRole('button',{name:'Delete'}).click();
+  await shell.locator('.shell-confirm').getByRole('button',{name:'Delete'}).click();
+  await broken.waitFor({state:'detached'});
+  assert.equal(await page.evaluate(key => localStorage.getItem(key), key), null);
+  assert.equal(await shell.locator('.shell-slots strong').innerText(), 'Quicksave');
 });

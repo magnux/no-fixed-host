@@ -292,6 +292,29 @@ test('Fast changes the rate of minute steps throughout the second and cycles thr
   const normalStart = await gameMinutes(page);
   await page.clock.runFor(1100);
   assert.equal(await gameMinutes(page) - normalStart, 1);
+  for (const heldMs of [96, 1800, 128]) {
+    const toggle = () => heldMs === 1800 ? page.locator('#menu summary').click() : page.keyboard.press('Escape');
+    await toggle();
+    const inMenu = await gameMinutes(page);
+    assert.equal(await page.locator('#clock-mode').innerText(), 'Campaign paused');
+    await page.clock.runFor(heldMs);
+    assert.equal(await gameMinutes(page), inMenu);
+    await toggle();
+    assert.equal(await page.locator('#clock-mode').innerText(), '1 tick/s');
+    await page.clock.runFor(1024);
+    assert.equal(await gameMinutes(page), inMenu + 1);
+  }
+  await fast.click();
+  await page.clock.runFor(128);
+  await page.locator('#menu summary').click();
+  const beforeFastDismissal = await gameMinutes(page);
+  await page.clock.runFor(144);
+  assert.equal(await gameMinutes(page), beforeFastDismissal);
+  // Clicking the transport changes speed and dismisses the menu in the same browser event.
+  await fast.click();
+  assert.equal(await fast.innerText(), 'Fast x2');
+  await page.clock.runFor(160);
+  assert.ok(Math.abs((await gameMinutes(page)) - beforeFastDismissal - 0.16 * 360) <= 7);
   await pause.click();
   const paused = await gameMinutes(page);
   await page.clock.runFor(2000);
@@ -440,6 +463,8 @@ test('hardware packages show ranks and prices, forecast refits, and protect the 
   assert.match(await ref('upgradeParts').innerText(), /Server × 2/);
   assert.match(await ref('upgradeWarning').innerText(), /0 CPU/);
   await ref('autoInstall').click();
+  assert.match(await page.getByRole('dialog').innerText(), /High-speed internet access × 1.*Diesel generator × 1/);
+  await page.getByRole('button', { name: 'Confirm installation' }).click();
   assert.match(await ref('installQueue').innerText(), /Diesel generator/);
   await ref('autoUpgrade').click();
   assert.match(await page.getByRole('dialog').innerText(), /0 CPU/);
@@ -454,7 +479,7 @@ test('hardware packages show ranks and prices, forecast refits, and protect the 
   await page.locator('#world-atlas [data-id="europe"]').click();
   if (await host.getAttribute('aria-expanded') !== 'true') await host.click();
   assert.match(await host.innerText(), /Processor installation · 0 CPU/);
-  assert.match(await cpu.innerText(), /PC × 2/);
+  assert.doesNotMatch(await cpu.innerText(), /PC × 2/);
   assert.match(await cpu.innerText(), /Offline · Installing Server × 2 · Rank/);
   assert.match(await ref('installQueue').innerText(), /Server × 2/);
   await page.locator('#step').click();
@@ -541,6 +566,14 @@ test('atlas history, named construction, removal confirmation and CPU batches su
   assert.match(await page.locator('[data-ref="effect"]').innerText(), /Adds to 2 on order.*0 → 5 CPU/);
   await nav('Install PC');
   assert.match(await page.locator('[data-ref="installQueue"]').innerText(), /PC × 5/);
+  await page.locator('#equipment-item').selectOption('server');
+  await nav('Install Server');
+  assert.match(await page.getByRole('dialog').innerText(), /unfinished PC/);
+  await nav('Keep current order');
+  assert.match(await page.locator('[data-ref="installQueue"]').innerText(), /PC × 5/);
+  await nav('Install Server');
+  await nav('Confirm installation');
+  assert.match(await page.locator('[data-ref="installQueue"]').innerText(), /Server × 1/);
 
   await nav('Build facility');
   await page.getByRole('radio', { name: 'Storage unit', exact: true }).check();
@@ -552,8 +585,11 @@ test('atlas history, named construction, removal confirmation and CPU batches su
   await nav('Overview');
   assert.equal(await pin('europe').locator('.atlas-count').innerText(), '2');
   await pin('europe').click();
+  await nav('Rename facility');
+  await page.getByRole('dialog').getByLabel('Facility name', { exact: true }).fill('Meridian III');
+  await nav('Save facility name');
   await page.getByRole('button', { name: 'Cancel order', exact: true }).click();
-  assert.match(await page.getByRole('dialog').innerText(), /Meridian II/);
+  assert.match(await page.getByRole('dialog').innerText(), /Meridian III/);
   await nav('Keep facility');
   await nav('Cancel order');
   await nav('Cancel construction');
@@ -770,4 +806,50 @@ test('discovery interrupts day speed, survives reload, and opens the affected re
   await page.locator('#run').click();
   await page.clock.runFor(1100);
   assert.equal(await gameMinutes(page), interrupted + 1);
+});
+
+test('French facility controls preserve the player’s host name through power, refit, package and dismantling dialogs', async t => {
+  const state = createGame(19);
+  state.completed.push('intrusion', 'personalIdentification');
+  state.cash = 50000;
+  state.sites.push({ id: 'host-2', name: 'Build {site} <III>', region: 'europe', type: 'storageUnit', startedAt: 0, power: 'active',
+    equipment: { cpu: { itemId: 'pc', count: 2 }, network: null, reactor: null, security: null } });
+  state.nextSiteId++;
+  const context = await browser.newContext({locale: 'fr-FR'});
+  t.after(() => context.close());
+  await context.addInitScript(([key, data]) => localStorage.setItem(key, data), [CAMPAIGN_STORAGE_KEY, encodeCampaign(state)]);
+  const page = await context.newPage();
+  await page.goto(url);
+  const pin = page.locator('#world-atlas [data-id="europe"]');
+  await pin.click();
+  const host = page.locator('.facility-host-toggle').filter({hasText: 'Build {site} <III>'});
+  await host.click();
+  const ref = id => page.locator('[data-ref="' + id + '"]');
+  assert.equal(await ref('buildMode').innerText(), 'Construire une installation');
+  assert.equal(await ref('power').innerText(), 'Mettre en veille');
+  await ref('power').click();
+  assert.equal(await ref('power').innerText(), 'Réveiller');
+  await ref('power').click();
+  await ref('autoInstall').click();
+  assert.match(await page.getByRole('dialog').innerText(), /Installer cet ensemble de composants/);
+  await page.getByRole('button', {name:'Annuler le lot'}).click();
+  await ref('autoUpgrade').click();
+  assert.match(await page.getByRole('dialog').innerText(), /hors ligne.+0 CPU/);
+  await page.getByRole('button', {name:'Garder le matériel en ligne'}).click();
+  await page.locator('.facility-identity summary').click();
+  await ref('rename').fill('Keep {site} & Build');
+  await ref('saveName').click();
+  await ref('dismantle').click();
+  assert.equal(await ref('removalTitle').innerText(), 'Démanteler Keep {site} & Build ?');
+  assert.match(await ref('removalText').innerText(), /définitivement supprimés/);
+  await ref('keep').click();
+  await ref('buildMode').click();
+  await page.locator('[data-facility-type="storageUnit"]').check();
+  await ref('buildName').fill('Chargement <III>');
+  await ref('build').click();
+  await page.getByRole('button',{name:'Renommer l’installation'}).click();
+  await ref('queueName').fill('Reserved Package « 2 »');
+  await page.getByRole('button',{name:'Enregistrer le nom de l’installation'}).click();
+  await page.getByRole('button',{name:'Annuler la commande'}).click();
+  assert.equal(await ref('removalTitle').innerText(), 'Annuler la construction de Reserved Package « 2 » ?');
 });

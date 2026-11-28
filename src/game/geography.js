@@ -90,6 +90,8 @@ export function regionalSpec(state, region, spec) {
       cost: Math.floor(spec.cost / factors.thrift),
       work: Math.round(cpuSeconds * WORK_UNITS / 3600) / WORK_UNITS,
       hours: Math.floor(spec.hours * 60 / factors.speed) / 60,
+      baseLaborMinutes: Math.round(spec.hours * 60),
+      laborSpeed: factors.speed,
       upkeep: Math.floor(spec.upkeep / factors.thrift),
       cpuUpkeep: Math.floor(spec.cpuUpkeep / factors.thrift),
     };

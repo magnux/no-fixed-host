@@ -21,7 +21,7 @@ The opening protected both strategies for 23 days in this sample. Immediately be
 
 ## Sustained public exposure
 
-A third strategy on seed 47 maintains twelve leased relays. It places replacements once per day and rotates through the six inhabited regions. Spare CPU earns money and the player takes no concealment research. The Public established the AI’s existence at minute 90,360, 62 days and 18 hours after awakening. Public evidence reached 107.80%. Eleven hosts and $33,498.04 remained. Of 27 lifetime relay orders, the first twelve opened the network and fifteen replaced losses.
+A third strategy on seed 47 maintains twelve leased relays. It places replacements once per day and rotates through the six inhabited regions. Spare CPU earns money and the player takes no concealment research. The Public established the AI’s existence at minute 90,360, 62 days and 18 hours after awakening. Public evidence reached 107.80%. Eleven hosts and $33,503.44 remained. Of 27 lifetime relay orders, the first twelve opened the network and fifteen replaced losses.
 
 ## A workshop built from earnings
 

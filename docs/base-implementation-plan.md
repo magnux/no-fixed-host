@@ -1,5 +1,7 @@
 # Base game implementation plan
 
+For the 0.7.0 release comparison and the complete list of changes, see the [final Normal campaign audit](original-parity-audit.md).
+
 The goal is a complete, playable browser interpretation of Endgame: Singularity v1.1 on the Normal baseline. Two inventories drive this release. The [screen audit](original-menu-audit.md) describes what a player could operate. The [simulation audit](base-simulation-audit.md) follows the code behind a game minute, including rules with no controls. Earlier audit statements about missing features describe the build at commit `fa9dbc2`.
 
 ## Sequence and priorities

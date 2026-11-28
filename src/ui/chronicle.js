@@ -1,5 +1,8 @@
+import { menuLanguage, translate } from './localization.js';
+import { localizedDispatch, localizedStory, localizedWarning, translatedGroup, worldEffectSummary } from './dispatch-translations.js';
+import { localizedResearchText } from './dossier-translations.js';
+import { localizedChapter } from './chapter-translations.js';
 import { EQUIPMENT, GROUPS, REGIONS, SITE_TYPES } from '../game/content.js';
-import { storyExpiryMinute, WORLD_NEWS } from '../game/events.js';
 import { currentWarnings, CHAPTERS, eventCategory, JOURNAL_CATEGORIES, reportsAt, storyKey } from '../game/chronicle.js';
 import { researchFindings } from '../game/knowledge.js';
 import { stamp } from './views.js';
@@ -12,6 +15,13 @@ export { renderDeveloper } from './developer.js';
 
 const sessions = new WeakMap();
 const PAGE = 25;
+let selectedCategories = new Set(Object.keys(JOURNAL_CATEGORIES));
+let selectedReport = '';
+const reportTypes = {
+  'news.world': 'World stories', 'research.completed': 'Research completions',
+  'site.online': 'Facility completions', 'site.failed': 'Upkeep losses',
+  'site.discovered': 'Discoveries', 'equipment.installed': 'Equipment deliveries',
+};
 
 function node(tag, text) {
   const el = document.createElement(tag);
@@ -26,7 +36,8 @@ function action(text, fn) {
 }
 
 function fullTitle(event) {
-  if (event.headline) return event.headline;
+  const localized = localizedDispatch(event);
+  if (localized.headline) return localized.headline;
   if (event.techId) return event.text.replace(/\.$/, '');
   return event.text.split('. ')[0].replace(/\.$/, '');
 }
@@ -39,12 +50,15 @@ function openPages(title, pages, options, { start = 0, story = false } = {}) {
   options.onPause?.();
   const dialog = node('dialog');
   dialog.className = 'chronicle-dialog';
-  dialog.setAttribute('aria-label', title);
+  const language = menuLanguage();
+  const t = label => translate(language, label);
+  dialog.lang = language;
+  dialog.setAttribute('aria-label', t(title));
   const progress = node('small');
   const h = node('h2');
   const description = node('p');
   const where = node('small');
-  const jump = action('Inspect region', () => {
+  const jump = action(t('Inspect region'), () => {
     const page = pages[index];
     dialog.close();
     options.onRegion?.(page.region);
@@ -54,7 +68,7 @@ function openPages(title, pages, options, { start = 0, story = false } = {}) {
   let index = Math.min(Math.max(0, start), pages.length - 1);
   function paint() {
     const page = pages[index];
-    progress.textContent = title + ' · ' + (index + 1) + ' / ' + pages.length;
+    progress.textContent = t(title) + ' · ' + (index + 1) + ' / ' + pages.length;
     h.textContent = page.title;
     description.textContent = page.text;
     where.textContent = page.meta || '';
@@ -63,12 +77,12 @@ function openPages(title, pages, options, { start = 0, story = false } = {}) {
     prev.disabled = index === 0;
     next.disabled = index === pages.length - 1;
   }
-  const prev = action('Previous', () => { index--; paint(); });
-  const next = action('Next', () => { index++; paint(); });
-  const stay = action(story ? 'Skip / close story' : 'Keep paused', () => dialog.close());
+  const prev = action(t('Previous'), () => { index--; paint(); });
+  const next = action(t('Next'), () => { index++; paint(); });
+  const stay = action(t(story ? 'Skip / close story' : 'Keep paused'), () => dialog.close());
   if (pages.length > 1) section.append(prev, next);
   section.append(stay);
-  if (options.onContinue) section.append(action('Continue simulation', () => { dialog.close(); options.onContinue(); }));
+  if (options.onContinue) section.append(action(t('Continue simulation'), () => { dialog.close(); options.onContinue(); }));
   dialog.addEventListener('keydown', e => {
     if (e.key === 'ArrowRight' && index < pages.length - 1) { index++; paint(); e.preventDefault(); }
     if (e.key === 'ArrowLeft' && index > 0) { index--; paint(); e.preventDefault(); }
@@ -83,56 +97,76 @@ function openPages(title, pages, options, { start = 0, story = false } = {}) {
 
 export function openStory(key, options = {}) {
   if (!Object.hasOwn(CHAPTERS, key)) return false;
-  const chapter = CHAPTERS[key];
+  const chapter = localizedChapter(key, menuLanguage());
   return openPages('Campaign story', chapter.pages.map(text => ({title:chapter.title, text})), options, {story:true});
 }
 
 export function openDispatches(state, records, options = {}, start = 0) {
   const events = records ?? (state.events.length ? reportsAt(state.events, state.events.at(-1)) : []);
-  return openPages('Dispatches', events.map(event => ({
-    title: fullTitle(event),
-    text: event.kind === 'research.completed' && Object.hasOwn(researchFindings, event.techId) ?
-      event.text + ' ' + researchFindings[event.techId] : event.text,
-    region: Object.hasOwn(REGIONS, event.region) ? event.region : null,
-    meta: stamp(event.hour, event.minute) + ' · ' + JOURNAL_CATEGORIES[eventCategory(event)] +
-      (Object.hasOwn(GROUPS, event.group) ? ' · ' + GROUPS[event.group].name : ''),
-  })), options, {start});
+  const language = menuLanguage();
+  const pages = events.map(event => {
+    const dispatch = localizedDispatch(event, language);
+    const result = event.kind === 'research.completed' && Object.hasOwn(researchFindings, event.techId)
+      ? localizedResearchText(event.techId, language, true) : '';
+    return {
+      title: dispatch.headline || fullTitle(event),
+      text: result ? (language === 'en' ? dispatch.text + ' ' + result : result) : dispatch.text,
+      region: Object.hasOwn(REGIONS, event.region) ? event.region : null,
+      meta: stamp(event.hour, event.minute) + ' · ' + translate(language, JOURNAL_CATEGORIES[eventCategory(event)]) +
+        (Object.hasOwn(GROUPS, event.group) ? ' · ' + translatedGroup(event.group, language) : ''),
+    };
+  });
+  return openPages('Dispatches', pages, options, {start});
+}
+
+export function openWarnings(warnings, options) {
+  return openPages('Operational warnings', warnings.map(warning => localizedWarning(warning)), options);
 }
 
 const same = (list, previous) => list.length === previous.length && list.every((v, i) => v === previous[i]);
 
 function mount(view) {
+  const language = menuLanguage();
+  const t = label => translate(language, label);
   view.innerHTML = `<section class="panel chronicle-console" aria-labelledby="journal-title">
-    <header class="card-header"><h2 id="journal-title">Activity log</h2><span class="tag" data-field="total"></span></header>
-    <section class="chronicle-warnings" data-field="warnings" aria-label="Operational warnings"></section>
-    <section class="chronicle-world" data-field="world" aria-label="Active world stories"></section>
+    <header class="card-header"><h2 id="journal-title">${t('Activity log')}</h2><span class="tag" data-field="total"></span></header>
+    <section class="chronicle-warnings" data-field="warnings" aria-label="${t('Operational warnings')}"></section>
+    <section class="chronicle-world" data-field="world" aria-label="${t('Active world stories')}"></section>
     <div class="chronicle-filters">
       <details id="activity-filter"><summary data-field="filterLabel">Event types · All</summary>
-        <fieldset data-field="filters"><legend>Show event types</legend></fieldset>
-        <button type="button" data-field="all">Select all</button><button type="button" data-field="none">Clear selection</button>
+        <fieldset data-field="filters"><legend>${t('Show event types')}</legend></fieldset>
+        <label>${t('Report kind')} <select data-field="report"></select></label>
+        <button type="button" data-field="all">${t('Select all')}</button><button type="button" data-field="none">${t('Clear selection')}</button>
       </details>
-      <button type="button" data-field="latest">Read latest dispatches</button>
+      <button type="button" data-field="latest">${t('Read latest dispatches')}</button>
     </div>
     <ul class="event-list chronicle-list" data-field="list"></ul><p class="chronicle-empty" data-field="empty" hidden></p>
-    <div class="chronicle-pager"><button type="button" data-field="newer">Newer</button><small data-field="page"></small><button type="button" data-field="older">Older</button></div>
+    <div class="chronicle-pager"><button type="button" data-field="newer">${t('Newer')}</button><small data-field="page"></small><button type="button" data-field="older">${t('Older')}</button></div>
   </section>`;
   const panel = view.firstElementChild;
   const fields = Object.fromEntries([...panel.querySelectorAll('[data-field]')].map(el => [el.dataset.field, el]));
-  const saved = { panel, fields, page: 0, warningKeys: [], newsKey: null, lastId: 0, filter: '', renderedPage: -1 };
+  const saved = { panel, fields, language, t, page: 0, warningKeys: [], newsKey: null, lastId: 0, filter: '', renderedPage: -1 };
   for (const [value, name] of Object.entries(JOURNAL_CATEGORIES)) {
     const input = node('input');
     input.type = 'checkbox';
     input.value = value;
-    input.checked = true;
+    input.checked = selectedCategories.has(value);
     const label = node('label');
-    label.append(input, document.createTextNode(' ' + name));
+    label.append(input, document.createTextNode(' ' + t(name)));
     fields.filters.append(label);
   }
-  fields.filters.onchange = () => { saved.page = 0; refresh(saved); };
+  for (const [id, label] of Object.entries({ '': 'All entries', ...reportTypes })) {
+    fields.report.add(new Option(t(label), id, false, id === selectedReport));
+  }
+  fields.report.onchange = () => { selectedReport = fields.report.value; saved.page = 0; refresh(saved); };
+  fields.filters.onchange = () => {
+    selectedCategories = new Set([...fields.filters.querySelectorAll('input:checked')].map(input => input.value));
+    saved.page = 0; refresh(saved);
+  };
   const selectAll = checked => {
     for (const input of fields.filters.querySelectorAll('input')) input.checked = checked;
-    saved.page = 0;
-    refresh(saved);
+    selectedReport = fields.report.value = '';
+    fields.filters.onchange();
   };
   fields.all.onclick = () => selectAll(true);
   fields.none.onclick = () => selectAll(false);
@@ -153,14 +187,15 @@ function refreshWarnings(v) {
   const expanded = new Set([...d.querySelectorAll('details[open]')].map(detail => detail.dataset.warning));
   d.replaceChildren();
   if (!active.length) return;
-  d.append(node('h3', 'Operational warnings'));
-  for (const warning of active) {
+  d.append(node('h3', v.t('Operational warnings')));
+  for (const raw of active) {
+    const warning = localizedWarning(raw, v.language);
     const details = node('details');
     details.dataset.warning = warning.id;
     details.open = expanded.has(warning.id);
     const summary = node('summary', warning.title);
     details.append(summary, node('p', warning.text));
-    if (v.options.onTab) details.append(action('Open ' + warning.tab, () => v.options.onTab(warning.tab)));
+    if (v.options.onTab) details.append(action(v.t('Open ' + warning.tab), () => v.options.onTab(warning.tab)));
     d.append(details);
   }
 }
@@ -173,16 +208,12 @@ function refreshWorld(v) {
   d.replaceChildren();
   const stories = Object.entries(v.state.news.stories);
   if (!stories.length) return;
-  d.append(node('h3', 'Active world stories'));
+  d.append(node('h3', v.t('Active world stories')));
   const list = node('ul');
   list.className = 'world-stories';
   for (const [id, started] of stories) {
-    const entry = WORLD_NEWS[id];
-    const expiry = storyExpiryMinute(id, started);
-    const end = expiry === null ? 'ongoing' : 'until ' + stamp(expiry / 60, 0);
-    const change = (entry.modifier < 0 ? '−' : '+') + Math.abs(entry.modifier / 100) + ' percentage points';
     const row = node('li');
-    row.append(node('strong', entry.headline), node('small', GROUPS[entry.group].name + ' discovery multiplier ' + change + ' · ' + end));
+    row.append(node('strong', localizedStory(id).headline), node('small', worldEffectSummary(id, started)));
     list.append(row);
   }
   d.append(list);
@@ -193,20 +224,21 @@ function eventIcon(event) {
   if (category === 'discoveries' && Object.hasOwn(GROUPS, event.group)) return icon(event.group);
   if (category === 'facilities' && Object.hasOwn(SITE_TYPES, event.siteType)) return facilityIcon(event.siteType);
   if (category === 'equipment' && Object.hasOwn(EQUIPMENT, event.itemId)) return equipmentIcon(EQUIPMENT[event.itemId].slot);
-  const symbol = { discoveries: 'shield', news: 'news', facilities: 'facilities', equipment: 'cpu', research: 'research' };
+  const symbol = { discoveries: 'shield', maintenance: 'facilities', news: 'news', facilities: 'facilities', equipment: 'cpu', research: 'research' };
   return icon(symbol[category] || 'activity');
 }
 
 function refresh(v) {
-  const {fields, state} = v;
+  const {fields, state, t} = v;
   refreshWarnings(v);
   refreshWorld(v);
   const selected = new Set([...fields.filters.querySelectorAll('input:checked')].map(input => input.value));
-  const filter = [...selected].join('|');
+  const filter = [...selected, selectedReport].join('|');
   if (v.lastId === state.nextEventId && v.filter === filter && v.renderedPage === v.page) return;
-  fields.filterLabel.textContent = 'Event types · ' +
-    (selected.size === Object.keys(JOURNAL_CATEGORIES).length ? 'All' : String(selected.size));
-  const filtered = state.events.filter(e => selected.has(eventCategory(e))).reverse();
+  fields.filterLabel.textContent = t('Event types') + ' · ' +
+    (selected.size === Object.keys(JOURNAL_CATEGORIES).length ? t('All') : String(selected.size)) +
+    (selectedReport ? ' · ' + t(reportTypes[selectedReport]) : '');
+  const filtered = state.events.filter(e => selected.has(eventCategory(e)) && (!selectedReport || e.kind === selectedReport)).reverse();
   const pages = Math.max(1, Math.ceil(filtered.length / PAGE));
   v.page = Math.max(0, Math.min(v.page, pages - 1));
   v.filter = filter;
@@ -228,24 +260,24 @@ function refresh(v) {
       open.insertAdjacentHTML('afterbegin', eventIcon(e));
       li.append(node('time', stamp(e.hour, e.minute)), open);
       const chapter = storyKey(e);
-      if (chapter) li.append(action('Read story', () => openStory(chapter, v.options)));
+      if (chapter) li.append(action(t('Read story'), () => openStory(chapter, v.options)));
     }
     existing.delete(e.id);
     if (fields.list.children[index] !== li) fields.list.insertBefore(li,fields.list.children[index] || null);
   }
   for (const li of existing.values()) li.remove();
-  fields.total.textContent = state.events.length + ' recorded';
-  fields.page.textContent = 'Page ' + (v.page + 1) + ' of ' + pages;
+  fields.total.textContent = v.language === 'en' ? state.events.length + ' recorded' : t('Entries') + ' · ' + state.events.length;
+  fields.page.textContent = t('Page') + ' ' + (v.page + 1) + (v.language === 'en' ? ' of ' : ' / ') + pages;
   fields.newer.disabled = v.page === 0;
   fields.older.disabled = v.page >= pages - 1;
   fields.latest.disabled = !state.events.length;
   fields.empty.hidden = !!rows.length;
-  fields.empty.textContent = rows.length ? '' : selected.size ? 'No events match the selected types.' : 'Select an event type to view its reports.';
+  fields.empty.textContent = rows.length ? '' : t(selected.size ? 'No events match the selected types.' : 'Select an event type to view its reports.');
 }
 
 export function renderChronicle(view, state, options = {}) {
   let v = sessions.get(view);
-  if (v?.panel.parentElement !== view) v = mount(view);
+  if (v?.panel.parentElement !== view || v.language !== menuLanguage()) v = mount(view);
   if (v.state !== state) {
     v.lastId = 0; v.page = 0; v.newsKey = null; v.fields.list.replaceChildren();
   }

@@ -10,6 +10,10 @@ export function treasuryBalance(state) {
   return state.cash + (state.cashReserve || 0);
 }
 
+export function spendableDollars(state) {
+  return Math.floor(state.cash) + (state.cashReserve || 0);
+}
+
 export function validTreasury(state) {
   const { cash, cashReserve } = state;
   if (!Number.isFinite(cash) || cash < 0) return false;
@@ -63,5 +67,6 @@ export function creditTreasury(state, dollars) {
     state.cashReserve = reserve + banked - shift;
     if (!state.cashReserve) delete state.cashReserve;
   }
+  state.statistics.earnedDollars += liquid + banked;
   return dollars - liquid - banked;
 }

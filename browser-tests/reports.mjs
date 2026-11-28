@@ -45,6 +45,11 @@ test('compare, discard and place research and facility orders, then reconcile th
   const projectedResearch = projectResources(state, 'midnight', research);
   assert.equal(await account('closing', 1).innerText(), usd.format(projectedResearch.cash.closing));
   assert.equal(await account('research', 1).innerText(), usd.format(projectedResearch.cash.research));
+  await button('Funding needs').click();
+  const planned = page.getByRole('table', { name: 'Funding needs · USD' });
+  assert.equal(await planned.locator('[data-account="net"] td').nth(1).innerText(), usd.format(projectedResearch.planCash.net));
+  assert.match(await planned.locator('[data-account="interest"] th').innerText(), /0\.01% daily/);
+  await button('Forecast').click();
   assert.deepEqual(await readSave(), opening);
   await button('Discard preview').click();
   assert.equal(await ledger.getByRole('columnheader', { name: 'With order' }).count(), 0);
@@ -92,4 +97,51 @@ test('compare, discard and place research and facility orders, then reconcile th
   await button('Statistics').click();
   assert.equal(await page.locator('[data-statistic="cashEarned"]').innerText(), usd.format(stats.cashEarned));
   assert.deepEqual(errors, []);
+});
+
+test('forecast, signed funding balances and historical totals follow the selected campaign language and currency format', async t => {
+  const server = await createServer({ logLevel: 'error', server: { host: '127.0.0.1', port: 0, hmr: false, watch: null } });
+  await server.listen();
+  t.after(() => server.close());
+  const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_EXECUTABLE_PATH });
+  t.after(() => browser.close());
+  const state = createGame(47);
+  state.cash = 12.34;
+  command(state, { type: 'power', id: 'host-1', power: 'sleep' });
+  command(state, { type: 'build', siteType: 'relay', region: 'europe' });
+  const forecast = projectResources(state, 'midnight');
+  assert.ok(forecast.planCash.closing < 0);
+  for (const [language, budget, opening, received] of [
+    ['de', 'Finanzbedarf', 'Anfangsbestand', 'Gesamte Geldeingänge'],
+    ['es', 'Financiación necesaria', 'Saldo inicial', 'Total de efectivo recibido'],
+    ['es-AR', 'Financiación necesaria', 'Saldo inicial', 'Total de efectivo recibido'],
+    ['es-MX', 'Financiación necesaria', 'Saldo inicial', 'Total de efectivo recibido'],
+    ['fr', 'Besoins de financement', 'Solde initial', 'Total des fonds reçus'],
+    ['gd', 'Feumalachdan maoineachaidh', 'Cothromachadh tòiseachaidh', 'Airgead iomlan a fhuaireadh'],
+    ['it', 'Fabbisogno', 'Saldo iniziale', 'Totale degli incassi'],
+    ['pt-BR', 'Recursos necessários', 'Saldo inicial', 'Total de caixa recebido'],
+    ['ru', 'Потребности', 'Начальный остаток', 'Всего получено средств'],
+    ['sv', 'Resursbehov', 'Ingående saldo', 'Totalt mottagna medel'],
+  ]) {
+    const page = await browser.newPage({ locale: language, viewport: { width: 1600, height: 950 } });
+    try {
+      await page.addInitScript(([key, save]) => localStorage.setItem(key, save),
+        [CAMPAIGN_STORAGE_KEY, encodeCampaign(state)]);
+      await page.goto('http://127.0.0.1:' + server.httpServer.address().port);
+      await page.locator('#nav [data-id="reports"]').click();
+      const panel = page.locator('.report-console');
+      assert.equal(await panel.getAttribute('lang'), language);
+      assert.equal(await panel.locator('[data-account="opening"] th').textContent(), opening);
+      const localMoney = value => page.evaluate(([lang, value]) =>
+        new Intl.NumberFormat(lang, { style: 'currency', currency: 'USD' }).format(value), [language, value]);
+      assert.equal(await panel.locator('[data-account="opening"] td').textContent(), await localMoney(state.cash));
+      await panel.getByRole('button', { name: budget, exact: true }).click();
+      assert.equal(await panel.locator('[data-account="closing"] td').textContent(), await localMoney(forecast.planCash.closing));
+      await panel.locator('[data-report-section="statistics"]').click();
+      assert.equal(await panel.locator('[data-statistic="cashEarned"]').locator('..').locator('dt').textContent(), received);
+      assert.equal(await panel.locator('[data-statistic="cashEarned"]').textContent(), await localMoney(1000));
+    } finally {
+      await page.close();
+    }
+  }
 });

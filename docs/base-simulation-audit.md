@@ -1,5 +1,7 @@
 # Base simulation audit
 
+For the 0.7.0 release comparison and the complete list of changes, see the [final Normal campaign audit](original-parity-audit.md).
+
 The comparison starts at No Fixed Host commit `fa9dbc2`, before the base implementation pass. The reference is the **v1.1 tag** of Endgame: Singularity, with the Normal preset. The code determines when interest is paid, which cost a site’s protection uses, and how two discoveries change regional attention. This audit follows the reference code from campaign creation through one simulation interval, midnight, victory, and restoration. “Existing” describes the starting build. “Added” identifies behavior addressed by this implementation pass. The [implementation plan](base-implementation-plan.md) gives the release sequence and the [menu audit](original-menu-audit.md) covers the interaction surfaces.
 
 The base release at commit `1d9125b` used a research percentage and project weights. The original base release and its migration tests are historical. Direct CPU assignments and the proportional research slider superseded the percentage controls. The current release starts fresh campaigns using the v1.1 Normal economy, progressive payments and equipment downtime. See the [current campaign rules](base-game.md#planning-several-turns-ahead).

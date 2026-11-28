@@ -1,7 +1,10 @@
+import { facilityText, localizeFacilityMarkup } from './facility-language.js';
+import { catalogLabel, menuLanguage } from './localization.js';
 import { regionAvailable } from '../game/geography.js';
 import { REGIONS, TECHS } from '../game/content.js';
 import { siteHardware } from '../game/equipment.js';
 import { icon } from './icons.js';
+import { regionKeys } from './campaign-shortcuts.js';
 import { createSunlightRenderer, startingDay, sunAt } from './solar.js';
 import coastlines from './world.svg';
 import './atlas.css';
@@ -21,10 +24,11 @@ const orbitalGlyphs = {
 };
 
 function destination(id) {
-  const name = REGIONS[id].name;
+  const name = catalogLabel(REGIONS[id].name);
   const counts = '<small class="atlas-count" aria-hidden="true"></small><b class="atlas-trace" aria-hidden="true"></b>';
   const lock = '<span class="atlas-lock" aria-hidden="true">' + icon('lock') + '</span>';
-  const attributes = 'type="button" data-action="region" data-id="' + id + '" aria-label="' + name + ' facilities"';
+  const label = menuLanguage() === 'en' ? name + ' facilities' : catalogLabel('Facilities') + ' · ' + name;
+  const attributes = 'type="button" data-action="region" data-id="' + id + '" aria-label="' + label + '"';
   if (ground[id]) {
     const [lon, lat] = ground[id];
     const style = '--x:' + ((lon + 180) / 3.6) + '%;--y:' + ((90 - lat) / 1.8) + '%';
@@ -41,14 +45,14 @@ const views = new WeakMap();
 function mount(container) {
   const regions = Object.keys(REGIONS);
   container.innerHTML = `<section id="world-atlas" class="navigation-atlas panel" aria-labelledby="atlas-title">
-    <header class="card-header"><h2 id="atlas-title">${icon('globe')}Network map</h2><span class="atlas-date"></span></header>
+    <header class="card-header"><h2 id="atlas-title">${icon('globe')}${catalogLabel('Network map')}</h2><span class="atlas-date"></span></header>
     <div class="atlas-field"><div class="atlas-layout">
     <div class="atlas-planet"><div class="atlas-geography">
       <img src="${coastlines}" alt="" draggable="false">
       <canvas width="480" height="240" aria-hidden="true"></canvas>
       ${regions.filter(id => ground[id]).map(destination).join('')}
     </div></div>
-    <div class="atlas-horizon" role="group" aria-label="Off-world sites"><span class="atlas-caption">Off-world sites</span>
+    <div class="atlas-horizon" role="group" aria-label="${catalogLabel('Off-world sites')}"><span class="atlas-caption">${catalogLabel('Off-world sites')}</span>
       <div class="atlas-outposts">${regions.filter(id => !ground[id]).map(destination).join('')}</div>
     </div>
     </div></div>
@@ -60,8 +64,9 @@ function mount(container) {
       <span data-trace-key="latest" hidden>◆ Latest discovery</span><span data-trace-key="previous" hidden>◇ Previous discovery</span></footer>
   </section>`;
   const atlas = container.querySelector('#world-atlas');
+  localizeFacilityMarkup(atlas.querySelector('.atlas-key'));
   const view = {
-    atlas,
+    atlas, language: menuLanguage(),
     date: atlas.querySelector('.atlas-date'),
     pendingKey: atlas.querySelector('.atlas-pending-key'),
     latestKey: atlas.querySelector('[data-trace-key="latest"]'),
@@ -102,19 +107,20 @@ export function updateAtlasTime(container, state) {
   if (!view || view.atlas.parentElement !== container) return;
   const minute = state.hour * 60 + (state.minute ?? 0);
   const showLight = document.documentElement.dataset.daylight !== 'false';
-  if (view.minute !== minute || view.showLight !== showLight || view.regionSeed !== state.regionSeed) {
-    const sun = sunAt(state.hour, state.minute, startingDay(state.regionSeed));
+  if (view.minute !== minute || view.showLight !== showLight || view.regionSeed !== state.regionSeed || view.startUtcMinute !== state.startUtcMinute) {
+    const sun = sunAt(state.hour, state.minute, startingDay(state.regionSeed), state.startUtcMinute, view.language);
     if (showLight) view.paint(sun);
     view.showLight = showLight;
     view.date.textContent = sun.label;
     view.minute = minute;
     view.regionSeed = state.regionSeed;
+    view.startUtcMinute = state.startUtcMinute;
   }
 }
 
 export function updateAtlas(container, state) {
   let view = views.get(container);
-  if (!view || view.atlas.parentElement !== container) view = mount(container);
+  if (!view || view.language !== menuLanguage() || view.atlas.parentElement !== container) view = mount(container);
   updateAtlasTime(container, state);
   let hasPending = false;
   const presence = occupancy(state);
@@ -141,10 +147,13 @@ export function updateAtlas(container, state) {
     button.querySelector('.atlas-count').textContent = completed + builds;
     button.querySelector('.atlas-trace').textContent = trace;
     const detail = !unlocked
-      ? 'Locked · Requires ' + REGIONS[id].requires.filter(tech => !state.completed.includes(tech)).map(tech => TECHS[tech].name).join(', ')
-      : description + ' · ' + completed + ' completed · ' + builds + ' under construction' +
-      (latestHere ? ' · Latest discovery' : '') + (previousHere ? ' · Previous discovery' : '');
-    button.title = REGIONS[id].name + ' · ' + detail;
+      ? catalogLabel('Locked') + ' · ' + catalogLabel('Requires') + ' ' + REGIONS[id].requires.filter(tech => !state.completed.includes(tech)).map(tech => catalogLabel(TECHS[tech].name)).join(', ')
+      : facilityText(description) + ' · ' + completed + ' ' + facilityText('completed') + ' · ' + builds + ' ' + facilityText('under construction') +
+      (latestHere ? ' · ' + facilityText('Latest discovery') : '') + (previousHere ? ' · ' + facilityText('Previous discovery') : '');
+    const shortcut = 'Shift+' + regionKeys[id].toUpperCase();
+    button.title = catalogLabel(REGIONS[id].name) + ' · ' + detail + (unlocked ? ' · ' + shortcut : '');
+    if (unlocked) button.setAttribute('aria-keyshortcuts', shortcut);
+    else button.removeAttribute('aria-keyshortcuts');
     button.setAttribute('aria-description', detail);
   }
   view.pendingKey.hidden = !hasPending;

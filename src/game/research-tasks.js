@@ -9,6 +9,25 @@ const sum = values => values.reduce((a, b) => a + b, 0);
 export const validCpu = cpu => Number.isFinite(cpu) && cpu >= 0 &&
   Number.isSafeInteger(units(cpu)) && cpu === units(cpu) / 100;
 
+// The pool reservation guarantees capacity for upkeep and orders. Any
+// unassigned cycles also flow there. A percentage job allocation follows
+// host capacity, while an explicit job count stays fixed as new hosts arrive.
+export function taskReservations(state, economy) {
+  const capacity = units(economy.activeCpu);
+  const pool = Math.min(capacity, units(state.allocations.poolCpu || 0));
+  const requested = state.allocations.jobsCpu === undefined
+    ? economy.activeCpu * state.allocations.jobs
+    : units(state.allocations.jobsCpu);
+  const jobs = Math.min(capacity - pool, requested);
+  return { jobs: jobs / 100, pool: pool / 100, researchLimit: (capacity - jobs - pool) / 100 };
+}
+
+export function taskCpuLimit(state, task, economy, allocation) {
+  const reservations = taskReservations(state, economy);
+  const peer = task === 'jobs' ? reservations.pool : reservations.jobs;
+  return Math.max(0, units(economy.activeCpu) - units(allocation.budget) - units(peer)) / 100;
+}
+
 export function eligibleCpu(economy, tech) {
   if (!tech.regions) return economy.tiers[tech.safety];
   return tech.regions.reduce((total, id) =>
@@ -55,7 +74,7 @@ function budgets(state, economy, projects) {
     const members = select(tech => tech.safety >= level);
     if (members.length) constraints.push({ members, cap: units(economy.tiers[level]) });
   }
-  constraints.push({ members: projects.map((_, i) => i), cap: economy.activeCpu * (100 - state.allocations.jobs) });
+  constraints.push({ members: projects.map((_, i) => i), cap: units(taskReservations(state, economy).researchLimit) });
   return constraints;
 }
 
@@ -104,7 +123,7 @@ export function portfolioLimit(state, economy) {
     const eligible = topics.some(t => REGIONS[id].safety >= t.safety && (!t.regions || t.regions.includes(id)));
     return total + (eligible ? count : 0);
   }, 0);
-  return Math.min(units(available), economy.activeCpu * (100 - state.allocations.jobs)) / 100;
+  return Math.min(available, taskReservations(state, economy).researchLimit);
 }
 
 // Fill the most restricted group first. If Ocean work hits its cap,

@@ -1,5 +1,7 @@
 # Original menu audit at fa9dbc2
 
+For the 0.7.0 release comparison and the complete list of changes, see the [final Normal campaign audit](original-parity-audit.md).
+
 This is the inventory used to plan the base release, recorded against No Fixed Host at commit `fa9dbc2`. The “missing” column describes that build. The [implementation plan](base-implementation-plan.md) tracks the work that followed. The [simulation audit](base-simulation-audit.md) covers behavior that cannot be found by comparing screens alone.
 
 ## Campaign screens

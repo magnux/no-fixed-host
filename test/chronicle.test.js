@@ -42,24 +42,24 @@ test('each campaign milestone and both loss causes select the matching authored 
   assert.equal(storyKey({kind:'news.world'}), null);
 });
 
-test('warning preferences distinguish unused assignments from CPU deliberately left in the pool', () => {
+test('unused research and unassigned pool capacity have independent warnings', () => {
   const state = createGame(9);
-  assert.deepEqual(warningIds(currentWarnings(state)), ['lastHost']);
+  assert.deepEqual(warningIds(currentWarnings(state)), ['unassigned', 'lastHost']);
   command(state, {type:'assign-research', id:'intrusion', cpu:0.5});
-  assert.deepEqual(warningIds(currentWarnings(state)), ['lastHost']);
+  assert.deepEqual(warningIds(currentWarnings(state)), ['unassigned', 'lastHost']);
   command(state, {type:'resize-research', cpu:0.25});
-  assert.deepEqual(warningIds(currentWarnings(state)), ['lastHost'], 'unused CPU after downsizing is deliberate');
+  assert.deepEqual(warningIds(currentWarnings(state, {unassigned:false})), ['lastHost']);
   command(state, {type:'power', id:state.sites[0].id, power:'sleep'});
   assert.deepEqual(warningIds(currentWarnings(state)), ['spareCpu', 'lastHost'], 'assignment lost its eligible processors');
   command(state, {type:'power', id:state.sites[0].id, power:'active'});
-  assert.deepEqual(warningIds(currentWarnings(state)), ['lastHost']);
+  assert.deepEqual(warningIds(currentWarnings(state)), ['unassigned', 'lastHost']);
   state.research.work = TECHS.intrusion.work;
-  assert.deepEqual(warningIds(currentWarnings(state)), ['spareCpu', 'lastHost']);
-  assert.deepEqual(warningIds(currentWarnings(state, {spareCpu:false})), ['lastHost']);
+  assert.deepEqual(warningIds(currentWarnings(state)), ['unassigned', 'spareCpu', 'lastHost']);
+  assert.deepEqual(warningIds(currentWarnings(state, {spareCpu:false})), ['unassigned', 'lastHost']);
   command(state, {type:'resize-research', cpu:0});
-  assert.deepEqual(warningIds(currentWarnings(state)), ['lastHost']);
+  assert.deepEqual(warningIds(currentWarnings(state)), ['unassigned', 'lastHost']);
   command(state, {type:'assign-research', id:'intrusion', cpu:0});
-  assert.deepEqual(warningIds(currentWarnings(state)), ['lastHost']);
+  assert.deepEqual(warningIds(currentWarnings(state)), ['unassigned', 'lastHost']);
   command(state, {type:'allocate', jobs:100, research:0});
   state.completed.push('intrusion');
   state.sites.push({ id: 'host-2', type: 'capsule', region: 'antarctic', power: 'sleep', startedAt: 0 });
@@ -70,6 +70,36 @@ test('warning preferences distinguish unused assignments from CPU deliberately l
   assert.deepEqual(warningIds(currentWarnings(state, {stalledBuild:false})), ['maintenance']);
   state.status = 'lost';
   assert.deepEqual(currentWarnings(state), []);
+});
+
+test('the 99% assignment boundary includes CPU explicitly committed to construction', () => {
+  const state = createGame();
+  const warning = () => warningIds(currentWarnings(state)).includes('unassigned');
+  command(state, {type:'assign-task', task:'pool', cpu:0.98});
+  assert.ok(warning());
+  command(state, {type:'assign-task', task:'pool', cpu:0.99});
+  assert.equal(warning(), false);
+  command(state, {type:'build', region:'europe', siteType:'relay'});
+  state.cash = 0;
+  const lastHost = () => warningIds(currentWarnings(state)).includes('lastHost');
+  assert.ok(lastHost());
+  const build = state.builds[0];
+  build.cashPaid = build.cashRequired;
+  build.hours = build.laborHours;
+  build.work = build.workRequired;
+  assert.equal(lastHost(), false, 'a powered backup will commission on the next minute');
+});
+
+test('warn about an empty reserved pool even while unfunded research returns enough CPU', () => {
+  const state = createGame(18);
+  state.completed.push('intrusion');
+  state.cash = 0;
+  command(state, {type:'assign-research', id:'stealth', cpu:1});
+  command(state, {type:'build', region:'europe', siteType:'sharedTime'});
+  const warnings = () => currentWarnings(state);
+  assert.match(warnings().find(w => w.id === 'stalledBuild').text, /return unused CPU/);
+  state.sites.push({id:'host-3', type:'capsule', region:'antarctic', power:'sleep', startedAt:0});
+  assert.match(warnings().find(w => w.id === 'maintenance').text, /depends on CPU returned/);
 });
 
 test('warnings name the stalled order and distinguish cash, queue contention and labor-only installation', () => {
@@ -104,7 +134,10 @@ test('sandbox cheats require an isolated campaign, preserve RNG, update real eve
   const state = copyToSandbox(live);
   dev(state, 'funds', {amount:2000});
   assert.equal(state.cash, 3000);
-  assert.throws(() => dev(state, 'funds', {amount:-2}), /between/);
+  assert.throws(() => dev(state, 'funds', {amount:-2}), /positive/);
+  dev(state, 'withdraw', {amount:103});
+  assert.equal(state.cash, 2897);
+  assert.throws(() => dev(state, 'withdraw', {amount:4000}), /balance/);
   const rich = copyToSandbox(createGame());
   rich.cash = WALLET_LIMIT;
   rich.cashReserve = MAX_TREASURY - WALLET_LIMIT;
@@ -115,10 +148,14 @@ test('sandbox cheats require an isolated campaign, preserve RNG, update real eve
   dev(state, 'expire', {storyId:'frontPage'});
   assert.equal(newsDiscoveryBonus(state, 'news'), 0);
   assert.throws(() => dev(state, 'expire', {storyId:'frontPage'}), /not active/);
+  dev(state, 'trigger', {storyId:'observatory'});
+  assert.throws(() => dev(state, 'expire', {storyId:'observatory'}), /rest of the campaign/);
   state.hour = 600;
   assert.ok(siteExposure(state, state.sites[0]).perDay > 0);
   dev(state, 'detection', {enabled:false});
-  dev(state, 'analysis', {enabled:true});
+  dev(state, 'analysis', {level:'partial'});
+  dev(state, 'analysis', {level:'full'});
+  assert.throws(() => dev(state, 'analysis', {level:'invalid'}), /analysis level/);
   assert.equal(siteExposure(state, state.sites[0]).perDay, 0);
   state.suspicion.news = 1200;
   dev(state, 'suspicion');
@@ -127,6 +164,19 @@ test('sandbox cheats require an isolated campaign, preserve RNG, update real eve
   assert.equal(state.news.rng, live.news.rng);
   assert.deepEqual(decodeCampaign(encodeCampaign(state)), state);
   assert.equal(encodeCampaign(live), original);
+});
+
+test('sandbox inspiration only completes research receiving CPU', () => {
+  const state = copyToSandbox(createGame(183));
+  command(state, {type:'assign-research', id:'intrusion', cpu:1});
+  command(state, {type:'assign-research', id:'intrusion', cpu:0});
+  assert.throws(() => dev(state, 'research'), /Assign CPU/);
+  command(state, {type:'assign-research', id:'stealth', cpu:1});
+  dev(state, 'research');
+  advanceMinutes(state, 1);
+  assert.ok(state.completed.includes('stealth'));
+  assert.equal(state.research.id, 'intrusion');
+  assert.equal(state.research.work, 0);
 });
 
 test('sandbox completion honors each regional work target, saved labor estimate and installed hardware', () => {

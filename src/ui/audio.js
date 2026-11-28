@@ -1,3 +1,4 @@
+import { createCampaignMusic } from './campaign-music.js';
 // The campaign and arcade share a single browser output. Each game owns its round's voices.
 const campaignAlerts = {
   research: [[0, 440, .10], [.12, 587.33, .16]],
@@ -10,7 +11,8 @@ const endings = new Set(['complete', 'partial', 'failed']);
 
 export function createAudio() {
   let context, buses, settings, game, ambientTimer;
-  let activated = false, pageVisible = true, outputRequested = false, chord = 0;
+  let activated = false, pageVisible = true, outputRequested = false;
+  const campaignMusic = createCampaignMusic();
   const ambientNotes = new Set();
   const alertNotes = new Set();
   const radioNotes = new Set();
@@ -19,7 +21,7 @@ export function createAudio() {
     const Ctx = window.AudioContext || window.webkitAudioContext;
     if (!Ctx) return;
     try {
-      context = new Ctx();
+      context = new Ctx({ latencyHint: settings.audioLatency });
       buses = {};
       for (const name of ['ambient', 'alerts', 'score', 'effects']) {
         const bus = context.createGain();
@@ -63,10 +65,10 @@ export function createAudio() {
     owners.clear();
   }
   function ambientPhrase() {
-    const melody = [146.83, 220, 261.63, 196, 174.61, 261.63, 220, 164.81];
-    tone(buses.ambient, ambientNotes, melody[chord % 8], 2.45, .11, 'sine');
-    if (chord % 4 === 0) tone(buses.ambient, ambientNotes, chord % 8 === 0 ? 73.42 : 87.31, 4.1, .075, 'sine');
-    chord++;
+    const note = campaignMusic.note();
+    if (!note) return;
+    tone(buses.ambient, ambientNotes, note.frequency, 2.45, .11, 'sine');
+    if (note.bass) tone(buses.ambient, ambientNotes, note.frequency / 2, 4.1, .075, 'sine');
   }
   function refresh() {
     if (!settings) return;
@@ -88,6 +90,7 @@ export function createAudio() {
       context.suspend().catch(() => {});
     }
     outputRequested = awake;
+    campaignMusic.setLevel(game ? 0 : musicLevel);
     if (awake && !game && musicLevel) {
       if (!ambientTimer) { ambientPhrase(); ambientTimer = setInterval(ambientPhrase, 1900); }
     } else {
@@ -111,6 +114,21 @@ export function createAudio() {
 
   function apply(prefs) {
     if (settings && prefs.sound !== settings.sound && game) game.radioOverride = null;
+    if (context && settings && settings.audioLatency !== prefs.audioLatency) {
+      // The Web Audio latency hint is chosen at construction. Stop every voice
+      // before replacing the output so previewing or cancelling cannot double it.
+      clearInterval(ambientTimer);
+      ambientTimer = null;
+      silence(ambientNotes);
+      silence(alertNotes);
+      silence(radioNotes);
+      game?.player?.stop();
+      if (game) game.player = null;
+      context.close().catch(() => {});
+      context = null;
+      buses = null;
+      outputRequested = false;
+    }
     settings = prefs;
     refresh();
   }
@@ -185,7 +203,11 @@ export function createAudio() {
   }
 
   return {
-    activate, apply, openGame, playCampaignCue,
+    activate, apply, openGame, playCampaignCue, campaignMusic,
+    setCampaignStatus(status) {
+      const mode = status === 'won' ? 'victory' : status === 'lost' ? 'defeat' : 'normal';
+      if (campaignMusic.setMode(mode)) silence(ambientNotes);
+    },
     setPageVisible(value) { pageVisible = value; refresh(); },
   };
 }

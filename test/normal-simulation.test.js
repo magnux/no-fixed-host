@@ -2,6 +2,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { advanceMinutes, command, createGame } from '../src/game/engine.js';
 import { dailyInterest, recentDiscoveryRegions } from '../src/game/normal-economy.js';
+import { regionalSpec } from '../src/game/geography.js';
+import { SITE_TYPES } from '../src/game/content.js';
+import { laborHours } from '../src/game/research.js';
 import { CASH_UNITS_PER_DOLLAR } from '../src/game/report-accounting.js';
 import { MAX_TREASURY, WALLET_LIMIT, creditTreasury, treasuryBalance, settleTreasury, spendTreasury, validTreasury } from '../src/game/treasury.js';
 import { decodeCampaign, encodeCampaign } from '../src/persistence.js';
@@ -10,6 +13,8 @@ test('Normal interest rounds the daily amount before accrual', () => {
   assert.equal(dailyInterest(9999.99), 0);
   assert.equal(dailyInterest(10_000), 1);
   assert.equal(dailyInterest(20_000, 20), 42);
+  assert.equal(dailyInterest(20_476.99, 20), 42);
+  assert.equal(dailyInterest(3_139_999_999_997_619, 20), 6_593_999_999_994);
 });
 
 test('an idle network earns prorated interest and Arbitrage before and across midnight', () => {
@@ -20,11 +25,11 @@ test('an idle network earns prorated interest and Arbitrage before and across mi
   // Normal Arbitrage pays $1,000/day. The daily interest starts at $42,
   // reaches $43 during the first half-day and $44 during the second.
   advanceMinutes(state, 720);
-  assert.equal(state.cash, 20_521 + 61 / 1440);
+  assert.equal(state.cash, 20_521 + 60 / 1440);
   const resumed = structuredClone(state);
   advanceMinutes(state, 720);
   for (let i = 0; i < 720; i++) advanceMinutes(resumed, 1);
-  assert.equal(state.cash, 21_042 + 905 / 1440);
+  assert.equal(state.cash, 21_042 + 903 / 1440);
   assert.deepEqual(resumed, state);
 });
 
@@ -37,6 +42,13 @@ test('spending the principal changes the next minute of interest', () => {
   state.cash -= 1000;
   advanceMinutes(state, 1080);
   assert.equal(state.cash, 9000.25);
+});
+
+test('an automation discount precedes regional construction speed and both truncate to minutes', () => {
+  const state = createGame(1);
+  const terms = regionalSpec(state, 'farReaches', SITE_TYPES.scientificOutpost);
+  // 72h * 85% = 3,672 minutes. Survey speed of 0.095 gives 38,652 complete minutes.
+  assert.equal(laborHours(state, terms, { labor: 8500 }), 38652 / 60);
 });
 
 test('regional attention samples simultaneous reports without replacement', () => {
@@ -83,6 +95,7 @@ test('late-game funds retain the last fractional unit and cover purchases above 
   assert.equal(state.cashReserve, 1);
   assert.equal(Math.round(state.cash * units), (WALLET_LIMIT - 1) * units + 1);
   creditTreasury(state, 100_000_000_000);
+  assert.equal(state.statistics.earnedDollars, 100_000_001_000);
   assert.ok(validTreasury(state));
   spendTreasury(state, 80_000_000_000);
   assert.equal(state.cashReserve, 20_000_000_001);

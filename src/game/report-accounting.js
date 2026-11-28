@@ -4,11 +4,12 @@ export const CASH_UNITS_PER_DOLLAR = 144_000;
 
 export function initializeStatistics(state) {
   state.statistics = {
-    earnedDollars: 0,
+    earnedDollars: state.cash,
     earnedRemainder: 0,
     projectsCompleted: 0,
     facilitiesBuilt: 0,
     itemsInstalled: 0,
+    installationsCompleted: 0,
   };
 }
 
@@ -18,7 +19,8 @@ export function validStatistics(state) {
   return Boolean(stats &&
     Number.isFinite(stats.earnedDollars) && Number.isInteger(stats.earnedDollars) && stats.earnedDollars >= 0 &&
     whole(stats.earnedRemainder) && stats.earnedRemainder < CASH_UNITS_PER_DOLLAR &&
-    whole(stats.projectsCompleted) && whole(stats.facilitiesBuilt) && whole(stats.itemsInstalled));
+    whole(stats.projectsCompleted) && whole(stats.facilitiesBuilt) && whole(stats.itemsInstalled) &&
+    whole(stats.installationsCompleted) && stats.installationsCompleted <= stats.itemsInstalled);
 }
 
 export function recordEarnings(state, cashUnits) {
@@ -31,5 +33,8 @@ export function recordEarnings(state, cashUnits) {
 export function recordCreated(state, kind, detail) {
   if (kind === 'research.completed') state.statistics.projectsCompleted++;
   if (kind === 'site.online') state.statistics.facilitiesBuilt++;
-  if (kind === 'equipment.installed') state.statistics.itemsInstalled += detail.count;
+  if (kind === 'equipment.installed') {
+    state.statistics.itemsInstalled += detail.count;
+    state.statistics.installationsCompleted++;
+  }
 }

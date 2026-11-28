@@ -5,6 +5,7 @@ import {
   overview, researchReason, siteExposure, siteHardware, validateSave,
 } from '../src/game/engine.js';
 import { EQUIPMENT, SITE_TYPES, TECHS } from '../src/game/content.js';
+import { projectedCompute, slotSignature } from '../src/game/equipment.js';
 import { decodeCampaign, encodeCampaign } from '../src/persistence.js';
 import { projectResources } from '../src/game/reports.js';
 
@@ -37,7 +38,7 @@ test('expanding and replacing a processor stack takes the bank offline and respe
   assert.ok(installReason(state, site.id, 'pc', 9));
   assert.ok(installReason(state, site.id, 'pc', -1));
   install(state, site, 'pc', 4);
-  assert.ok(installReason(state, site.id, 'gamingPc'));
+  assert.equal(installReason(state, site.id, 'gamingPc'), '');
   advance(state, 23);
   assert.equal(siteHardware(state, site).cpu, 0);
   advance(state);
@@ -86,7 +87,7 @@ test('installed peripherals modify CPU and concealment and survive a mid-project
   assert.equal(siteExposure(state, site).rates.news, Math.floor(75 * expectedReduction) / 10000);
   assert.ok(installReason(state, site.id, 'warningSigns'));
   install(state, site, 'perimeterFencing');
-  assert.equal(siteHardware(state, site).installed.security.itemId, 'warningSigns');
+  assert.equal(siteHardware(state, site).installed.security, null);
   assert.equal(siteHardware(state, site).installed.reactor.itemId, 'dieselGenerator');
   assert.equal(siteHardware(state, site).exposureFactor, 0.975);
   assert.equal(siteHardware(state, site).cpu, Math.floor(350 * 1.05));
@@ -134,7 +135,7 @@ test('orbital builds need satellite access and the orbital capsule also needs pr
   build('capsule');
   assert.throws(() => command(state, { type: 'build', region: 'moon', siteType: 'orbitalServer' }), /compatible region/);
   assert.equal(decodeCampaign(encodeCampaign(state)).builds[0].type, 'capsule');
-  state.sandbox = { analysis: false, detection: false };
+  state.sandbox = { analysis: 'none', detection: false };
   command(state, { type: 'developer', operation: 'construction' });
   advance(state);
   const capsule = state.sites.find(site => site.region === 'orbit');
@@ -146,7 +147,7 @@ test('orbital builds need satellite access and the orbital capsule also needs pr
 
 test('an orbital server commissions, accepts two processors and orbital gear, and rejects terrestrial fittings', () => {
   const { state, site: workshop } = newWorkshop();
-  state.sandbox = { analysis: false, detection: false };
+  state.sandbox = { analysis: 'none', detection: false };
   grantTechs(state, 'leechSatellite', 'clusterNetworking', 'solarCollectors', 'autonomousVehicles', 'advancedHeatSignatureReduction', 'quantumComputing');
   workshop.equipment = { cpu: { itemId: 'quantumComputer', count: 4 }, network: null, reactor: null, security: null };
   command(state, { type: 'build', siteType: 'orbitalServer', region: 'orbit' });
@@ -298,7 +299,7 @@ test('the final processor bank cannot be refitted singly or via a package until 
   state.sites.push(backup);
   install(state, site, 'pc');
   assert.equal(siteHardware(state, site).rawCpu, 0);
-  assert.equal(site.installations[0].cashRequired, EQUIPMENT.pc.cost);
+  assert.equal(site.installations[0].cashRequired - site.installations[0].cashPaid, EQUIPMENT.pc.cost);
   assert.ok(validateSave(state));
 });
 
@@ -315,4 +316,62 @@ test('equipment and host ranks reflect installed performance, fixed chassis and 
   assert.equal(hostRank(site), 1);
   site.equipment.network = { itemId: 'quantumEntanglement', count: 1 };
   assert.equal(hostRank(site), 3);
+});
+
+test('switching unfinished hardware forfeits paid work, releases its old commitments and leaves other slots intact', () => {
+  const { state, site } = newWorkshop();
+  grantTechs(state, 'quantumComputing');
+  install(state, site, 'quantumComputer', 2);
+  install(state, site, 'dieselGenerator');
+  advance(state, 8);
+  const [abandoned, reactor] = site.installations;
+  assert.ok(abandoned.cashPaid > 0 && abandoned.work > 0 && abandoned.hours > 0);
+  const cash = state.cash;
+  const signature = slotSignature(site, 'cpu');
+  assert.equal(installQuote(state, site.id, 'server').maxCount, 8);
+  assert.equal(projectedCompute(state, site, 'server', 8), 80);
+  const replace = { type: 'install', siteId: site.id, itemId: 'server', count: 8, expectedSlot: signature };
+  command(state, replace);
+  const [replacement] = site.installations;
+  assert.equal(site.installations.length, 2);
+  assert.equal(site.installations[1], reactor);
+  assert.equal(state.cash, cash);
+  assert.equal(replacement.cashRequired, 16000);
+  assert.equal(replacement.cashPaid, 0);
+  assert.equal(replacement.work, 0);
+  assert.equal(replacement.hours, 0);
+  const before = structuredClone(state);
+  assert.throws(() => command(state, { ...replace, itemId: 'pc' }), /slot changed/);
+  assert.deepEqual(state, before);
+  const copy = decodeCampaign(encodeCampaign(state));
+  advance(copy, 48);
+  assert.deepEqual(siteHardware(copy, copy.sites.at(-1)).installed.cpu, { itemId: 'server', count: 8 });
+});
+
+test('adding to an installed CPU stack carries its completed procurement through a new labor period', () => {
+  const { state, site } = newWorkshop();
+  install(state, site, 'pc', 4);
+  advance(state, 24);
+  install(state, site, 'pc', 4);
+  const expanded = site.installations[0];
+  assert.deepEqual([expanded.cashRequired, expanded.cashPaid, expanded.hours], [4000, 2000, 0]);
+  advance(state, 8);
+  assert.equal(expanded.cashPaid, 2000);
+  assert.equal(expanded.hours, 8);
+  const copy = decodeCampaign(encodeCampaign(state));
+  advance(copy, 16);
+  assert.equal(siteHardware(copy, copy.sites.at(-1)).installed.cpu.count, 8);
+  install(state, site, 'server', 1);
+  install(state, site, 'pc', 1);
+  const restarted = site.installations[0];
+  assert.deepEqual([restarted.cashRequired, restarted.cashPaid, restarted.count], [500, 0, 1]);
+  assert.equal(siteHardware(state, site).installed.cpu, null);
+});
+
+test('CPU purchase preview distinguishes the current network from the network still being installed', () => {
+  const { state, site } = newWorkshop();
+  grantTechs(state, 'internetTrafficManipulation');
+  install(state, site, 'networkBackbone');
+  assert.equal(projectedCompute(state, site, 'server', 8, false), 80);
+  assert.equal(projectedCompute(state, site, 'server', 8), 84);
 });

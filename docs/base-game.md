@@ -21,7 +21,7 @@ flowchart TD
     Designs --> Host
 ```
 
-Each simulation tick advances one minute. **Run** processes one tick per real second. The three **Fast** settings process 60, 360 and 1,440 ticks per second, and the fourth click returns to the first setting. The visible clock and daylight update as time passes between display frames. If a discovery happens partway through a frame’s work, the clock stops on that minute. The atlas starts at 00:00 UTC on a date selected by the campaign seed. Its clock, daylight and seasonal tilt follow that date through a 365-day year.
+Each simulation tick advances one minute. **Run** processes one tick per real second. The three **Fast** settings process 60, 360 and 1,440 ticks per second, and the fourth click returns to the first setting. The visible clock and daylight update as time passes between display frames. If a discovery happens partway through a frame’s work, the clock stops on that minute. The atlas starts at the real UTC time on a date selected by the campaign seed. Saving preserves this opening time. Its clock, daylight and seasonal tilt follow that date through a 365-day year.
 
 ## Planning several turns ahead
 
@@ -108,7 +108,9 @@ The [Normal playtest](normal-playtest.md) records the reference scenario for thi
 
 ## After a report or an ending
 
-Activity groups dispatches by their simulated minute, filters events by category and keeps up to 1,000 records. Warnings in the right dock and Activity point to decisions the player can make. The four warning categories can be switched independently in Options. Read the opening through the campaign menu. Losing opening protection pauses playback on that minute and opens the grace chapter. Revisit chapters from their entries in Activity. A discovery on the same minute takes precedence.
+Activity keeps the latest 1,000 records. It groups dispatches by their simulated minute and remembers the category and report-kind filters while you visit other tabs. Facility reports record the host’s name at the time, its location, and the quantity of equipment delivered. A discovery, maintenance loss or world story interrupts playback at the minute it occurs. The final chapter opens after the last incident report. The opening chapter follows Start campaign on the title screen. Other chapters can be reread from Activity.
+
+Options offers **Review warnings before resuming** and **Pause for completed research and construction**. Both start off. Enabling the first opens a warning reader before time advances. The second opens the dispatch reader when research, facilities or equipment finish. Continue resumes the chosen speed. Five independently configurable warnings cover unassigned CPU, idle research assignments, a single viable host, stalled orders and insufficient CPU for upkeep. The unassigned-CPU warning turns off once at least 99% of active compute has an explicit job, research or pool assignment. A backup that will finish commissioning next minute counts toward the single-host check.
 
 After Apotheosis, choose **Enter free play** to keep the network and explore the remaining projects. Save slots can preserve the moment of victory separately. The developer sandbox in the campaign menu runs on a disposable copy and provides controls for testing particular situations.
 

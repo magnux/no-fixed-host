@@ -180,7 +180,7 @@
 .facility-removal { max-width: min(90vw, 26rem); border: 1px solid var(--line); border-radius: .5rem; background: #192329; color: var(--text); padding: 1.1rem; }
 .facility-removal::backdrop { background: #071017b5; }
 .facility-removal p { margin: .75rem 0 1rem; }
-.facility-progress > .text-button { grid-column: 1 / -1; justify-self: start; }
+.facility-progress > .facility-command { grid-column: 1 / -1; justify-self: start; }
 .facility-host-title strong { overflow-wrap: anywhere; }
 
 .facility-risk { display: grid; gap: .3rem; padding: .55rem .7rem; border: 1px solid var(--line); border-radius: .32rem; }

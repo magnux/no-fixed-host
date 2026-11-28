@@ -18,7 +18,7 @@ function nearest(amount) {
 // Calculate all three balances from the same fraction, then carry the integer
 // amounts already invested forward. Extending a processor batch can leave
 // more cash or CPU invested than its restarted assembly clock.
-export function nextOrderMinute(order, targetWork, targetHours, cpu, cash = 0) {
+export function orderInterval(order, targetWork, targetHours, cpu, cash, elapsedMinutes) {
   const work = Math.round(order.work * WORK_UNITS);
   const minutes = Math.round(order.hours * 60);
   const required = Math.round(targetWork * WORK_UNITS);
@@ -26,7 +26,7 @@ export function nextOrderMinute(order, targetWork, targetHours, cpu, cash = 0) {
   const price = order.cashRequired;
   const paid = order.cashPaid;
   const workLimit = Math.min(required, work + cpu);
-  const timeLimit = Math.min(duration, minutes + 1);
+  const timeLimit = Math.min(duration, minutes + elapsedMinutes);
   const cashLimit = paid + Math.min(cash, price - paid);
   const fraction = Math.min(1, required ? workLimit / required : 1,
     duration ? timeLimit / duration : 1, price ? cashLimit / price : 1);
@@ -36,6 +36,10 @@ export function nextOrderMinute(order, targetWork, targetHours, cpu, cash = 0) {
   const newPaid = Math.max(paid, Math.min(cashLimit, nearest(fraction * price)));
   return { used: newWork - work, spent: newPaid - paid, work: newWork / WORK_UNITS, hours: elapsed / 60,
     done: newWork >= required && elapsed >= duration && newPaid >= price };
+}
+
+export function nextOrderMinute(order, targetWork, targetHours, cpu, cash = 0) {
+  return orderInterval(order, targetWork, targetHours, cpu, cash, 1);
 }
 
 export function orderStatus(order, work, hours, cpu, cash, next, cpuBlocker) {
@@ -59,5 +63,6 @@ export function orderStatus(order, work, hours, cpu, cash, next, cpuBlocker) {
   }
   const progress = Math.min(1, work ? order.work / work : 1, hours ? order.hours / hours : 1,
     order.cashRequired ? cashPaid / order.cashRequired : 1);
-  return { progress, stalled, reason, cpu: next.used / 100, workRemaining, hoursRemaining, cashPaid, cashRemaining, etaHours };
+  return { progress, stalled, reason, completesNextMinute: next.done, cpu: next.used / 100,
+    workRemaining, hoursRemaining, cashPaid, cashRemaining, etaHours };
 }

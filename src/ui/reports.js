@@ -1,10 +1,12 @@
 import { EQUIPMENT, REGIONS, SITE_TYPES, TECHS } from '../game/content.js';
 import { campaignStatistics, comparisonReport, orderPrice } from '../game/reports.js';
 import { refitWarning } from './equipment-display.js';
+import { catalogLabel, menuLanguage } from './localization.js';
+import { reportLabel as t, reportFormats } from './report-languages.js';
+import { dossierFormat } from './dossier-translations.js';
+import { facilityText } from './facility-language.js';
 import './reports.css';
 
-const money = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 });
-const number = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 });
 const sessions = new WeakMap();
 
 const cashRows = [
@@ -20,49 +22,79 @@ const cpuRows = [
   ['construction', 'Facility construction'], ['equipment', 'Equipment installation'],
   ['spare', 'Spare cycles earning cash'], ['upkeepShort', 'Unfunded maintenance'],
 ];
+const plannedCashRows = [
+  ['jobs', 'Job income'], ['interest', 'Interest'], ['income', 'Other income'],
+  ['research', 'Research funding'], ['upkeep', 'Maintenance due'], ['construction', 'Facility and equipment funding'],
+  ['net', 'Planned cash change'], ['closing', 'Balance if fully funded'],
+];
+const plannedCpuRows = [
+  ['pool', 'Shared CPU pool'], ['upkeep', 'Maintenance demand'],
+  ['construction', 'Construction demand'], ['balance', 'Pool surplus / shortfall'],
+];
 const statisticRows = [
-  ['cashEarned', 'Cash earned'], ['cpuHours', 'Active CPU-hours'],
+  ['cashEarned', 'Total cash received'], ['cpuHours', 'Active CPU-hours'],
   ['projectsCompleted', 'Research projects completed'], ['commissioned', 'Facilities commissioned'],
-  ['facilitiesBuilt', 'Facilities completed'], ['itemsInstalled', 'Equipment units installed'],
+  ['facilitiesBuilt', 'Facilities completed'], ['installationsCompleted', 'Installation orders completed'],
+  ['itemsInstalled', 'Equipment units installed'],
 ];
 
 function clock(minute) {
   const day = Math.floor(minute / 1440) + 1;
   const hh = String(Math.floor(minute / 60) % 24).padStart(2, '0');
   const mm = String(minute % 60).padStart(2, '0');
-  return 'Day ' + day + ' ' + hh + ':' + mm;
+  return t('Day') + ' ' + reportFormats().number.format(day) + ' ' + hh + ':' + mm;
 }
 
 function text(node, value) {
   if (node.textContent !== value) node.textContent = value;
 }
 
+function feedback(message, candidate) {
+  if (!message || menuLanguage() === 'en') return message;
+  const language = menuLanguage();
+  const format = dossierFormat(language);
+  const max = /^At most ([\d.]+) CPU are available for this project\.$/.exec(message);
+  if (max) return format.message('Choose an amount between 0 and {max} CPU in steps of {step}.',
+    { max: format.number(Number(max[1])), step: format.number(.01) });
+  const topic = candidate?.type === 'assign-research' && TECHS[candidate.id];
+  if (topic && message.startsWith('Requires an active ')) {
+    return format.label('No eligible CPU is online.') + ' ' + format.safety(topic);
+  }
+  const requirement = /^Requires (.+)\.$/.exec(message);
+  if (requirement) return format.message('Requires {topic}.', { topic: catalogLabel(requirement[1]) });
+  if (message === 'Research complete.') return format.label('Research complete') + '.';
+  const localized = t(message);
+  return localized === message ? facilityText(message) : localized;
+}
+
 function nameOrder(state, action) {
   if (action.type === 'assign-research') {
-    return (TECHS[action.id]?.name ?? 'Research') + ' · ' + number.format(action.cpu) + ' CPU';
+    return catalogLabel(TECHS[action.id]?.name ?? 'Research') + ' · ' + reportFormats().number.format(action.cpu) + ' CPU';
   }
   if (action.type === 'build') {
-    const model = SITE_TYPES[action.siteType]?.name ?? 'Facility';
+    const model = catalogLabel(SITE_TYPES[action.siteType]?.name ?? 'Facility');
     const name = action.name?.trim();
-    return model + (name ? ' “' + name + '”' : '') + ' in ' + (REGIONS[action.region]?.name ?? 'unknown region');
+    return t('{model} in {region}', { model: model + (name ? ' “' + name + '”' : ''),
+      region: catalogLabel(REGIONS[action.region]?.name ?? t('unknown region')) });
   }
   const host = state.sites.find(site => site.id === action.siteId);
-  const place = host?.name || (host ? SITE_TYPES[host.type].name + ' · ' + host.id : 'removed host');
-  if (action.type === 'auto-upgrade') return 'Auto-upgrade package for ' + place;
-  if (action.type === 'auto-install') return 'Auto-build package for ' + place;
-  return (EQUIPMENT[action.itemId]?.name ?? 'Equipment') + ' × ' + (action.count ?? 1) + ' at ' + place;
+  const place = host?.name || (host ? catalogLabel(SITE_TYPES[host.type].name) + ' · ' + host.id : t('removed host'));
+  if (action.type === 'auto-upgrade') return t('Auto-upgrade package for {site}', { site: place });
+  if (action.type === 'auto-install') return t('Auto-build package for {site}', { site: place });
+  return t('{item} × {count} at {site}', { item: catalogLabel(EQUIPMENT[action.itemId]?.name ?? 'Equipment'),
+    count: reportFormats().number.format(action.count ?? 1), site: place });
 }
 
 function tableFor(label, rows, candidate) {
   const table = document.createElement('table');
   const caption = table.createCaption();
-  caption.textContent = label;
+  caption.textContent = t(label);
   const header = table.createTHead().insertRow();
   const cells = candidate ? ['Account', 'Current plan', 'With order'] : ['Account', 'Current plan'];
   for (const value of cells) {
     const th = document.createElement('th');
     th.scope = 'col';
-    th.textContent = value;
+    th.textContent = t(value);
     header.append(th);
   }
   const body = table.createTBody();
@@ -71,7 +103,7 @@ function tableFor(label, rows, candidate) {
     row.dataset.account = key;
     const th = document.createElement('th');
     th.scope = 'row';
-    th.textContent = label;
+    th.textContent = t(label);
     row.append(th);
     row.insertCell();
     if (candidate) row.insertCell();
@@ -80,10 +112,14 @@ function tableFor(label, rows, candidate) {
 }
 
 function showAmounts(table, section, base, order) {
-  const format = section === 'cash' ? money : number;
+  const { money, number, percent } = reportFormats();
+  const format = section === 'cash' || section === 'planCash' ? money : number;
   const formatValue = value => format.format(Math.abs(value) < .005 ? 0 : value);
   for (const row of table.tBodies[0].rows) {
     const key = row.dataset.account;
+    if ((section === 'cash' || section === 'planCash') && key === 'interest') {
+      text(row.cells[0], t('Interest ({rate} daily)', { rate: percent.format(base.dailyRate / 100) }));
+    }
     if (section === 'cash' && key === 'limitLoss') {
       row.hidden = !base.cash[key] && !order?.cash[key];
     }
@@ -94,34 +130,36 @@ function showAmounts(table, section, base, order) {
 
 function mount(container) {
   container.innerHTML = `<section class="panel report-console" aria-labelledby="report-title">
-    <header class="card-header"><h2 id="report-title">Reports</h2>
-      <div role="group" aria-label="Report type" class="report-switch">
-        <button type="button" data-report-section="forecast" aria-pressed="true">Forecast</button>
-        <button type="button" data-report-section="statistics" aria-pressed="false">Statistics</button>
+    <header class="card-header"><h2 id="report-title">${t('Reports')}</h2>
+      <div role="group" aria-label="${t('Report type')}" class="report-switch">
+        <button type="button" data-report-section="forecast" aria-pressed="true">${t('Forecast')}</button>
+        <button type="button" data-report-section="budget" aria-pressed="false">${t('Funding needs')}</button>
+        <button type="button" data-report-section="statistics" aria-pressed="false">${t('Statistics')}</button>
       </div>
-      <div class="report-tools" data-report="tools"><label>Forecast period
-        <select data-report="period"><option value="midnight">Until midnight</option><option value="24h">Next 24 hours</option></select>
-      </label><button type="button" data-report="refresh">Refresh</button><small data-report="range"></small></div>
+      <div class="report-tools" data-report="tools"><label>${t('Forecast')} period
+        <select data-report="period"><option value="midnight">${t('Until midnight')}</option><option value="24h">${t('Next 24 hours')}</option></select>
+      </label><button type="button" data-report="refresh">${t('Refresh')}</button></div>
     </header>
     <section data-report="forecast">
       <div class="report-order" data-report="candidate" hidden><div><small data-report="kind"></small><strong data-report="name"></strong><small data-report="package" hidden></small><small data-report="refit" hidden></small></div>
-        <button type="button" class="accent-button" data-report="place">Place order</button>
-        <button type="button" data-report="clear">Discard preview</button></div>
+        <button type="button" class="accent-button" data-report="place">${t('Place order')}</button>
+        <button type="button" data-report="clear">${t('Discard preview')}</button></div>
       <p role="status" data-report="feedback" hidden></p>
       <div class="report-ledgers" data-report="ledgers"></div>
-      <p class="report-note" data-report="assumptions"></p>
+      <p class="report-note"><strong data-report="range"></strong> · <span data-report="assumptions"></span></p>
     </section>
     <section data-report="statistics" hidden><p data-report="history" class="report-note"></p><dl class="report-stats" data-report="totals"></dl>
-      <p class="report-note">Commissioned counts orders placed. Completed counts finished facilities. Starting hardware and equipment bundled with a facility are excluded from installation counts.</p>
+      <p class="report-note">${t('Cash received includes the opening grant. Each completed processor batch counts as one order. Starting hardware and equipment bundled with a facility are excluded from installation counts.')}</p>
     </section>
   </section>`;
   const panel = container.firstElementChild;
+  panel.lang = menuLanguage();
   const fields = Object.fromEntries([...panel.querySelectorAll('[data-report]')].map(el => [el.dataset.report, el]));
-  const view = { panel, fields, mode: 'forecast', candidateKey: null, compare: null, force: true, stats: {} };
+  const view = { panel, fields, language: menuLanguage(), mode: 'forecast', candidateKey: null, compare: null, force: true, stats: {} };
   for (const [key, label] of statisticRows) {
     const group = document.createElement('div');
     const dt = document.createElement('dt');
-    dt.textContent = label;
+    dt.textContent = t(label);
     const dd = document.createElement('dd');
     dd.dataset.statistic = key;
     group.append(dt, dd);
@@ -165,8 +203,9 @@ function mount(container) {
 
 function refresh(view) {
   const { state, fields, options } = view;
+  const { money, number } = reportFormats();
   const candidate = options.candidate ?? null;
-  fields.forecast.hidden = view.mode !== 'forecast';
+  fields.forecast.hidden = view.mode === 'statistics';
   fields.tools.hidden = fields.forecast.hidden;
   fields.statistics.hidden = view.mode !== 'statistics';
   for (const button of view.panel.querySelectorAll('[data-report-section]')) {
@@ -174,7 +213,7 @@ function refresh(view) {
   }
   if (view.mode === 'statistics') {
     const stats = campaignStatistics(state);
-    text(fields.history, 'Cumulative totals for this campaign include work on facilities that have since been lost or dismantled.');
+    text(fields.history, t('Cumulative totals for this campaign include work on facilities that have since been lost or dismantled.'));
     for (const [key] of statisticRows) {
       text(view.stats[key], (key === 'cashEarned' ? money : number).format(stats[key]));
     }
@@ -182,14 +221,18 @@ function refresh(view) {
   }
   const { base, order, error } = comparisonReport(state, fields.period.value, candidate, view.force);
   view.force = false;
-  text(fields.assumptions, 'Research, facilities and equipment draw funds as work advances. Cash upkeep falls due in whole-dollar installments. Forecasts include scheduled work and assume no discoveries, failures or random news.');
+  const budget = view.mode === 'budget';
+  text(fields.assumptions, t(budget ?
+    'Current assignments and rates. Construction demand follows its assembly schedule. A negative balance is the additional cash or CPU needed.' :
+    'Orders draw funds as work advances. This forecast assumes no discoveries, failures or random news.'));
   fields.candidate.hidden = !candidate;
   if (candidate) {
     const research = candidate.type === 'assign-research';
-    text(fields.kind, research ? 'Proposed assignment' : 'Proposed order');
-    text(fields.place, research ? 'Assign CPU' : 'Place order');
+    const kind = t(research ? 'Proposed assignment' : 'Proposed order');
+    text(fields.kind, kind);
+    text(fields.place, t(research ? 'Assign CPU' : 'Place order'));
     text(fields.name, nameOrder(state, candidate));
-    if (order) text(fields.kind, (research ? 'Proposed assignment' : 'Proposed order') + ' · ' + money.format(order.price) + ' new funding');
+    if (order) text(fields.kind, kind + ' · ' + t('{amount} new funding', { amount: money.format(order.price) }));
     const items = ['auto-install', 'auto-upgrade'].includes(candidate.type) ? candidate.expectedOrders || [] : [];
     const warning = refitWarning(state, candidate);
     fields.refit.hidden = !warning;
@@ -197,7 +240,7 @@ function refresh(view) {
     fields.package.hidden = !items.length;
     if (items.length) {
       const total = items.reduce((sum, item) => sum + item.cost, 0);
-      text(fields.package, items.map(item => EQUIPMENT[item.itemId].name + ' × ' + item.count).join(' · ') + ' · ' + money.format(total) + ' total');
+      text(fields.package, items.map(item => catalogLabel(EQUIPMENT[item.itemId].name) + ' × ' + number.format(item.count)).join(' · ') + ' · ' + t('{amount} total', { amount: money.format(total) }));
     }
   }
   fields.place.hidden = !options.onOrder;
@@ -206,23 +249,31 @@ function refresh(view) {
   view.price = order?.price;
   const message = error || view.message || '';
   fields.feedback.hidden = !message;
-  text(fields.feedback, message);
-  let range = clock(base.start) + ' → ' + clock(base.end) + (base.end < base.target ? ' · campaign ends' : '');
-  if (order && order.end !== base.end) range += ' · With order: ' + clock(order.end);
+  text(fields.feedback, feedback(message, candidate));
+  let range = clock(base.start) + ' → ' + clock(base.end) + (base.end < base.target ? ' · ' + t('campaign ends') : '');
+  if (order && order.end !== base.end) range += ' · ' + t('With order') + ': ' + clock(order.end);
   text(fields.range, range);
-  if (view.compare !== Boolean(order)) {
+  if (view.compare !== Boolean(order) || view.budget !== budget) {
     view.compare = Boolean(order);
-    view.cashTable = tableFor('Cash flow · USD', cashRows, view.compare);
-    view.cpuTable = tableFor('Compute · CPU-hours', cpuRows, view.compare);
+    view.budget = budget;
+    view.cashTable = budget ? tableFor('Funding needs · USD', plannedCashRows, view.compare) : tableFor('Cash flow · USD', cashRows, view.compare);
+    view.cpuTable = budget ? tableFor('CPU demand · CPU-hours', plannedCpuRows, view.compare) : tableFor('Compute · CPU-hours', cpuRows, view.compare);
     fields.ledgers.replaceChildren(view.cashTable, view.cpuTable);
   }
-  showAmounts(view.cashTable, 'cash', base, order);
-  showAmounts(view.cpuTable, 'cpu', base, order);
+  showAmounts(view.cashTable, budget ? 'planCash' : 'cash', base, order);
+  showAmounts(view.cpuTable, budget ? 'planCpu' : 'cpu', base, order);
 }
 
 export function renderReports(container, state, options = {}) {
   let view = sessions.get(container);
   if (view?.panel.parentElement !== container) view = mount(container);
+  else if (view.language !== menuLanguage()) {
+    const previous = view;
+    view = mount(container);
+    view.mode = previous.mode;
+    view.candidateKey = previous.candidateKey;
+    view.fields.period.value = previous.fields.period.value;
+  }
   view.state = state;
   view.options = options;
   const key = JSON.stringify(options.candidate ?? null);

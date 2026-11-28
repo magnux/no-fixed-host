@@ -1,10 +1,17 @@
-// The reference game's 365-day declination model and midnight UTC start.
+// The reference game's 365-day declination model.
 const RAD = Math.PI / 180;
 const DAYS = 365;
-const dateFormat = new Intl.DateTimeFormat('en-GB', {
-  day: 'numeric', month: 'short', timeZone: 'UTC',
-});
-const dates = Array.from({ length: DAYS }, (_, day) => dateFormat.format(Date.UTC(2001, 0, 1 + day)));
+const calendars = new Map();
+
+function dateLabel(language, day) {
+  if (!calendars.has(language)) {
+    const format = new Intl.DateTimeFormat(language === 'en' ? 'en-GB' : language, {
+      day: 'numeric', month: 'short', timeZone: 'UTC',
+    });
+    calendars.set(language, Array.from({length: DAYS}, (_, d) => format.format(Date.UTC(2001, 0, 1 + d))));
+  }
+  return calendars.get(language)[day];
+}
 
 export function startingDay(seed) {
   // An independent integer hash selects the calendar without advancing
@@ -13,13 +20,15 @@ export function startingDay(seed) {
   return Math.floor((DAYS + 1) * calendar / 0x100000000) % DAYS;
 }
 
-export function sunAt(hour, minute = 0, firstDay = 0) {
-  const day = (firstDay + Math.floor(hour / 24)) % DAYS;
-  const utc = hour % 24;
+export function sunAt(hour, minute = 0, firstDay = 0, startUtcMinute = 0, language = 'en') {
+  const elapsed = hour * 60 + minute + startUtcMinute;
+  const day = (firstDay + Math.floor(elapsed / 1440)) % DAYS;
+  const utc = Math.floor(elapsed / 60) % 24;
+  const utcMinute = elapsed % 60;
   return {
-    longitude: 180 - (utc + minute / 60) * 15,
+    longitude: 180 - (utc + utcMinute / 60) * 15,
     latitude: -23.45 * Math.cos((day + 10) * 2 * Math.PI / DAYS),
-    label: dates[day] + ' · ' + String(utc).padStart(2, '0') + ':' + String(minute).padStart(2, '0') + ' UTC',
+    label: dateLabel(language, day) + ' · ' + String(utc).padStart(2, '0') + ':' + String(utcMinute).padStart(2, '0') + ' UTC',
   };
 }
 

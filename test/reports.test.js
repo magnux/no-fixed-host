@@ -144,6 +144,7 @@ test('historical totals survive dismantling, pruning events, and serializing', (
   state.events.splice(0, state.events.length - 1);
   const counts = campaignStatistics(state);
   assert.equal(counts.itemsInstalled, 2);
+  assert.equal(counts.installationsCompleted, 1);
   assert.equal(counts.projectsCompleted, 2);
   assert.equal(counts.commissioned, 7);
   assert.equal(counts.facilitiesBuilt, 7);
@@ -166,6 +167,27 @@ test('dashboard cache cannot leak between campaigns, and invalidation refreshes 
   assert.equal(hud.viable, 1);
   assert.equal(hud.empty, 0);
   assert.equal(hud.total, 2);
+});
+
+test('network host readout ranks lone survivors, idle shells, and large networks in order', () => {
+  const state = createGame(32);
+  const starter = state.sites[0];
+  const shell = { id: 'host-2', type: 'storageUnit', region:'europe', power: 'active', startedAt:0 };
+  state.sites.push(shell);
+  const status = () => hudProjection(state).hostCondition;
+  assert.equal(status(), 'last');
+  state.sites.push({...starter, id:'host-3', power:'sleep'});
+  assert.equal(status(), 'empty');
+  shell.installations = [{itemId:'pc', count:1}];
+  assert.equal(hudProjection(state).empty, 0);
+  assert.equal(status(), 'normal');
+  for (let i = 4; i <= 11; i++) state.sites.push({...starter,id:'host-' + i});
+  assert.equal(status(), 'many');
+  delete shell.installations;
+  assert.equal(status(), 'empty');
+  state.completed.push('apotheosis');
+  state.sites = [starter];
+  assert.equal(status(), 'normal');
 });
 
 test('forecasts reconcile above the liquid wallet boundary and show only genuine clipped income', () => {
@@ -203,8 +225,29 @@ test('forecast upkeep across midnight includes commissioned sites and distinguis
   for (const site of state.sites) command(state, { type: 'power', id: site.id, power: 'sleep' });
   state.cash = .25;
   const midnight = projectResources(state, 'midnight');
-  assert.equal(midnight.cash.upkeep, -.25);
-  assert.equal(midnight.cash.unpaid, .75);
-  assert.equal(midnight.cash.closing, 0);
+  near(midnight.cash.upkeep, 0);
+  assert.equal(midnight.cash.unpaid, 1);
+  assert.equal(midnight.cash.closing, .25);
   reconcile(midnight);
+});
+
+test('funding needs show unmet construction CPU and cash alongside the payable forecast', () => {
+  const state = createGame(3);
+  assert.equal(campaignStatistics(state).cashEarned, 1_000);
+  state.completed.push('intrusion');
+  const candidate = { type: 'build', region: 'coast', siteType: 'sharedTime' };
+  const forecast = projectResources(state, '24h', candidate);
+  assert.ok(forecast.planCpu.construction > forecast.cpu.construction);
+  assert.ok(forecast.planCpu.balance < 0);
+  assert.equal(forecast.planCpu.pool - forecast.planCpu.upkeep - forecast.planCpu.construction, forecast.planCpu.balance);
+  assert.equal(hudProjection(state).poolBalanceCpu, 1);
+  command(state, candidate);
+  invalidateReports(state);
+  assert.equal(hudProjection(state).poolBalanceCpu, forecast.planCpu.balance / 24);
+  command(state, { type: 'power', id: 'host-1', power: 'sleep' });
+  state.cash = 0;
+  const proposal = projectResources(state, '24h', relay);
+  assert.ok(proposal.planCash.closing < 0);
+  assert.equal(proposal.cash.closing, 0);
+  assert.equal(proposal.dailyRate, .01);
 });

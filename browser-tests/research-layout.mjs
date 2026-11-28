@@ -3,9 +3,11 @@ import test from 'node:test';
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
 import { advanceMinutes, command, createGame } from '../src/game/engine.js';
+import { PREF_KEY } from '../src/shell-storage.js';
+import { dossierLabel } from '../src/ui/dossier-translations.js';
 import { CAMPAIGN_STORAGE_KEY, encodeCampaign } from '../src/persistence.js';
 
-test('research funding updates after a discovery preserve the dossier frame and reading position', async t => {
+for (const language of ['en','de']) test('research funding updates preserve the dossier frame and reading position (' + language + ')', async t => {
   const server = await createServer({ logLevel: 'error', server: { host: '127.0.0.1', port: 0, hmr: false, watch: null } });
   await server.listen();
   t.after(() => server.close());
@@ -18,7 +20,10 @@ test('research funding updates after a discovery preserve the dossier frame and 
   command(campaign, { type: 'assign-research', id: 'telepresence', cpu: 10 });
   command(campaign, { type: 'allocate', jobs: 25 });
   campaign.cash = 2;
-  await page.addInitScript(([key, value]) => localStorage.setItem(key, value), [CAMPAIGN_STORAGE_KEY, encodeCampaign(campaign)]);
+  await page.addInitScript(([key, value, pref, language]) => {
+    localStorage.setItem(key, value);
+    localStorage.setItem(pref, JSON.stringify({language}));
+  }, [CAMPAIGN_STORAGE_KEY, encodeCampaign(campaign), PREF_KEY, language]);
   await page.clock.install({ time: new Date('2025-01-01T00:00:00Z') });
   await page.clock.pauseAt(new Date('2025-01-01T00:01:00Z'));
   await page.goto('http://127.0.0.1:' + server.httpServer.address().port);
@@ -26,29 +31,30 @@ test('research funding updates after a discovery preserve the dossier frame and 
   await page.locator('#nav [data-id=research]').click();
   await page.locator('[data-tech-id=telepresence]').click();
   await page.locator('#step').click();
-  await page.locator('#incident-dialog').getByRole('button', { name: 'Acknowledge' }).click();
+  await page.locator('#incident-dialog [data-action=acknowledge-discovery]').click();
   await page.locator('#fast').click();
   await page.locator('#view').evaluate(view => { view.scrollTop = 45; });
 
-  function reading() {
+  const waitingMessage = dossierLabel('Waiting for project funds.',language);
+  function reading(waitingMessage) {
     const view = document.querySelector('#view');
     const rect = selector => {
       const { left, top, width, height } = view.querySelector(selector).getBoundingClientRect();
       return [left, top, width, height];
     };
     return {
-      waiting: document.querySelector('#research-allocation-note').innerText.includes('Waiting for project funds'),
+      waiting: document.querySelector('#research-allocation-note').innerText.includes(waitingMessage),
       progress: view.querySelector('progress').value,
       geometry: [view.scrollTop, rect('.research-dossier'), rect('.research-progress'), rect('.research-costs'), rect('.research-links')],
     };
   }
-  const start = await page.evaluate(reading);
+  const start = await page.evaluate(reading,waitingMessage);
   assert.ok(start.geometry[0] > 0, 'the player is reading partway down the dossier');
   const fundingStates = new Set([start.waiting]);
   let last = start;
   for (let tick = 0; tick < 40 && (fundingStates.size < 2 || last.progress === start.progress); tick++) {
     await page.clock.runFor(256);
-    last = await page.evaluate(reading);
+    last = await page.evaluate(reading,waitingMessage);
     fundingStates.add(last.waiting);
     assert.deepEqual(last.geometry, start.geometry, 'a simulation tick moved the reading position or panel frame');
   }

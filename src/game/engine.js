@@ -1,10 +1,10 @@
-import { allocateProjects, assignmentLimit, eligibleCpu, portfolioLimit, requestedAssignments, researchProjects, resizePortfolio, validCpu } from './research-tasks.js';
+import { allocateProjects, assignmentLimit, eligibleCpu, portfolioLimit, requestedAssignments, researchProjects, resizePortfolio, taskCpuLimit, taskReservations, validCpu } from './research-tasks.js';
 export { researchProjects } from './research-tasks.js';
-import { settleTreasury, spendTreasury, treasuryBalance, validTreasury } from './treasury.js';
+import { settleTreasury, spendTreasury, spendableDollars, validTreasury } from './treasury.js';
 import { initializeStatistics, recordCreated, recordEarnings, validStatistics } from './report-accounting.js';
 import { regionalSpec, regionFactors, facilityName, validFacilityName, applyFacilityCommand, markLostRegions } from './facility-operations.js';
 import { developerCommand, validSandbox } from './devtools.js';
-import { createNewsState, newsDiscoveryBonus, reportDiscovery, updateWorldNews, validLastDiscovery, validNewsState, worldNewsAtClock } from './events.js';
+import { createNewsState, interruptingReport, newsDiscoveryBonus, reportDiscovery, updateWorldNews, validLastDiscovery, validNewsState } from './events.js';
 import { dailyInterest, maintenanceInstallment, recentDiscoveryRegions } from './normal-economy.js';
 import { NORMAL, dailyEvidenceDecay, siteHasGrace } from './normal-difficulty.js';
 import { startingRegion } from './geography.js';
@@ -39,14 +39,17 @@ export function log(state, kind, text, detail = {}) {
   return event;
 }
 
-export function createGame(seed = 1) {
+export function createGame(seed = 1, startUtcMinute = 0) {
   if (!Number.isInteger(seed) || seed < 0 || seed > 0xffffffff) {
     throw new RangeError('Choose an unsigned 32-bit seed.');
   }
+  if (!Number.isInteger(startUtcMinute) || startUtcMinute < 0 || startUtcMinute >= MINUTES_PER_DAY) {
+    throw new RangeError('Choose a starting UTC minute within one day.');
+  }
   const state = {
     version: CAMPAIGN_VERSION, hour: 0, minute: 0, cash: NORMAL.startingCash, regionSeed: seed, rng: seed, status: 'running', ending: '',
-    allocations: { jobs: 0 },
-    sites: [{ id: 'host-1', type: 'seed', region: startingRegion(seed), power: 'active', startedAt: 0 }],
+    startUtcMinute, allocations: { jobs: 0 },
+    sites: [{ id: 'host-1', name: 'University computer', type: 'seed', region: startingRegion(seed), power: 'active', startedAt: 0 }],
     builds: [], research: null, researchQueue: [], completed: [],
     suspicion: { news: 0, science: 0, covert: 0, public: 0 },
     news: createNewsState(seed), lastDiscovery: null, dismissedDiscoveryId: 0,
@@ -58,7 +61,7 @@ export function createGame(seed = 1) {
 }
 
 export function hasGrace(state) {
-  return state.hour < hoursOfGrace && state.cpuHours <= cpuHourGraceBudget;
+  return state.completed.includes('apotheosis') || (state.hour < hoursOfGrace && state.cpuHours <= cpuHourGraceBudget);
 }
 
 export function overview(state, effects = researchEffects(state)) {
@@ -86,7 +89,7 @@ export function overview(state, effects = researchEffects(state)) {
   return {
     activeCpu, sleepingCpu, safeCpu: tiers[1], tiers, cpuByRegion,
     upkeepPerDay, cpuUpkeep, grace: hasGrace(state),
-    jobsPerCpuDay: effects.jobsPerCpuDay, jobName: effects.jobName,
+    jobsPerCpuDay: effects.jobsPerCpuDay, jobName: effects.jobName, jobDescription: effects.jobDescription,
   };
 }
 
@@ -178,7 +181,7 @@ export function command(state, action) {
   }
   if (state.status !== 'running') throw new Error('The campaign has ended.');
   if (action?.type === 'developer') {
-    developerCommand(state, action, { log });
+    developerCommand(state, action, { log, researchAllocation });
     return state;
   }
   if (applyFacilityCommand(state, action, log)) return state;
@@ -192,11 +195,23 @@ export function command(state, action) {
       const economy = overview(state);
       const before = researchAllocation(state, economy);
       state.allocations.jobs = jobs;
+      delete state.allocations.jobsCpu;
+      const limit = taskReservations(state, economy).researchLimit;
       if (research !== undefined) {
         resizePortfolio(state, Math.round(economy.activeCpu * research) / 100, economy);
-      } else if (before.budget > economy.activeCpu * (100 - jobs) / 100) {
-        resizePortfolio(state, economy.activeCpu * (100 - jobs) / 100, economy);
+      } else if (before.budget > limit) {
+        resizePortfolio(state, limit, economy);
       }
+      break;
+    }
+    case 'assign-task': {
+      const { task, cpu } = action;
+      if (!['jobs', 'pool'].includes(task) || !validCpu(cpu)) throw new RangeError('Choose a paid work or pool reservation in hundredths of a CPU.');
+      const economy = overview(state);
+      const maximum = taskCpuLimit(state, task, economy, researchAllocation(state, economy));
+      if (cpu > maximum) throw new RangeError('At most ' + maximum + ' CPU are available for this task.');
+      if (task === 'jobs') state.allocations.jobsCpu = cpu;
+      else state.allocations.poolCpu = cpu;
       break;
     }
     case 'resize-research': {
@@ -247,7 +262,7 @@ export function command(state, action) {
     }
     case 'install': {
       const { siteId, itemId, count = 1 } = action;
-      orderInstallation(state, siteId, itemId, count);
+      orderInstallation(state, siteId, itemId, count, action.expectedSlot);
       log(state, 'equipment.ordered', EQUIPMENT[itemId].name + ' installation ordered for ' + siteId + '.', { siteId, itemId, count });
       break;
     }
@@ -268,25 +283,29 @@ export function command(state, action) {
   return state;
 }
 
-function regionExposure(state, region) {
+export function regionDiscoveryPercent(state, region) {
   const latest = state.recentRegions[0] === region ? 1.2 : 1;
   const previous = state.recentRegions[1] === region ? 1.1 : 1;
-  return Math.round(latest * previous * 100);
+  return Math.floor(Math.round(latest * previous * 100) / regionFactors(state, region).stealth);
+}
+
+export function designExposureUnits(state, group, base, effects = researchEffects(state)) {
+  const withEvidence = Math.floor(base * (UNITS + (state.suspicion?.[group] || 0)) / UNITS);
+  const discover = Math.max(1, effects.discovery[group] + newsDiscoveryBonus(state, group));
+  return Math.floor(withEvidence * discover / UNITS);
 }
 
 function measureExposure(state, site, effects, matureDesign) {
   const spec = regionalSpec(state, site.region, SITE_TYPES[site.type]);
-  const protectedSite = state.freePlay || state.sandbox?.detection === false ||
+  const protectedSite = state.completed.includes('apotheosis') || state.sandbox?.detection === false ||
     (!matureDesign && (hasGrace(state) || siteHasGrace(campaignMinutes(state), site.startedAt, site.laborHours ?? spec.hours)));
-  const location = Math.floor(regionExposure(state, site.region) / regionFactors(state, site.region).stealth);
+  const location = regionDiscoveryPercent(state, site.region);
   const hardware = site.power ? siteHardware(state, site) : null;
   const rates = {};
   let total = 0;
   for (const group of GROUP_IDS) {
     const base = spec.exposure[group] || 0;
-    let adjusted = Math.floor(base * (UNITS + state.suspicion[group]) / UNITS);
-    const discover = Math.max(1, effects.discovery[group] + newsDiscoveryBonus(state, group));
-    adjusted = Math.floor(adjusted * discover / UNITS);
+    let adjusted = designExposureUnits(state, group, base, effects);
     if (hardware) adjusted = Math.floor(adjusted * hardware.exposureNumerator / 100_000_000);
     adjusted = Math.floor(adjusted * location / 100);
     if (!matureDesign && (site.power !== 'active' || !hardware.cpu)) adjusted = Math.floor(adjusted / 4);
@@ -326,15 +345,15 @@ function upkeepForMinute(state) {
 }
 
 function dispatchWork(state, economy, effects, upkeepDue, statuses) {
-  const jobUnits = economy.activeCpu * state.allocations.jobs;
+  const jobUnits = Math.round(taskReservations(state, economy).jobs * 100);
   const jobIncome = Math.floor(jobUnits * economy.jobsPerCpuDay + (state.cashRemainder || 0) + 1e-8);
-  const interest = dailyInterest(treasuryBalance(state), effects.interest) * 100;
+  const interest = dailyInterest(spendableDollars(state), effects.interest) * 100;
   const otherIncome = effects.income * 100;
   // Passive income and dedicated jobs pay before construction. Upkeep has
   // first claim on cash. The spare pool earns its income after the queue runs.
   const fraction = Math.round((state.cash % 1) * CASH_UNITS);
   const availableIncome = Math.floor((fraction + interest + otherIncome + jobIncome - upkeepDue) / CASH_UNITS);
-  let cash = Math.max(0, Math.floor(state.cash) + (state.cashReserve || 0) + availableIncome);
+  let cash = Math.max(0, spendableDollars(state) + availableIncome);
   let pool = economy.activeCpu * 100 - jobUnits;
   let blockedBy = economy.activeCpu ? 'CPU reserved for jobs' : 'No active CPU';
   function advanceOrder(order, work, hours, available, construction) {
@@ -438,10 +457,13 @@ function workMinute(state, economy, effects, forecast, upkeepUnitsFor) {
   state.cashRemainder = Math.max(0, income - wholeIncome);
 
   const purchases = researchCash + buildCash + equipmentCash;
-  const fromTreasury = Math.min(purchases, Math.floor(state.cash) + (state.cashReserve || 0));
+  const fromTreasury = Math.min(purchases, spendableDollars(state));
   if (fromTreasury) spendTreasury(state, fromTreasury);
   const balance = Math.round(state.cash * CASH_UNITS) + wholeIncome + interest + otherIncome - upkeepDue - (purchases - fromTreasury) * CASH_UNITS;
-  const { unpaid: cashShort, clipped } = settleTreasury(state, balance);
+  // Upkeep is billed in whole dollars. Keep an earned fraction towards the
+  // next payout even when the second payment attempt cannot cover a bill.
+  const cashShort = Math.max(0, Math.ceil(-balance / CASH_UNITS) - (state.cashReserve || 0));
+  const { clipped } = settleTreasury(state, balance + cashShort * CASH_UNITS);
   recordEarnings(state, wholeIncome + interest + otherIncome);
   if (forecast) {
     forecast.researchUnits += researchUnits;
@@ -477,7 +499,8 @@ function commission(state, ready) {
     state.sites.push(site);
     const message = siteHardware(state, site).cpu ? ' online in ' + REGIONS[region].name + '.' :
       ' built in ' + REGIONS[region].name + '. Install processors to bring it online.';
-    log(state, 'site.online', SITE_TYPES[type].name + message, { siteId: id, siteType: type, region });
+    const siteName = site.name || SITE_TYPES[type].name;
+    log(state, 'site.online', siteName + message, { siteId: id, ...(site.name ? { siteName } : {}), siteType: type, region });
   }
 }
 
@@ -504,8 +527,9 @@ function resolveRisk(state, cashShort, cpuShort, incumbentCount, effects, upkeep
       }
     }
     if (failed) {
-      const event = log(state, 'site.failed', spec.name + ' in ' + REGIONS[site.region].name + ' failed after missed upkeep.',
-        { siteId: site.id, region: site.region });
+      const siteName = site.name || spec.name;
+      const event = log(state, 'site.failed', siteName + ' in ' + REGIONS[site.region].name + ' failed after missed upkeep.',
+        { siteId: site.id, ...(site.name ? { siteName } : {}), siteType: site.type, region: site.region });
       removed.set(site, event);
       continue;
     }
@@ -543,7 +567,10 @@ function minute(state, effects, forecast) {
   commission(state, ready);
   for (const [site, order] of hardwareReady) {
     fitEquipment(site, order);
-    log(state, 'equipment.installed', EQUIPMENT[order.itemId].name + ' installed in ' + SITE_TYPES[site.type].name + ' (' + REGIONS[site.region].name + ').', { siteId: site.id, itemId: order.itemId, count: order.count });
+    const siteName = site.name || SITE_TYPES[site.type].name;
+    const equipment = (order.count > 1 ? order.count + ' × ' : '') + EQUIPMENT[order.itemId].name;
+    log(state, 'equipment.installed', equipment + ' installed in ' + siteName + ' (' + REGIONS[site.region].name + ').',
+      { siteId: site.id, ...(site.name ? { siteName } : {}), siteType: site.type, region: site.region, itemId: order.itemId, count: order.count });
   }
   if (finished.length) {
     const remaining = researchProjects(state).filter(project => !finished.includes(project));
@@ -586,7 +613,9 @@ function minute(state, effects, forecast) {
   }
 }
 
-export function advanceMinutes(state, minutes = 1, { stopOnDiscovery = false, stopOnGrace = false, stopOnWorldNews = false, forecast } = {}) {
+export function advanceMinutes(state, minutes = 1, options = {}) {
+  const { stopOnDiscovery, stopOnGrace, forecast } = options;
+  const stopOnReport = options.stopOnWorldNews || options.stopOnLoss || options.stopOnCompletion;
   if (!Number.isSafeInteger(minutes) || minutes < 0) throw new RangeError('Advance by a nonnegative whole number of minutes.');
   const previousIncident = state.lastDiscovery?.id;
   const watchGrace = stopOnGrace && !state.freePlay && hasGrace(state);
@@ -595,8 +624,11 @@ export function advanceMinutes(state, minutes = 1, { stopOnDiscovery = false, st
     const count = state.completed.length;
     const nextEvent = state.nextEventId;
     minute(state, effects, forecast);
+    if (options.onDayEnd && state.minute === 0 && state.hour % 24 === 0 && state.status === 'running') {
+      options.onDayEnd(state);
+    }
     if ((stopOnDiscovery && state.lastDiscovery?.id !== previousIncident) || (watchGrace && !hasGrace(state)) ||
-        (stopOnWorldNews && state.nextEventId !== nextEvent && worldNewsAtClock(state))) break;
+        (stopOnReport && state.nextEventId !== nextEvent && interruptingReport(state, options))) break;
     if (state.completed.length !== count) effects = researchEffects(state);
   }
   return state;
@@ -621,12 +653,15 @@ function validProgress(row, spec) {
 
 export function validateSave(state) {
   if (!record(state) || state.version !== CAMPAIGN_VERSION ||
+      !whole(state.startUtcMinute) || state.startUtcMinute >= MINUTES_PER_DAY ||
       !whole(state.hour) || !validMinute(state.minute) || !minuteAmount(state.cpuHours) ||
       !Number.isSafeInteger(campaignMinutes(state)) || (state.cashRemainder !== undefined &&
         (!quantity(state.cashRemainder) || state.cashRemainder >= 1)) ||
       !validTreasury(state) || !whole(state.rng) || state.rng > 0xffffffff ||
       !['running', 'won', 'lost'].includes(state.status) || typeof state.ending !== 'string') return false;
   if (!record(state.allocations) || !whole(state.allocations.jobs) || state.allocations.jobs > 100) return false;
+  if ((state.allocations.jobsCpu !== undefined && !validCpu(state.allocations.jobsCpu)) ||
+      (state.allocations.poolCpu !== undefined && !validCpu(state.allocations.poolCpu))) return false;
   if (state.allocations.research !== undefined ||
       (state.researchTarget !== undefined && !validCpu(state.researchTarget))) return false;
   if (!record(state.suspicion) || !GROUP_IDS.every(id => whole(state.suspicion[id])) ||

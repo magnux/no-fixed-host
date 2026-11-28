@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createGame, advanceMinutes } from '../src/game/engine.js';
-import { listSlots, loadSlot, preferences, PREF_KEY, QUICK_SLOT, removeSlot, slotInfo, slotKey, writeSlot } from '../src/shell-storage.js';
+import { listSlots, loadSlot, matchesSlotName, preferences, PREF_KEY, QUICK_SLOT, removeSlot, slotInfo, slotKey, writeSlot } from '../src/shell-storage.js';
 
 function memory() {
   const data = new Map();
@@ -23,6 +23,8 @@ test('named checkpoints preserve independent campaigns, search and timestamp ord
   writeSlot(storage,second,'Second host',state,null,{ now: 110 });
   assert.deepEqual(listSlots(storage).map(row=>row.key),[second,first]);
   assert.equal(listSlots(storage,'LAB')[0].name,'Private <lab>');
+  assert.equal(listSlots(storage,'LAB   PRIVATE')[0].key, first);
+  assert.equal(matchesSlotName('Montréal relay 88','88 montre\u0301al'), true);
   assert.equal(slotInfo(storage,second).minutes,15);
   assert.equal(slotInfo(storage,first).gameVersion,'0.1.0');
   assert.equal(loadSlot(storage,first,slotInfo(storage,first).revision).minute,0);
@@ -62,4 +64,10 @@ test('preferences restore understood values while damaged entries cannot break o
   assert.equal(listSlots(storage).length,1);
   assert.throws(() => writeSlot(storage,key,'Corrupt',createGame(6),null),/invalidSlot/);
   assert.equal(storage.getItem(key),'{');
+  const damaged = listSlots(storage, 'corrupt', true)[0];
+  assert.equal(damaged.damaged, true);
+  storage.setItem(key, 'changed-in-another-tab');
+  assert.throws(() => removeSlot(storage, key, undefined, damaged.unreadableData), /staleSlot/);
+  removeSlot(storage, key, undefined, slotInfo(storage, key, true).unreadableData);
+  assert.equal(storage.getItem(key), null);
 });

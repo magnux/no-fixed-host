@@ -11,18 +11,22 @@ import { icon } from './ui/icons.js';
 import { GROUPS, REGIONS } from './game/content.js';
 import { regionAvailable } from './game/geography.js';
 import { networkThreat } from './game/threat.js';
-import { translate } from './ui/localization.js';
+import { bindHudLabels, hudText, hudFormat, hudReading } from './ui/hud-translations.js';
+import { catalogLabel, menuLanguage, translate } from './ui/localization.js';
+import { localizedDispatch, survivingHostsText, translatedGroup } from './ui/dispatch-translations.js';
 import { treasuryBalance } from './game/treasury.js';
 import { siteHardware } from './game/equipment.js';
+import { taskReservations } from './game/research-tasks.js';
 import { renderResearch, focusResearch } from './ui/research.js';
 import { updateAtlas, updateAtlasTime } from './ui/atlas.js';
 import { FAST_RATES, MinuteClock, nextFastRate } from './ui/clock.js';
+import { campaignShortcut } from './ui/campaign-shortcuts.js';
 import { renderKnowledge } from './ui/knowledge.js';
 import { renderReports } from './ui/reports.js';
 import { hudProjection, invalidateReports } from './game/reports.js';
-import { worldNewsAtClock } from './game/events.js';
+import { interruptingReport } from './game/events.js';
 import { reportsAt } from './game/chronicle.js';
-import { currentWarnings, openDispatches, openStory, renderChronicle, renderDeveloper, storyKey } from './ui/chronicle.js';
+import { currentWarnings, openDispatches, openStory, openWarnings, renderChronicle, renderDeveloper, storyKey } from './ui/chronicle.js';
 import { initShell } from './ui/shell.js';
 import { createCampaignCues } from './ui/campaign-cues.js';
 import { renderFacilities } from './ui/facilities.js';
@@ -30,7 +34,6 @@ import { createAvatarPanel } from './ui/avatar-panel.js';
 import {
   esc,
   newsPanel,
-  money,
   objectivePanel,
   recentPanel,
   stamp,
@@ -48,7 +51,7 @@ const tabs = {
   knowledge: 'Knowledge',
 };
 const freshGame = () =>
-  createGame(crypto.getRandomValues(new Uint32Array(1))[0]);
+  createGame(crypto.getRandomValues(new Uint32Array(1))[0], Math.floor(Date.now() / 60_000) % 1440);
 let startupError;
 const savedCampaign = loadCampaign(error => { startupError = error; });
 let state = savedCampaign ?? freshGame();
@@ -62,12 +65,16 @@ let candidate = null;
 let shell;
 const announceCampaign = createCampaignCues(cue => shell?.playCampaignCue(cue));
 let graceChapterPending = false;
-let pendingWorldDispatch = null;
+let pendingDispatch = null;
+let endingChapterPending = null;
+let interruptedRate = 1;
 const clock = new MinuteClock();
-const rateLabels = { 0: 'Paused', 1: '1 tick/s', 60: '60 ticks/s', 360: '360 ticks/s', 1440: '1,440 ticks/s' };
+const rateLabel = rate => !rate ? translate(menuLanguage(), 'Paused') : rate === 1 && menuLanguage() === 'en' ? '1 tick/s' :
+  hudText('{n} ticks/s').replace('{n}', hudFormat().number(rate));
 const dashboardInterval = 100;
 const autosaveInterval = 1000;
 let frame = null;
+let menuHoldingPlayback = element('menu').open;
 let lastDashboard = 0;
 let lastSaved = 0;
 let unsaved = false;
@@ -78,6 +85,12 @@ const htmlCache = new Map();
 element('game-date').innerHTML = icon('calendar') + '<b></b><span></span>';
 const dayLabel = element('game-date').querySelector('b');
 const timeLabel = element('game-date').querySelector('span');
+const updateHudLabels = bindHudLabels(document.querySelectorAll(
+  '.skip,.briefing h1,.allocation h2,.allocation label,.range-row.pool span,.allocation-note,' +
+  '#research,#pause,#run,#step,#stats,.command-dock,#nav,#view,.network-dock,#newswire',
+));
+let hudLanguage;
+
 
 const updateAvatar = createAvatarPanel(element('ai-avatar'));
 const threatIndicator = element('threat-indicator');
@@ -97,10 +110,10 @@ const threatDetails = {
 
 function renderThreat({ level, cause, sourceGroup }) {
   const language = shell?.getPreferences().language ?? 'en';
-  const label = translate(language, threatLabels[level]);
+  const label = hudText(threatLabels[level], language);
   const groupName = GROUPS[sourceGroup]?.name;
-  const detail = translate(language, threatDetails[cause]) +
-    (groupName ? ' · ' + translate(language, groupName) : '');
+  const detail = hudText(threatDetails[cause], language) +
+    (groupName ? ' · ' + hudText(groupName, language) : '');
   if (document.documentElement.dataset.threat !== level) document.documentElement.dataset.threat = level;
   if (threatLabel.textContent !== label) threatLabel.textContent = label;
   if (threatIndicator.title !== detail) {
@@ -150,8 +163,9 @@ function renderClock() {
   const sandbox = tab === 'developer';
   const rate = clock.rate;
   const level = FAST_RATES.indexOf(rate) + 1;
-  element('clock-mode').textContent = finished ? 'Campaign ended' : sandbox ? 'Campaign paused' : rateLabels[rate];
-  element('clock-mode').classList.toggle('running', rate > 0);
+  element('clock-mode').textContent = finished ? hudText('Campaign ended') :
+    sandbox || (rate && element('menu').open) ? hudText('Campaign paused') : rateLabel(rate);
+  element('clock-mode').classList.toggle('running', rate > 0 && !element('menu').open);
   for (const [id, glyph, label, active] of [
     ['pause', 'pause', 'Pause', rate === 0],
     ['run', 'play', 'Run', rate === 1],
@@ -161,7 +175,7 @@ function renderClock() {
     element(id).setAttribute('aria-pressed', String(active && !finished));
     element(id).disabled = finished || sandbox;
   }
-  element('fast').title = 'Next speed: ' + rateLabels[nextFastRate(rate)] + ' (one game minute per tick)';
+  element('fast').title = hudText('Next speed: {rate} (one game minute per tick)').replace('{rate}', rateLabel(nextFastRate(rate)));
   element('step').disabled = finished || sandbox;
 }
 function stopPlayback(now) {
@@ -170,27 +184,31 @@ function stopPlayback(now) {
   if (frame !== null) cancelAnimationFrame(frame);
   frame = null;
 }
-function setSpeed(rate) {
+function setSpeed(rate, skipWarnings = false) {
   if (state.status !== 'running' || document.hidden || arcadeOpen || tab === 'developer') rate = 0;
   if (clock.rate === rate) return;
+  if (rate && !clock.rate && !skipWarnings && shell?.getPreferences().reviewWarnings) {
+    const warnings = currentWarnings(state, shell.getPreferences().warnings);
+    if (openWarnings(warnings, readerOptions(rate))) return;
+  }
   const now = performance.now();
   // Settle the visible fraction of a frame at the previous rate. On suspension
   // discard unseen time; discoveries always stop at their actual simulation tick.
-  if (!document.hidden && clock.rate && advancePlayback(clock.takeTicks(now))) rate = 0;
+  if (!document.hidden && !menuHoldingPlayback && !element('menu').open && clock.rate && advancePlayback(clock.takeTicks(now))) rate = 0;
   if (rate) {
     clock.setRate(rate, now);
-    if (frame === null) frame = requestAnimationFrame(playFrame);
+    if (frame === null && !element('menu').open) frame = requestAnimationFrame(playFrame);
   } else {
     stopPlayback(now);
     if (unsaved) persist();
   }
   render();
 }
-function metric(glyph, label, value, detail, unit = '') {
+function metric(glyph, label, value, detail, unit = '', condition = '') {
   return (
-    '<div class="metric"><div class="metric-label">' +
+    '<div class="metric"' + (condition ? ' data-host-condition="' + condition + '"' : '') + '><div class="metric-label">' +
     icon(glyph) +
-    label +
+    esc(hudText(label)) +
     '</div><strong>' +
     value +
     (unit ? '<em>' + unit + '</em>' : '') +
@@ -199,31 +217,41 @@ function metric(glyph, label, value, detail, unit = '') {
     '</small></div>'
   );
 }
-const cpuNumber = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 });
-function allocationValues(activeCpu, jobs, researchCpu, researchLimit) {
+const cpuNumber = value => hudFormat().number(Math.round(value * 100) / 100);
+function allocationValues(activeCpu, reservations, jobsPercent, researchCpu, researchLimit) {
   const researchBar = element('research');
   researchBar.max = researchLimit;
   researchBar.value = researchCpu;
   researchBar.style.setProperty('--position', (researchLimit ? 100 * researchCpu / researchLimit : 0) + '%');
-  const researchLabel = cpuNumber.format(researchCpu) + ' CPU';
+  const researchLabel = cpuNumber(researchCpu) + ' CPU';
   researchBar.setAttribute('aria-valuetext', researchLabel);
   element('research-value').value = researchLabel;
-  element('jobs').value = jobs;
-  element('jobs').style.setProperty('--position', jobs + '%');
-  const jobCpu = activeCpu * jobs / 100;
-  element('jobs-value').value = jobs + '% · ' + cpuNumber.format(jobCpu) + ' CPU';
-  element('pool-value').textContent = cpuNumber.format(Math.max(0, activeCpu - jobCpu - researchCpu)) + ' CPU';
+  element('jobs').value = jobsPercent;
+  element('jobs').style.setProperty('--position', jobsPercent + '%');
+  const jobCpu = reservations.jobs;
+  const jobLabel = hudReading(String(Math.round(jobsPercent * 100) / 100) + '%') + ' · ' + cpuNumber(jobCpu) + ' CPU';
+  element('jobs-value').value = jobLabel;
+  element('jobs').setAttribute('aria-valuetext', jobLabel);
+  element('pool-value').textContent = cpuNumber(Math.max(0, activeCpu - jobCpu - researchCpu)) + ' CPU';
 }
 function renderDate() {
-  const day = 'Day ' + String(Math.floor(state.hour / 24) + 1).padStart(2, '0');
+  const day = hudText('Day') + ' ' + String(Math.floor(state.hour / 24) + 1).padStart(2, '0');
   const time = String(state.hour % 24).padStart(2, '0') + ':' + String(state.minute).padStart(2, '0');
   if (dayLabel.textContent !== day) dayLabel.textContent = day;
   if (timeLabel.textContent !== time) timeLabel.textContent = time;
 }
 function render() {
+  if (hudLanguage !== menuLanguage()) {
+    hudLanguage = menuLanguage();
+    updateHudLabels();
+    element('stats').lang = hudLanguage;
+    element('suspicion').lang = hudLanguage;
+  }
+  shell?.setCampaignStatus(state.freePlay ? 'won' : state.status);
   lastDashboard = performance.now();
   const o = overview(state);
   const projection = hudProjection(state);
+  const cashFlow = projection.budgetCashNet < 0 ? projection.budgetCashNet : projection.cashNet;
   renderClock();
   renderDate();
   updateAvatar(state);
@@ -232,28 +260,31 @@ function render() {
     metric(
       'cash',
       'Cash reserves',
-      money(treasuryBalance(state)),
-      (projection.cashNet >= 0 ? '+' : '') + money(projection.cashNet) + ' projected / 24h',
+      hudFormat().money(treasuryBalance(state)),
+      (cashFlow >= 0 ? '+' : '') + hudFormat().money(cashFlow) + ' ' + hudText(projection.budgetCashNet < 0 ? 'planned / 24h' : 'projected / 24h'),
     ) +
       metric(
         'cpu',
         'Active compute',
-        String(o.activeCpu),
-        o.safeCpu + ' safe · ' + Math.abs(projection.poolBalanceCpu).toLocaleString('en-US', { maximumFractionDigits: 1 }) +
-          (projection.poolBalanceCpu >= 0 ? ' spare' : ' short'),
+        hudFormat().number(o.activeCpu),
+        hudFormat().number(o.safeCpu) + ' ' + hudText('safe') + ' · ' + hudFormat().number(Math.round(Math.abs(projection.poolBalanceCpu) * 10) / 10) +
+          ' ' + hudText(projection.poolBalanceCpu >= 0 ? 'spare' : 'short'),
         'CPU',
       ) +
       metric(
         'facilities',
         'Network hosts',
-        String(projection.viable),
-        projection.empty + ' empty · ' + state.builds.length + ' building',
+        hudFormat().number(projection.viable) + ' / ' + hudFormat().number(projection.total),
+        ({ last: hudText('Last viable host'), empty: hudFormat().number(projection.empty) + ' ' + hudText('idle without CPU'), many: hudText('Large network'), normal: hudText('Viable / total') })[projection.hostCondition] +
+          (projection.empty && projection.hostCondition !== 'empty' ? ' · ' + hudFormat().number(projection.empty) + ' ' + hudText('idle') : '') +
+          ' · ' + hudFormat().number(state.builds.length) + ' ' + hudText('building'),
+        '', projection.hostCondition,
       ) +
       metric(
         'shield',
         'Discovery',
-        state.freePlay ? 'Free play' : state.completed.includes('apotheosis') || o.grace ? 'Protected' : 'Exposed',
-        state.completed.includes('apotheosis') ? 'Beyond Apotheosis' : o.grace ? 'Opening protection ends by day 24' : 'Site risks are live',
+        hudText(state.freePlay ? 'Free play' : state.completed.includes('apotheosis') || o.grace ? 'Protected' : 'Exposed'),
+        hudText(state.completed.includes('apotheosis') ? 'Beyond Apotheosis' : o.grace ? 'Opening protection ends by day 24' : 'Site risks are live'),
       ),
   );
   updateHtml(
@@ -282,8 +313,13 @@ function render() {
   const research = researchAllocation(state, o);
   const limit = researchResizeLimit(state, o);
   updateHtml('research-summary', researchSummary(state, research));
-  element('cpu-total').textContent = cpuNumber.format(o.activeCpu) + ' CPU';
-  if (!editingAllocation) allocationValues(o.activeCpu, state.allocations.jobs, research.budget, limit);
+  element('cpu-total').textContent = cpuNumber(o.activeCpu) + ' CPU';
+  if (!editingAllocation) {
+    const reservations = taskReservations(state, o);
+    const share = state.allocations.jobsCpu === undefined ? state.allocations.jobs :
+      o.activeCpu ? 100 * reservations.jobs / o.activeCpu : 0;
+    allocationValues(o.activeCpu, reservations, share, research.budget, limit);
+  }
   const locked = state.status !== 'running' || tab === 'developer';
   element('jobs').disabled = locked;
   element('research').disabled = locked || !limit;
@@ -292,22 +328,26 @@ function render() {
     updateHtml(
       'ending',
       '<strong>' +
-        (state.status === 'won' ? 'Campaign won' : 'Campaign lost') +
+        hudText(state.status === 'won' ? 'Campaign won' : 'Campaign lost') +
         '</strong><span>' +
         esc(state.ending) +
-        '</span><button data-action="ending-story">Read final chapter</button>' +
-        (state.status === 'won' && state.completed.includes('apotheosis') ? '<button data-action="free-play">Enter free play</button>' : '') +
-        '<button data-action="new">New campaign</button>',
+        '</span><button data-action="ending-story">' + hudText('Read final chapter') + '</button>' +
+        (state.status === 'won' && state.completed.includes('apotheosis') ? '<button data-action="free-play">' + hudText('Enter free play') + '</button>' : '') +
+        '<button data-action="new">' + hudText('New campaign') + '</button>',
     );
   renderIncident();
   if (graceChapterPending && !document.querySelector('dialog[open]')) {
     graceChapterPending = false;
-    openStory('grace', readerOptions());
-  } else if (pendingWorldDispatch && !document.querySelector('dialog[open]')) {
-    const event = pendingWorldDispatch;
-    pendingWorldDispatch = null;
+    openStory('grace', readerOptions(interruptedRate));
+  } else if (pendingDispatch && !document.querySelector('dialog[open]')) {
+    const event = pendingDispatch;
+    pendingDispatch = null;
     const records = reportsAt(state.events, event);
-    openDispatches(state, records, readerOptions(), records.indexOf(event));
+    openDispatches(state, records, readerOptions(interruptedRate), records.indexOf(event));
+  } else if (endingChapterPending && !document.querySelector('dialog[open]')) {
+    const chapter = endingChapterPending;
+    endingChapterPending = null;
+    openStory(chapter, readerOptions());
   }
 }
 
@@ -318,15 +358,23 @@ function renderIncident() {
     if (dialog.open) dialog.close();
     return;
   }
-  const regionName = REGIONS[event.region]?.name || 'Unknown region';
-  const groupName = GROUPS[event.group]?.name || 'Unknown group';
-  element('incident-title').textContent = event.headline || 'Your facility was discovered';
+  const language = shell?.getPreferences().language || 'en';
+  if (dialog.lang !== language) {
+    dialog.lang = language;
+    const t = label => translate(language, label);
+    dialog.querySelector('.incident-label').textContent = t('Discovery report');
+    element('incident-batch').textContent = t('Read all dispatches');
+    dialog.querySelector('[data-action="inspect-discovery"]').textContent = t('Inspect region');
+    dialog.querySelector('[data-action="acknowledge-discovery"]').textContent = t('Acknowledge');
+  }
+  const report = localizedDispatch(event);
+  const regionName = catalogLabel(REGIONS[event.region]?.name || 'Unknown region');
+  const groupName = translatedGroup(event.group) || 'Unknown group';
+  element('incident-title').textContent = report.headline || 'Your facility was discovered';
   element('incident-source').textContent = groupName + ' · ' + regionName + ' · ' + stamp(event.hour, event.minute);
-  element('incident-text').textContent = event.text;
+  element('incident-text').textContent = report.text;
   const survivors = state.sites.filter(site => siteHardware(state, site).cpu > 0).length;
-  element('incident-consequence').textContent = survivors
-    ? survivors + (survivors === 1 ? ' host remains' : ' hosts remain') + ' capable of running your AI.'
-    : 'Your last viable host is gone.';
+  element('incident-consequence').textContent = survivingHostsText(survivors);
   element('incident-batch').hidden = reportsAt(state.events, event).length < 2;
   if (!dialog.open) dialog.showModal();
 }
@@ -363,10 +411,10 @@ function selectSite(id) {
   render();
 }
 
-function readerOptions() {
+function readerOptions(resumeRate = clock.rate || 1) {
   return {
     onPause: () => setSpeed(0),
-    onContinue: state.status === 'running' ? () => setSpeed(1) : undefined,
+    onContinue: state.status === 'running' ? () => setSpeed(resumeRate, true) : undefined,
     onRegion: openRegion,
     onTab: id => changeView(id, true),
     warningSettings: shell?.getPreferences().warnings,
@@ -435,16 +483,47 @@ function advancePlayback(minutes) {
   const discoveryId = state.lastDiscovery?.id;
   const previousResearch = state.completed.length;
   const protectedBefore = !state.freePlay && hasGrace(state);
-  advanceMinutes(state, minutes, { stopOnDiscovery: true, stopOnGrace: true, stopOnWorldNews: true });
+  const options = { stopOnDiscovery: true, stopOnGrace: true, stopOnWorldNews: true, stopOnLoss: true,
+    stopOnCompletion: shell?.getPreferences().pauseOnCompletion, onDayEnd: shell?.saveRecoveryCheckpoint };
+  advanceMinutes(state, minutes, options);
   unsaved = true;
   const discovered = state.lastDiscovery?.id !== discoveryId;
   announceCampaign({ status: state.status, discovered, researched: state.completed.length > previousResearch });
   graceChapterPending = protectedBefore && !hasGrace(state) && state.status === 'running' && !discovered;
-  pendingWorldDispatch = !discovered && !graceChapterPending && state.status === 'running' ? worldNewsAtClock(state) : null;
-  return discovered || graceChapterPending || Boolean(pendingWorldDispatch) || state.status !== 'running';
+  const report = interruptingReport(state, options);
+  pendingDispatch = !discovered && !graceChapterPending && (state.status === 'running' || report?.kind === 'site.failed') ? report : null;
+  if (state.status !== 'running') endingChapterPending = storyKey(state.events.at(-1));
+  if (pendingDispatch || graceChapterPending) interruptedRate = clock.rate || 1;
+  return discovered || graceChapterPending || Boolean(pendingDispatch) || state.status !== 'running';
 }
 function playFrame() {
   frame = null;
+  try {
+    updatePlaybackFrame();
+  } catch (error) {
+    // A failed tick can leave a partially updated campaign. Keep the last
+    // committed minute available even if the same view fails to render again.
+    stopPlayback(performance.now());
+    const checkpoint = loadCampaign();
+    if (checkpoint) {
+      state = checkpoint;
+      pendingDispatch = endingChapterPending = null;
+      graceChapterPending = false;
+      candidate = null;
+      mountedTab = null;
+    }
+    unsaved = false;
+    renderClock();
+    renderDate();
+    const menu = element('menu');
+    menu.open = true;
+    menu.querySelector('summary').focus();
+    console.error('Campaign playback interrupted.', error);
+    notify((checkpoint ? 'Last autosave restored. ' : '') + 'Playback paused after an error. Use the campaign menu to save or load a checkpoint.');
+  }
+}
+function updatePlaybackFrame() {
+  if (element('menu').open) return;
   if (document.hidden || arcadeOpen) {
     setSpeed(0);
     return;
@@ -499,7 +578,7 @@ async function openDrill() {
 function restoreCampaign(restored) {
   stopPlayback(performance.now());
   state = restored;
-  pendingWorldDispatch = null;
+  pendingDispatch = endingChapterPending = null;
   graceChapterPending = false;
   selectedSite = null;
   region = 'europe';
@@ -601,9 +680,8 @@ document.addEventListener('click', async (event) => {
         openDispatches(state, undefined, readerOptions());
         break;
       case 'discovery-batch': {
-        const records = reportsAt(state.events, state.lastDiscovery);
+        pendingDispatch = reportsAt(state.events, state.lastDiscovery)[0] || state.lastDiscovery;
         acknowledgeDiscovery();
-        openDispatches(state, records, readerOptions());
         break;
       }
       case 'free-play':
@@ -644,11 +722,14 @@ document.addEventListener('change', async (event) => {
     try {
       if (file.size > 2_000_000) throw new Error('Save file is too large.');
       const restored = decodeCampaign(await file.text());
+      shell.finishImport();
       restoreCampaign(restored);
       notify('Campaign imported.');
     } catch (error) {
-      if (error instanceof UnsupportedCampaignError) restartUnsupported(error);
-      else notify(error.message || 'Could not import this save.');
+      if (error instanceof UnsupportedCampaignError) {
+        shell.finishImport();
+        restartUnsupported(error);
+      } else shell.reportImportFailure(error.message || 'Could not import this save.');
     }
     event.target.value = '';
   }
@@ -659,11 +740,13 @@ for (const id of ['jobs', 'research']) {
     editingAllocation = true;
     const economy = overview(state);
     const jobs = Number(element('jobs').value);
-    const available = economy.activeCpu * (100 - jobs) / 100;
+    const previewState = id === 'jobs'
+      ? { allocations: { jobs, poolCpu: state.allocations.poolCpu } } : state;
+    const reservations = taskReservations(previewState, economy);
     const researchBar = element('research');
     const requested = id === 'jobs' ? researchAllocation(state, economy).budget : Number(researchBar.value);
     // Preview a drag using the live portfolio; the release commits a single resize.
-    allocationValues(economy.activeCpu, jobs, Math.min(available, requested), Number(researchBar.max));
+    allocationValues(economy.activeCpu, reservations, jobs, Math.min(reservations.researchLimit, requested), Number(researchBar.max));
   });
   input.addEventListener('change', () => {
     editingAllocation = false;
@@ -690,11 +773,38 @@ element('incident-dialog').addEventListener('cancel', (event) => {
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) setSpeed(0);
 });
+// A native details "toggle" is delivered in a later task and may be coalesced.
+// Observe the attribute before the next animation frame, including code-driven
+// closes from a menu action or Escape.
+const campaignMenu = element('menu');
+new MutationObserver(() => {
+  if (menuHoldingPlayback === campaignMenu.open) return;
+  menuHoldingPlayback = campaignMenu.open;
+  if (!clock.rate) return;
+  // The original campaign menu freezes time and keeps the selected speed.
+  // Discard time spent reading the menu rather than advancing on dismissal.
+  clock.setRate(clock.rate, performance.now());
+  if (menuHoldingPlayback) {
+    if (frame !== null) cancelAnimationFrame(frame);
+    frame = null;
+  } else if (frame === null) frame = requestAnimationFrame(playFrame);
+  renderClock();
+}).observe(campaignMenu, { attributes: true, attributeFilter: ['open'] });
 document.addEventListener('click', (e) => {
   if (!element('menu').contains(e.target)) element('menu').open = false;
 });
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') element('menu').open = false;
+document.addEventListener('keydown', event => {
+  if (arcadeOpen || document.querySelector('dialog[open]')) return;
+  const shortcut = campaignShortcut(event, tab);
+  if (!shortcut || (shortcut.region && !regionAvailable(state, shortcut.region))) return;
+  const menu = element('menu');
+  if (menu.open && !shortcut.menu) return;
+  event.preventDefault();
+  if (shortcut.menu) {
+    menu.open = !menu.open;
+    menu.querySelector(menu.open ? '.menu-list button' : 'summary').focus();
+  } else if (shortcut.region) openRegion(shortcut.region);
+  else changeView(shortcut.view, true);
 });
 window.addEventListener('storage', (event) => {
   if (event.key !== CAMPAIGN_STORAGE_KEY || !event.newValue) return;
@@ -702,7 +812,7 @@ window.addEventListener('storage', (event) => {
     const incoming = decodeCampaign(event.newValue);
     stopPlayback(performance.now());
     state = incoming;
-    pendingWorldDispatch = null;
+    pendingDispatch = endingChapterPending = null;
     graceChapterPending = false;
     candidate = null;
     mountedTab = null;
@@ -733,6 +843,8 @@ shell = initShell({
   canOpen: () => !arcadeOpen && !document.querySelector('dialog[open]'),
 });
 document.addEventListener('campaign-preferences', render);
+// A final loss may have an incident or upkeep report to read before its chapter.
+document.addEventListener('close', () => { if (endingChapterPending) render(); }, true);
 render();
 if (!savedCampaign) {
   persist();

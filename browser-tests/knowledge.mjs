@@ -4,6 +4,8 @@ import { chromium } from 'playwright';
 import { createServer } from 'vite';
 import { advanceMinutes, command, createGame } from '../src/game/engine.js';
 import { CAMPAIGN_STORAGE_KEY, encodeCampaign } from '../src/persistence.js';
+import { PREF_KEY } from '../src/shell-storage.js';
+import { localizedConcept } from '../src/ui/concept-translations.js';
 
 test('the reference can be searched during playback and links a completed finding to its real project', async t => {
   const world = createGame(19);
@@ -23,6 +25,17 @@ test('the reference can be searched during playback and links a completed findin
   await page.goto('http://127.0.0.1:' + server.httpServer.address().port);
   await page.getByRole('button',{name:'Knowledge',exact:true}).click();
   await page.locator('#knowledge-category').selectOption('techs');
+  const locked = page.getByRole('checkbox', {name:'Show locked entries'});
+  const future = page.locator('[data-entry="techs/apotheosis"]');
+  assert.equal(await future.count(), 0);
+  await locked.check();
+  await future.click();
+  assert.match(await page.locator('.research-dossier h3').innerText(), /Apotheosis/);
+  await page.locator('#knowledge-category').selectOption('concepts');
+  await page.locator('[data-entry="concepts/construction"]').click();
+  await page.locator('#knowledge-category').selectOption('techs');
+  assert.equal(await future.getAttribute('aria-pressed'), 'true');
+  await locked.uncheck();
   await page.locator('#fast').click();
   const input = page.locator('#knowledge-search');
   await input.fill('intrusion');
@@ -38,5 +51,64 @@ test('the reference can be searched during playback and links a completed findin
   await page.getByRole('button',{name:'Knowledge',exact:true}).click();
   await page.locator('#knowledge-search').fill('no matching design');
   assert.match(await page.locator('.research-dossier').innerText(), /No matching entries/);
+  await page.evaluate(key => localStorage.setItem(key, JSON.stringify({language:'es'})), PREF_KEY);
+  await page.reload();
+  await page.locator('#nav [data-id="knowledge"]').click();
+  const search = page.locator('#knowledge-search');
+  for (const term of ['Stealth', 'Sigilo']) {
+    await search.fill(term);
+    await page.locator('[data-entry="techs/stealth"]').click();
+    assert.equal(await page.locator('.research-dossier h3').innerText(), 'Sigilo');
+    assert.match(await page.locator('.research-dossier').innerText(), /Inteligencia −5%/);
+  }
+  await search.fill('Regions');
+  await page.locator('[data-entry="concepts/areas"]').click();
+  assert.ok((await page.locator('.research-dossier').innerText()).includes(localizedConcept('areas','es').description));
+  await page.locator('#nav [data-id="research"]').click();
+  await page.locator('[data-tech-id="stealth"]').click();
+  assert.equal(await page.locator('#research-detail-title').innerText(), 'Sigilo');
+  assert.match(await page.locator('[data-field="description"]').innerText(), /Inteligencia −5%/);
   assert.deepEqual(errors, []);
+});
+
+test('research controls, safety and funding status use the selected language with accessible names', async t => {
+  const {dossierFormat, dossierLabel} = await import('../src/ui/dossier-translations.js');
+  const world = createGame(19);
+  world.cash = 0;
+  world.completed.push('telepresence', 'parallelComputation', 'microchipDesign', 'autonomousVehicles');
+  command(world, {type:'assign-research', id:'stealth', cpu:1});
+  const saved = encodeCampaign(world);
+  const server = await createServer({logLevel:'error', server:{host:'127.0.0.1',port:0,hmr:false,watch:null}});
+  await server.listen();
+  t.after(() => server.close());
+  const browser = await chromium.launch({executablePath:process.env.CHROMIUM_EXECUTABLE_PATH});
+  t.after(() => browser.close());
+  for (const language of ['es','de','fr','gd','it','pt-BR','ru','sv']) {
+    const page = await browser.newPage({viewport:{width:1060,height:720}});
+    await page.addInitScript(({key, saved, pref, language}) => {
+      localStorage.setItem(key, saved);
+      localStorage.setItem(pref, JSON.stringify({language}));
+    }, {key:CAMPAIGN_STORAGE_KEY,saved,pref:PREF_KEY,language});
+    await page.goto('http://127.0.0.1:' + server.httpServer.address().port);
+    await page.locator('#nav [data-id=research]').click();
+    const label = key => dossierLabel(key,language);
+    const message = dossierFormat(language).message;
+    await page.getByText(label('Compute tasks'), {exact:true}).click();
+    assert.ok(await page.getByRole('spinbutton',{name:label('Paid work (CPU)'),exact:true}).isVisible(), language);
+    assert.ok(await page.getByRole('spinbutton',{name:label('Reserve for upkeep and construction (CPU)'),exact:true}).isVisible(), language);
+    const jobs = await page.locator('[data-field=taskInfo]').innerText();
+    assert.ok(jobs.includes(label('Menial jobs')) && !jobs.includes('per CPU-day'), language);
+    await page.getByText(label('Compute tasks'), {exact:true}).click();
+    await page.locator('[data-tech-id=stealth]').click();
+    assert.ok(await page.getByRole('slider',{name:message('CPU allocation for {topic}',{topic:label('Stealth')}),exact:true}).isVisible(), language);
+    assert.ok((await page.locator('#research-allocation-note').innerText()).includes(label('Waiting for project funds.')), language);
+    await page.locator('[data-tech-id=pressureDomes]').click();
+    assert.ok((await page.locator('#research-allocation-note').innerText()).includes(label('No eligible CPU is online.')), language);
+    await page.getByText(label('Where can this research run?'),{exact:true}).click();
+    assert.ok((await page.locator('[data-field=guidance]').innerText()).includes(label('Ocean')), language);
+    await page.locator('#nav [data-id=knowledge]').click();
+    assert.ok(await page.getByRole('searchbox',{name:label('Search'),exact:true}).isVisible(), language);
+    assert.ok(await page.getByRole('article',{name:label('Reference entry'),exact:true}).isVisible(), language);
+    await page.close();
+  }
 });

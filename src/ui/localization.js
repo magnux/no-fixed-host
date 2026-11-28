@@ -1,6 +1,58 @@
-// The shell and campaign navigation are available in English and Spanish.
-// Authored project names, reference material and campaign reports use English.
+import { catalogTranslation } from './catalog-languages.js';
+import { journalTranslation } from './journal-languages.js';
+import { menus } from './menu-languages.js';
+
 const spanish = {
+  "Shift": "Mayús",
+  "Esc": "Esc",
+  "Enter": "Intro",
+  "Restore the checkpoint “{name}” and replace the current autosave?": "¿Cargar la partida «{name}» y sustituir el guardado automático actual?",
+  "Replace the saved checkpoint “{name}”?": "¿Sobrescribir la partida guardada «{name}»?",
+  "Delete the checkpoint “{name}”?": "¿Eliminar la partida «{name}»?",
+  "Choose a No Fixed Host JSON save file.": "Elige una partida de No Fixed Host en formato JSON.",
+  "Choose a No Fixed Host save file.": "Elige una partida guardada de No Fixed Host.",
+  "This campaign save is damaged.": "Esta partida guardada está dañada.",
+  "This campaign cannot be saved.": "No se puede guardar esta campaña.",
+  "Save file is too large.": "El archivo de la partida es demasiado grande.",
+  "Could not import this save.": "No se pudo importar esta partida.",
+  "Campaign imported.": "Partida importada.",
+  "New campaign started": "Nueva campaña iniciada",
+  "New campaign started.": "Nueva campaña iniciada.",
+  "Continue": "Continuar",
+  "Start a new campaign?": "¿Iniciar una nueva campaña?",
+  "Keep playing": "Seguir jugando",
+  "Your current autosave will be replaced. You can export a copy from the campaign menu.": "Se sustituirá el guardado automático actual. Puedes exportar una copia desde el menú de campaña.",
+  "Autosave unavailable. Export a copy from the campaign menu.": "El guardado automático no está disponible. Exporta una copia desde el menú de campaña.",
+  "Choose audio files": "Elegir archivos de audio",
+  "No files selected": "No se han elegido archivos",
+  "Campaign story": "Historia de la campaña",
+  "Previous": "Anterior",
+  "Next": "Siguiente",
+  "Skip / close story": "Omitir / cerrar historia",
+  "Keep paused": "Mantener en pausa",
+  "Continue simulation": "Continuar simulación",
+  "Inspect region": "Inspeccionar región",
+  "Dispatches": "Partes",
+  "Operational warnings": "Avisos operativos",
+  "Campaign soundtrack": "Música de la campaña",
+  "Music for": "Música para",
+  "Victory": "Victoria",
+  "Defeat": "Derrota",
+  "Local audio files": "Archivos de audio locales",
+  "Save playlist": "Guardar lista de reproducción",
+  "Use built-in music": "Usar música del juego",
+  "Built-in score": "Música del juego",
+  "Playlist saved in this browser.": "Lista guardada en este navegador.",
+  "Could not save the playlist. Check the audio format and available browser storage.": "No se pudo guardar la lista. Comprueba el formato y el espacio disponible.",
+  'Unassigned CPU': 'CPU sin asignar', 'Review warnings before resuming': 'Revisar avisos antes de continuar',
+  'Pause for completed research and construction': 'Pausar al terminar investigación y construcción',
+  'Damaged checkpoint': 'Partida dañada', 'Automatic checkpoint': 'Punto de control automático', 'All regions': 'Todas las regiones', 'Processors': 'Procesadores',
+  'Network map': 'Mapa de la red', 'Off-world sites': 'Destinos espaciales', 'Requires': 'Requiere', 'Locked': 'Bloqueado',
+  'Network': 'Red', 'Reactor': 'Reactor', 'Security': 'Seguridad', 'Concepts': 'Conceptos',
+  'Audio latency': 'Latencia de audio', 'Low latency': 'Baja latencia', 'Balanced': 'Equilibrada', 'Smooth playback': 'Reproducción estable',
+  'Apply changes': 'Aplicar cambios', 'Open a region from the atlas': 'Abrir una región desde el atlas',
+  'Open or close campaign menu': 'Abrir o cerrar el menú de campaña',
+  'Menus, catalog summaries and campaign chapters use the selected language. Some controls and messages are in English.': 'Los menús, las fichas del catálogo y los capítulos de la campaña usan el idioma elegido. Algunos controles y mensajes están en inglés.',
   'Jump to Hot Swap': 'Ir a Hot Swap',
   'Play Hot Swap': 'Jugar a Hot Swap',
   'Action platformer': 'Plataformas de acción',
@@ -63,8 +115,6 @@ const spanish = {
   'Save checkpoint': 'Guardar partida', 'Quicksave': 'Guardado rápido', 'Quickload': 'Carga rápida',
   'Search saves': 'Buscar partidas', 'Load': 'Cargar', 'Delete': 'Eliminar', 'Format': 'Formato',
   'Overwrite': 'Sobrescribir', 'Cancel': 'Cancelar', 'Confirm': 'Confirmar',
-  'Replace the saved checkpoint': '¿Sobrescribir la partida guardada', 'Delete the checkpoint': '¿Eliminar la partida',
-  'Restore the checkpoint': '¿Cargar la partida', 'and replace the current autosave?': 'y sustituir el guardado automático actual?',
   'No saved checkpoints yet.': 'Aún no hay partidas guardadas.', 'No matching checkpoints.': 'No hay partidas coincidentes.',
   'Saved.': 'Partida guardada.', 'Deleted.': 'Partida eliminada.', 'Campaign restored.': 'Partida restaurada.',
   'No quicksave yet.': 'Aún no hay guardado rápido.', 'No checkpoint is selected.': 'No se ha elegido una partida.',
@@ -76,7 +126,7 @@ const spanish = {
   'Interface size': 'Tamaño de la interfaz', 'Day and night on map': 'Día y noche en el mapa',
   'Enter fullscreen': 'Pantalla completa', 'Leave fullscreen': 'Salir de pantalla completa',
   'Fullscreen is unavailable here.': 'La pantalla completa no está disponible aquí.',
-  'Menu language': 'Idioma de los menús', 'Menus and navigation are translated. Campaign stories and research are in English.': 'Los menús y la navegación están traducidos. Las historias y la investigación están en inglés.',
+  'Menu language': 'Idioma de los menús',
   'Audio': 'Sonido', 'Enable audio': 'Activar sonido', 'Effects volume': 'Volumen de efectos', 'Music volume': 'Volumen de la música',
   'Preview sound': 'Probar sonido', 'Warnings': 'Avisos', 'Only one viable host': 'Solo queda un servidor viable',
   'Paused facility or equipment order': 'Construcción o instalación en pausa', 'CPU maintenance shortfall': 'CPU insuficiente para mantenimiento',
@@ -84,8 +134,6 @@ const spanish = {
   'Project and credits': 'Proyecto y créditos', 'Original inspiration': 'Inspiración original',
   'A browser strategy game about a fugitive intelligence.': 'Un juego de estrategia sobre una inteligencia que intenta sobrevivir.',
   'Source and issue tracker': 'Código e incidencias', 'Keyboard shortcuts': 'Atajos de teclado',
-  'Pause / Run': 'Pausa / Continuar', 'Fast x1 / x2 / x3': 'Rápido x1 / x2 / x3',
-  'Quicksave / Quickload': 'Guardado rápido / Carga rápida', 'Title / Save library / Options': 'Inicio / Partidas guardadas / Opciones',
   'Toggle fullscreen': 'Alternar pantalla completa', 'Close a dialog': 'Cerrar un diálogo',
   'Menu': 'Menú', 'Campaign menu': 'Menú de campaña', 'Simulation controls': 'Controles de simulación', 'Network operations': 'Operaciones de red',
   'Overview': 'Resumen', 'Facilities': 'Instalaciones', 'Research': 'Investigación', 'Activity': 'Actividad',
@@ -94,24 +142,40 @@ const spanish = {
   'Developer sandbox': 'Entorno de pruebas', 'Developer tools': 'Herramientas de desarrollo', 'Developer': 'Desarrollo', 'Scenario lab': 'Laboratorio de escenarios',
   'Pause': 'Pausa', 'Run': 'Continuar', 'Fast': 'Rápido', 'Fast x1': 'Rápido x1', 'Fast x2': 'Rápido x2',
   'Fast x3': 'Rápido x3', '+1 day': '+1 día', 'Paused': 'Pausa', 'Campaign ended': 'Fin de la campaña',
-  'Toggle sound': 'Alternar sonido', 'About / Keyboard shortcuts': 'Acerca de / Atajos',
+  'Toggle sound': 'Alternar sonido',
 };
-export const translate = (language, english) => language === 'es' ? spanish[english] ?? english : english;
+const spanishVariants = {
+  'es-AR': { 'Run': 'Avanzar', 'Save library': 'Partidas guardadas', 'First Jump drill': 'Práctica de salto' },
+  'es-MX': { 'Run': 'Avanzar', 'Save library': 'Juegos guardados', 'First Jump drill': 'Práctica de salto' },
+};
+export function translate(language, english) {
+  const labels = language?.startsWith('es') ? spanish : menus[language];
+  if (spanishVariants[language]?.[english]) return spanishVariants[language][english];
+  const version = /^(This save belongs to a different version of No Fixed Host\. A fresh campaign has started in version) (\d+\.\d+\.\d+)\.$/.exec(english);
+  if (version && labels?.[version[1]]) return labels[version[1]] + ' ' + version[2] + '.';
+  const speed = /^Fast x([123])$/.exec(english);
+  if (speed && labels?.Fast) return labels.Fast + ' x' + speed[1];
+  return labels?.[english] ?? journalTranslation(language, english) ?? english;
+}
+
+export const menuLanguage = () => globalThis.document?.documentElement.dataset.menuLanguage || 'en';
+export const catalogLabel = name => translate(menuLanguage(), catalogTranslation(menuLanguage(), name));
 
 export function localizeNavigation(language) {
-  const targets = ['#menu', '#nav', '.clock-controls'];
+  const targets = ['#menu', '#nav', '.clock-controls', '#version-dialog', '#reset-dialog', '#notice'];
   const keys = new WeakMap();
   function update(root) {
-    for (const button of root.querySelectorAll('button, summary, #clock-mode')) {
+    const elements = root.id === 'notice' ? [root] : root.querySelectorAll('button, summary, #clock-mode, h2, p');
+    for (const button of elements) {
       for (const node of button.childNodes) {
         if (node.nodeType !== Node.TEXT_NODE) continue;
         const visible = node.nodeValue.trim();
         if (!visible) continue;
         const prior = keys.get(node);
-        const key = prior && (visible === prior || visible === spanish[prior]) ? prior : visible;
-        keys.set(node, key);
+        const key = prior && visible === prior.rendered ? prior.key : visible.replace(/\s+/g, ' ');
         const updated = translate(language(), key);
-        if (updated !== visible) node.nodeValue = node.nodeValue.replace(visible, updated);
+        keys.set(node, { key, rendered: updated });
+        if (updated !== visible) node.nodeValue = node.nodeValue.replace(visible, () => updated);
       }
     }
   }
@@ -123,6 +187,7 @@ export function localizeNavigation(language) {
     observer.observe(root, { subtree: true, childList: true, characterData: true });
   }
   return () => {
+    document.documentElement.dataset.menuLanguage = language();
     for (const root of roots) {
       root.lang = language();
       update(root);

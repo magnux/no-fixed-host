@@ -4,8 +4,8 @@ import { NORMAL, dailyEvidenceDecay } from './normal-difficulty.js';
 import { updateNewsDesk, validDeskCoverage } from './news-desk.js';
 
 const DAY = 1440;
-const NEWS_RATE = 20 / 10_000;
-const MINUTE_CHANCE = -Math.expm1(-NEWS_RATE / DAY);
+export const WORLD_NEWS_RATE = 20 / 10_000;
+const MINUTE_CHANCE = -Math.expm1(-WORLD_NEWS_RATE / DAY);
 
 // Six once-per-campaign stories and two renewable press cycles, as in v1.1 events.dat.
 // Modifiers add to the investigating group's baseline detection multiplier (10,000).
@@ -56,13 +56,17 @@ export function createNewsState(seed) {
   return { rng: (seed ^ 0x91e10da5) >>> 0, stories: {} };
 }
 
-export function worldNewsAtClock(state) {
+const completions = new Set(['research.completed', 'site.online', 'equipment.installed']);
+
+export function interruptingReport(state, { stopOnWorldNews, stopOnLoss, stopOnCompletion }) {
+  let completion;
   for (let i = state.events.length - 1; i >= 0; i--) {
     const event = state.events[i];
     if (event.hour !== state.hour || (event.minute || 0) !== state.minute) break;
-    if (event.kind === 'news.world') return event;
+    if ((stopOnWorldNews && event.kind === 'news.world') || (stopOnLoss && event.kind === 'site.failed')) return event;
+    if (stopOnCompletion && completions.has(event.kind)) completion = event;
   }
-  return null;
+  return completion || null;
 }
 
 export function validNewsState(news, minute) {
@@ -101,6 +105,7 @@ export function setWorldStory(state, id, active, log) {
     startStory(state, id, state.hour * 60 + state.minute, log);
     return;
   }
+  if (!story.days) throw new Error('This event lasts for the rest of the campaign.');
   delete state.news.stories[id];
   log(state, 'news.expired', 'The sandbox ended this story. Its discovery modifier has been removed.',
     { headline: 'Coverage ends: ' + story.headline, storyId: id, group: story.group });
@@ -143,10 +148,12 @@ export function reportDiscovery(state, site, group, suspicionDelta, log) {
   const facility = SITE_TYPES[site.type].name;
   const region = REGIONS[site.region].name;
   const consequence = site.power ? 'The host and any installations there are lost.' : 'Construction has been shut down.';
-  const text = account + ' ' + facility + ' (' + site.id + '), ' + region + '. ' + consequence +
+  const identity = site.name ? site.name + ' (' + facility + ', ' + site.id + ')' : facility + ' (' + site.id + ')';
+  const text = account + ' ' + identity + ', ' + region + '. ' + consequence +
     ' ' + GROUPS[group].name + ' suspicion +' + (suspicionDelta / 100) + ' percentage points.';
   state.lastDiscovery = log(state, 'site.discovered', text, {
     headline, siteId: site.id, siteType: site.type, region: site.region, group, suspicionDelta,
+    underConstruction: !site.power, ...(site.name ? { siteName: site.name } : {}),
   });
 }
 

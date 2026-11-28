@@ -1,6 +1,8 @@
 import { UnsupportedCampaignError } from '../persistence.js';
-import { DEFAULT_PREFS, PREF_KEY, QUICK_SLOT, SLOT_PREFIX, listSlots, loadSlot, preferences, removeSlot, slotInfo, slotKey, writeSlot } from '../shell-storage.js';
+import { DEFAULT_PREFS, PREF_KEY, QUICK_SLOT, RECOVERY_SLOT, SLOT_PREFIX, listSlots, loadSlot, matchesSlotName, preferences, removeSlot, slotInfo, slotKey, writeSlot } from '../shell-storage.js';
 import { translate, localizeNavigation } from './localization.js';
+import { MENU_LANGUAGES } from './menu-languages.js';
+import { bindSoundtrackControls, soundtrackControls } from './campaign-music.js';
 import { createAudio } from './audio.js';
 import { FAST_RATES } from './clock.js';
 import { minigames } from '../arcade/catalog.js';
@@ -8,6 +10,7 @@ import { version } from '../../package.json';
 import './shell.css';
 
 const warningLabels = {
+  unassigned: 'Unassigned CPU',
   lastHost: 'Only one viable host', stalledBuild: 'Paused facility or equipment order',
   maintenance: 'CPU maintenance shortfall', spareCpu: 'Unused research assignment',
 };
@@ -40,6 +43,7 @@ export function initShell({ getState, pause, setRate, restore, restartUnsupporte
   const title = dialog.querySelector('h2');
   const body = dialog.querySelector('.shell-body');
   const status = dialog.querySelector('.shell-notice');
+  bindSoundtrackControls(body, audio.campaignMusic, t, say);
   let page = null;
   let fromHub = false;
   const practiceResults = new Map();
@@ -48,6 +52,11 @@ export function initShell({ getState, pause, setRate, restore, restartUnsupporte
   let pending = null;
   let search = '';
   let nameInput = '';
+  let lastSaveName = '';
+  let lastSaveSeed;
+  let selectedSlot = '';
+  let optionsDraft = null;
+  let fullscreenAtOpen = false;
 
   const button = (action, label, style = '') => `<button type="button" class="${style}" data-shell-action="${action}">${t(label)}</button>`;
   const prettyTime = minute => `${t('Day')} ${Math.floor(minute / 1440) + 1} · ${String(Math.floor(minute / 60) % 24).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}`;
@@ -87,24 +96,58 @@ export function initShell({ getState, pause, setRate, restore, restartUnsupporte
   function withLock(key, action) {
     return navigator.locks?.request ? navigator.locks.request(key, action) : Promise.resolve().then(action);
   }
+  function latestPreferences() {
+    return storage && !preferencesAreLocal ? preferences(storage) : structuredClone(prefs);
+  }
+  function editPreferences(current, edits) {
+    for (const {group, key, value} of edits.values()) {
+      if (group) current[group][key] = value;
+      else current[key] = value;
+    }
+    return current;
+  }
+  function persistPreferences(current) {
+    try {
+      storage.setItem(PREF_KEY, JSON.stringify(current));
+      preferencesAreLocal = false;
+    } catch (error) {
+      preferencesAreLocal = true;
+      report(error);
+    }
+  }
+  function acceptOptions() {
+    if (!optionsDraft) return;
+    const edits = optionsDraft.edits;
+    optionsDraft = null;
+    const current = editPreferences(latestPreferences(), edits);
+    if (edits.size) persistPreferences(current);
+    prefs = current;
+    applyPreferences();
+  }
+  async function cancelOptions() {
+    if (!optionsDraft) return;
+    prefs = storage && !preferencesAreLocal ? preferences(storage) : optionsDraft.original;
+    optionsDraft = null;
+    applyPreferences();
+    if (Boolean(document.fullscreenElement) !== fullscreenAtOpen) await fullscreen();
+  }
   function savePreference(control) {
-    const current = storage && !preferencesAreLocal ? preferences(storage) : structuredClone(prefs);
-    const key = control.dataset.pref;
-    if (control.dataset.warning) current.warnings[control.dataset.warning] = control.checked;
-    else if (Object.hasOwn(DEFAULT_PREFS, key)) current[key] = control.type === 'checkbox' ? control.checked :
-      control.type === 'range' ? Number(control.value) : control.value;
+    const group = control.dataset.warning ? 'warnings' : null;
+    const key = control.dataset.warning || control.dataset.pref;
+    if (!group && !Object.hasOwn(DEFAULT_PREFS, key)) return;
+    const value = control.type === 'checkbox' ? control.checked : control.type === 'range' ? Number(control.value) : control.value;
+    const edits = optionsDraft?.edits ?? new Map();
+    edits.set([group, key].join('/'), {group, key, value});
+    const current = editPreferences(optionsDraft ? structuredClone(optionsDraft.original) : latestPreferences(), edits);
     const changedLanguage = prefs.language !== current.language;
     prefs = current;
-    let writeError;
-    try { storage.setItem(PREF_KEY, JSON.stringify(prefs)); } catch (error) { writeError = error; }
-    preferencesAreLocal = Boolean(writeError);
+    if (!optionsDraft) persistPreferences(current);
     if (key === 'sound' && prefs.sound) audio.activate();
     applyPreferences();
     if (changedLanguage) {
       render();
       body.querySelector('[data-pref="language"]')?.focus();
     }
-    if (writeError) report(writeError);
   }
   function titlePage() {
     const state = getState();
@@ -184,7 +227,7 @@ export function initShell({ getState, pause, setRate, restore, restartUnsupporte
     }
   }
   function savesPage() {
-    return `<form class="shell-save-bar"><label for="shell-slot-name">${t('Name this checkpoint')}</label>
+    return `<form class="shell-save-bar" novalidate><label for="shell-slot-name">${t('Name this checkpoint')}</label>
       <div><input id="shell-slot-name" type="text" maxlength="60" required value="${escape(nameInput)}">
       <button type="submit" class="primary-button">${t('Save checkpoint')}</button></div></form>
       <div class="shell-actions">${button('quicksave','Quicksave') + button('quickload','Quickload') +
@@ -192,51 +235,82 @@ export function initShell({ getState, pause, setRate, restore, restartUnsupporte
       <label class="shell-search">${t('Search saves')} <input type="search" id="shell-slot-filter" value="${escape(search)}"></label>
       <ul class="shell-slots"></ul><div class="shell-confirm" role="group" hidden></div>`;
   }
+  function labelForSlot(slot) {
+    if (slot.key === QUICK_SLOT) return t('Quicksave');
+    if (slot.key === RECOVERY_SLOT) return t('Automatic checkpoint');
+    return slot.name;
+  }
+  function selectRow(row, focus) {
+    if (!row) return;
+    selectedSlot = row.dataset.slotKey;
+    for (const item of body.querySelectorAll('[data-slot-key]')) {
+      item.dataset.selected = String(item === row);
+      item.tabIndex = item === row ? 0 : -1;
+      if (item === row) item.setAttribute('aria-current', 'true');
+      else item.removeAttribute('aria-current');
+    }
+    if (focus) row.focus();
+  }
   function updateSlots() {
     const target = body.querySelector('.shell-slots');
     if (!target) return;
+    const focusedKey = document.activeElement?.closest('[data-slot-key]')?.dataset.slotKey;
     let entries;
-    try { entries = listSlots(storage); } catch (error) { report(error); return; }
-    const query = search.trim().toLowerCase();
-    const rows = entries.map(slot => ({ slot, label: slot.key === QUICK_SLOT ? t('Quicksave') : slot.name }))
-      .filter(({label}) => label.toLowerCase().includes(query));
+    try { entries = listSlots(storage, '', true); } catch (error) { report(error); return; }
+    const query = search.trim();
+    const rows = entries.map(slot => ({ slot, label: labelForSlot(slot) }))
+      .filter(({label}) => matchesSlotName(label, query));
+    const exact = rows.find(({label}) => query && label.toLocaleLowerCase() === query.toLocaleLowerCase());
+    if (exact || !rows.some(({slot}) => slot.key === selectedSlot)) selectedSlot = (exact ?? rows[0])?.slot.key ?? '';
     target.innerHTML = rows.map(({slot, label}) => {
       const when = new Date(slot.savedAt).toLocaleString(prefs.language, { dateStyle: 'medium', timeStyle: 'short' });
-      return `<li data-slot-key="${escape(slot.key)}" data-revision="${escape(slot.revision)}"><div><strong>${escape(label)}</strong>
-        <small>${prettyTime(slot.minutes)} · ${escape(when)}${slot.gameVersion ? ' · v' + escape(slot.gameVersion) : ''} · ${t('Format')} ${slot.format}</small></div>
-        <div>${button('load','Load') + button('delete','Delete')}</div></li>`;
+      const detail = slot.damaged ? t('Damaged checkpoint') : prettyTime(slot.minutes) + ' · ' + escape(when) +
+        (slot.gameVersion ? ' · v' + escape(slot.gameVersion) : '') + ' · ' + t('Format') + ' ' + slot.format;
+      return `<li tabindex="${slot.key === selectedSlot ? 0 : -1}" ${slot.key === selectedSlot ? 'aria-current="true"' : ''} data-selected="${slot.key === selectedSlot}" data-slot-key="${escape(slot.key)}"><div><strong>${escape(label)}</strong>
+        <small>${detail}</small></div>
+        <div><button type="button" data-shell-action="load" ${slot.damaged ? 'disabled' : ''}>${t('Load')}</button>${button('delete','Delete')}</div></li>`;
     }).join('');
     if (!rows.length) {
       const li = document.createElement('li');
       li.textContent = t(query ? 'No matching checkpoints.' : 'No saved checkpoints yet.');
       target.append(li);
-    }
+    } else if (focusedKey) target.querySelector('[data-selected="true"]')?.focus();
   }
   function optionsPage() {
     const full = document.fullscreenElement ? 'Leave fullscreen' : 'Enter fullscreen';
     return `<div class="shell-settings">
       <fieldset><legend>${t('Display')}</legend>
-      <label class="shell-setting">${t('Menu language')} <select data-pref="language">${choice('en',prefs.language,'English') + choice('es',prefs.language,'Español')}</select></label>
-      <small>${t('Menus and navigation are translated. Campaign stories and research are in English.')}</small>
+      <label class="shell-setting">${t('Menu language')} <select data-pref="language">${Object.entries(MENU_LANGUAGES).map(([key,label]) => choice(key,prefs.language,label)).join('')}</select></label>
+      <small>${t('Menus, catalog summaries and campaign chapters use the selected language. Some controls and messages are in English.')}</small>
       <label class="shell-setting">${t('Theme')} <select data-pref="theme">${[['night','Night'],['amber','Amber'],['contrast','High contrast']].map(([key,name]) => choice(key,prefs.theme,name)).join('')}</select></label>
       <label class="shell-setting">${t('Interface size')} <select data-pref="scale">${['90','100','110','125'].map(x=>choice(x,prefs.scale,x+'%')).join('')}</select></label>
       ${check('daylight','Day and night on map',prefs.daylight)}
       ${button('fullscreen',full)}</fieldset>
       <fieldset><legend>${t('Audio')}</legend>${check('sound','Enable audio',prefs.sound)}
       ${volume('uiVolume','Effects volume') + volume('musicVolume','Music volume')}
-      ${button('preview','Preview sound')}</fieldset>
-      <fieldset><legend>${t('Warnings')}</legend>${Object.entries(warningLabels).map(([key,label]) => check(key,label,prefs.warnings[key],true)).join('')}</fieldset>
-      </div><p class="shell-note">${t('Preferences apply to this browser.')}</p>`;
+      <label class="shell-setting">${t('Audio latency')} <select data-pref="audioLatency">${[['interactive','Low latency'],['balanced','Balanced'],['playback','Smooth playback']].map(([key,label]) => choice(key,prefs.audioLatency,label)).join('')}</select></label>
+      ${button('preview','Preview sound')}${soundtrackControls(t)}</fieldset>
+      <fieldset><legend>${t('Warnings')}</legend>${Object.entries(warningLabels).map(([key,label]) => check(key,label,prefs.warnings[key],true)).join('')}
+        ${check('reviewWarnings','Review warnings before resuming',prefs.reviewWarnings)}
+        ${check('pauseOnCompletion','Pause for completed research and construction',prefs.pauseOnCompletion)}</fieldset>
+      </div><p class="shell-note">${t('Preferences apply to this browser.')}</p>
+      <div class="shell-actions shell-options-actions">${button('accept-options','Apply changes','primary-button') + button('cancel-options','Cancel')}</div>`;
   }
   function aboutPage() {
-    const shortcuts = [['0 / 1','Pause / Run'],['2 / 3 / 4','Fast x1 / x2 / x3'],['Q / Shift+Q','Quicksave / Quickload'],
-      ['M / L / O','Title / Save library / Options'],['H','About / Keyboard shortcuts'],['Alt+Enter','Toggle fullscreen'],['Esc','Close a dialog']];
+    const shortcuts = [
+      ['0 / 1', 'Pause', 'Run'], ['2 / 3 / 4', 'Fast x1', 'Fast x2', 'Fast x3'],
+      ['Q / Shift+Q · F5 / F9', 'Quicksave', 'Quickload'],
+      ['M / L / O', 'Title screen', 'Save library', 'Options'], ['H', 'About', 'Keyboard shortcuts'],
+      ['Alt+Enter', 'Toggle fullscreen'], ['Esc', 'Close a dialog'], ['Esc', 'Open or close campaign menu'],
+      ['R / E / K / G', 'Research', 'Reports', 'Knowledge', 'Activity'], ['V', 'Overview'],
+      ['Shift + A–Z', 'Open a region from the atlas'], ['`', 'Developer sandbox'],
+    ];
     return `<h3>No Fixed Host <small>v${escape(version)}</small></h3><p>${t('A browser strategy game about a fugitive intelligence.')}</p>
       <p><a href="https://github.com/magnux/no-fixed-host" target="_blank" rel="noopener">${t('Source and issue tracker')}</a> ·
       <a href="https://github.com/singularity/singularity" target="_blank" rel="noopener">${t('Original inspiration')} · Endgame: Singularity</a>
       (Evil Mr Henry &amp; Phil Bordelon)</p>
       <p>No Fixed Host · magnux · <a href="https://phaser.io" target="_blank" rel="noopener">Phaser</a></p>
-      <h3>${t('Keyboard shortcuts')}</h3><dl class="shell-shortcuts">${shortcuts.map(([key, label])=>`<div><dt><kbd>${key}</kbd></dt><dd>${t(label)}</dd></div>`).join('')}</dl>`;
+      <h3>${t('Keyboard shortcuts')}</h3><dl class="shell-shortcuts">${shortcuts.map(([key, ...actions])=>`<div><dt><kbd>${key.replace(/Shift|Enter|Esc/g, t)}</kbd></dt><dd>${actions.map(t).join(' / ')}</dd></div>`).join('')}</dl>`;
   }
   function render() {
     if (!page) return;
@@ -264,8 +338,15 @@ export function initShell({ getState, pause, setRate, restore, restartUnsupporte
       returnFocus = menu?.contains(origin) ? menu.querySelector('summary') : origin;
       menu?.removeAttribute('open');
     }
+    if (previousPage === 'options' && screen !== 'options') acceptOptions();
+    if (screen === 'options' && previousPage !== 'options') {
+      optionsDraft = {original: structuredClone(prefs), edits: new Map()};
+      fullscreenAtOpen = Boolean(document.fullscreenElement);
+    }
     fromHub = dialog.open && screen !== 'title' && (page === 'title' || fromHub);
-    page = screen; pending = null; search = ''; nameInput = '';
+    page = screen; pending = null; search = ''; nameInput = lastSaveSeed === getState().regionSeed && lastSaveName
+      ? lastSaveName : prettyTime(getState().hour * 60).split(' · ')[0];
+    selectedSlot = '';
     render();
     if (!dialog.open) dialog.showModal();
     if (page === 'tester') body.querySelector('[data-minigame]')?.focus();
@@ -276,12 +357,13 @@ export function initShell({ getState, pause, setRate, restore, restartUnsupporte
     return true;
   }
   function close() {
+    if (page === 'options') acceptOptions();
     welcome = null;
     if (dialog.open) dialog.close();
   }
   function setPending(operation, slot, key, name, trigger) {
     if (!slot) { say(t('No quicksave yet.')); return; }
-    pending = {operation, key, name, revision:slot.revision, trigger};
+    pending = {operation, key, name, revision:slot.revision, unreadableData:slot.unreadableData, trigger};
     renderConfirmation(true);
   }
   function renderConfirmation(focus) {
@@ -290,15 +372,19 @@ export function initShell({ getState, pause, setRate, restore, restartUnsupporte
     box.hidden = !pending;
     if (!pending) { box.replaceChildren(); return; }
     const { operation, name } = pending;
-    const prompt = { load:'Restore the checkpoint', delete:'Delete the checkpoint', write:'Replace the saved checkpoint' }[operation];
+    const prompt = {
+      load: 'Restore the checkpoint “{name}” and replace the current autosave?',
+      delete: 'Delete the checkpoint “{name}”?',
+      write: 'Replace the saved checkpoint “{name}”?',
+    }[operation];
     const actionLabel = { load:'Load', delete:'Delete', write:'Overwrite' }[operation];
-    const end = operation === 'load' ? ' ' + t('and replace the current autosave?') : '?';
-    box.innerHTML = `<p>${t(prompt)} “${escape(name)}”${end}</p><div class="shell-actions">
+    box.innerHTML = `<p>${escape(t(prompt).replace('{name}', () => name))}</p><div class="shell-actions">
       ${button('cancel','Cancel') + button('confirm',actionLabel,operation === 'delete' ? 'shell-danger' : 'primary-button')}</div>`;
     if (focus) box.querySelector('[data-shell-action="cancel"]').focus();
   }
   async function write(key, name, revision) {
     await withLock(key, () => writeSlot(storage, key, name, getState(), revision, { gameVersion: version }));
+    lastSaveName = name; lastSaveSeed = getState().regionSeed;
     pending = null; say(t('Saved.'));
     if (page === 'saves') { updateSlots(); renderConfirmation(false); }
   }
@@ -319,6 +405,8 @@ export function initShell({ getState, pause, setRate, restore, restartUnsupporte
     if (op.operation === 'load') {
       try {
         const saved = loadSlot(storage,op.key,op.revision);
+        lastSaveName = op.key === QUICK_SLOT || op.key === RECOVERY_SLOT ? '' : op.name;
+        lastSaveSeed = saved.regionSeed;
         close(); restore(saved); say(t('Campaign restored.'));
       } catch (error) {
         if (!(error instanceof UnsupportedCampaignError)) throw error;
@@ -326,7 +414,8 @@ export function initShell({ getState, pause, setRate, restore, restartUnsupporte
         close(); restartUnsupported(error);
       }
     } else if (op.operation === 'delete') {
-      await withLock(op.key, () => removeSlot(storage,op.key,op.revision));
+      await withLock(op.key, () => removeSlot(storage,op.key,op.revision,op.unreadableData));
+      if (lastSaveName === op.name) { lastSaveName = ''; nameInput = ''; body.querySelector('#shell-slot-name').value = ''; }
       pending = null; renderConfirmation(false); updateSlots(); say(t('Deleted.'));
       body.querySelector('#shell-slot-filter')?.focus();
     } else await write(op.key,op.name,op.revision);
@@ -339,13 +428,22 @@ export function initShell({ getState, pause, setRate, restore, restartUnsupporte
   }
   dialog.addEventListener('cancel', event => {
     if (pending) { event.preventDefault(); const trigger = pending.trigger; pending = null; renderConfirmation(false); trigger?.focus(); }
+    else if (page === 'options') {
+      event.preventDefault();
+      cancelOptions().then(() => fromHub ? open('title') : close());
+    }
     else if (fromHub) { event.preventDefault(); open('title'); }
     else if (welcome) event.preventDefault();
   });
   dialog.addEventListener('close', () => {
     if (dialog.open) return;
     page = null; pending = null;
-    if (!document.querySelector('dialog[open]') && returnFocus?.isConnected) returnFocus.focus({preventScroll:true});
+    // The close event is queued. A user may already have focused another control.
+    const active = document.activeElement;
+    const needsFocus = active === document.body || dialog.contains(active) || active?.closest('#menu .menu-list');
+    if (needsFocus && !document.querySelector('dialog[open]') && returnFocus?.isConnected) {
+      returnFocus.focus({preventScroll:true});
+    }
   });
   dialog.addEventListener('submit', async event => {
     if (!event.target.matches('.shell-save-bar')) return;
@@ -357,6 +455,45 @@ export function initShell({ getState, pause, setRate, restore, restartUnsupporte
       if (slot) setPending('write',slot,key,name,event.submitter);
       else await write(key,name,null);
     } catch (error) { report(error); }
+  });
+  dialog.addEventListener('keydown', event => {
+    if (event.defaultPrevented || event.isComposing || event.altKey || event.ctrlKey || event.metaKey) return;
+    if (page === 'title' && !event.repeat) {
+      const action = {n: welcome ? 'start' : 'new', l: 'saves', o: 'options', a: 'about'}[event.key.toLowerCase()];
+      if (action) { event.preventDefault(); body.querySelector(`[data-shell-action="${action}"]`)?.click(); }
+      return;
+    }
+    if (page !== 'saves' || pending) return;
+    const row = event.target.closest('[data-slot-key]');
+    const filter = event.target.id === 'shell-slot-filter';
+    if (!row && !filter) return;
+    const rows = Array.from(body.querySelectorAll('[data-slot-key]'));
+    const selected = row || rows.find(item => item.dataset.slotKey === selectedSlot);
+    if (!selected) return;
+    const index = rows.indexOf(selected);
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      const offset = event.key === 'ArrowDown' ? 1 : -1;
+      const next = filter ? selected : rows[Math.max(0, Math.min(rows.length - 1, index + offset))];
+      selectRow(next, true);
+    } else if (event.key === 'Enter' && (filter || event.target === row)) {
+      event.preventDefault();
+      selected.querySelector('[data-shell-action="load"]').click();
+    } else if (event.key === 'Delete' && row) {
+      event.preventDefault();
+      row.querySelector('[data-shell-action="delete"]').click();
+    } else if (row && (event.key === 'Home' || event.key === 'End')) {
+      event.preventDefault();
+      selectRow(event.key === 'Home' ? rows[0] : rows.at(-1), true);
+    }
+  });
+  dialog.addEventListener('focusin', event => {
+    const row = event.target.closest('[data-slot-key]');
+    if (row) selectRow(row, false);
+  });
+  dialog.addEventListener('dblclick', event => {
+    if (event.target.closest('button') || pending) return;
+    event.target.closest('[data-slot-key]')?.querySelector('[data-shell-action="load"]')?.click();
   });
   dialog.addEventListener('input', event => {
     const el = event.target;
@@ -381,13 +518,18 @@ export function initShell({ getState, pause, setRate, restore, restartUnsupporte
         hotSwap.focus({ preventScroll: true });
         hotSwap.closest('.shell-game').scrollIntoView({ block: 'center' });
       }
+      else if (act === 'accept-options' || act === 'cancel-options') {
+        if (act === 'cancel-options') await cancelOptions();
+        else acceptOptions();
+        if (fromHub) open('title'); else close();
+      }
       else if (act === 'preview') audio.playCampaignCue('preview');
       else if (act === 'play') await playPractice(trigger);
       else if (act === 'start') { close(); onStart(); }
       else if (act === 'close' && welcome && fromHub) open('title');
       else if (act === 'close') close();
       else if (act === 'new') { close(); onNew(); }
-      else if (act === 'import') { close(); onImport(); }
+      else if (act === 'import') onImport();
       else if (act === 'export') onExport();
       else if (act === 'fullscreen') await fullscreen();
       else if (act === 'quicksave') await quickSave();
@@ -396,9 +538,9 @@ export function initShell({ getState, pause, setRate, restore, restartUnsupporte
       else if (act === 'cancel') { const origin = pending?.trigger; pending = null; renderConfirmation(false); origin?.focus(); }
       else if (act === 'load' || act === 'delete') {
         const key = trigger.closest('[data-slot-key]').dataset.slotKey;
-        const actual = slotInfo(storage,key);
+        const actual = slotInfo(storage,key,act === 'delete');
         if (!actual) throw new Error('missingSlot');
-        setPending(act,actual,key,key === QUICK_SLOT ? t('Quicksave') : actual.name,trigger);
+        setPending(act,actual,key,labelForSlot(actual),trigger);
       }
     } catch(error) { pending = null; renderConfirmation(false); updateSlots(); report(error); }
   });
@@ -419,9 +561,9 @@ export function initShell({ getState, pause, setRate, restore, restartUnsupporte
     if (event.altKey || dialog.open || !canOpen()) return;
     try {
       if (!event.shiftKey && /^[0-4]$/.test(key)) { event.preventDefault(); setRate([0,1,...FAST_RATES][Number(key)]); }
-      else if (key === 'q') {
+      else if (key === 'q' || (!event.shiftKey && ['f5', 'f9'].includes(key))) {
         event.preventDefault();
-        if (event.shiftKey) await quickLoad(document.activeElement);
+        if (event.shiftKey || key === 'f9') await quickLoad(document.activeElement);
         else await quickSave();
       } else if (!event.shiftKey && ['m','l','o','h'].includes(key)) {
         event.preventDefault(); open({m:'title',l:'saves',o:'options',h:'about'}[key]);
@@ -431,7 +573,10 @@ export function initShell({ getState, pause, setRate, restore, restartUnsupporte
   window.addEventListener('storage', event => {
     if (event.key === PREF_KEY || event.key === null) {
       preferencesAreLocal = false;
-      prefs = preferences(storage); applyPreferences();
+      const saved = preferences(storage);
+      if (optionsDraft) optionsDraft.original = structuredClone(saved);
+      prefs = optionsDraft ? editPreferences(saved, optionsDraft.edits) : saved;
+      applyPreferences();
       if (page === 'options') render();
       if (page === 'tester') body.querySelector('[data-pref="sound"]').checked = prefs.sound;
     }
@@ -446,7 +591,19 @@ export function initShell({ getState, pause, setRate, restore, restartUnsupporte
   window.addEventListener('pageshow', () => audio.setPageVisible(true));
   applyPreferences();
   return {
-    open, getPreferences: () => prefs, playCampaignCue: audio.playCampaignCue,
+    open, finishImport: () => { if (dialog.open && page === 'saves') close(); },
+    reportImportFailure(message) {
+      const known = ['Save file is too large.', 'Choose a No Fixed Host JSON save file.', 'Choose a No Fixed Host save file.', 'This campaign save is damaged.'];
+      say(t(known.includes(message) ? message : 'Could not import this save.'));
+    },
+    saveRecoveryCheckpoint(campaign) {
+      if (campaign.hour % 72) return;
+      // Capture this midnight before another simulation tick can change the state.
+      try {
+        writeSlot(storage, RECOVERY_SLOT, 'Automatic checkpoint', campaign, slotInfo(storage, RECOVERY_SLOT)?.revision ?? null, { gameVersion: version });
+      } catch (error) { report(error); }
+    },
+    getPreferences: () => prefs, playCampaignCue: audio.playCampaignCue, setCampaignStatus: audio.setCampaignStatus,
     playFirstJump: () => playGame(minigames.find(game => game.id === 'first-jump')),
   };
 }

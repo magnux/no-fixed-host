@@ -50,3 +50,13 @@ test('campaign season varies by seed and survives reloading without using a disc
   const restored = decodeCampaign(encodeCampaign(state));
   assert.deepEqual(sunAt(23 + 365 * 24, 59, startingDay(restored.regionSeed)), sun);
 });
+
+test('a browser campaign saves its opening UTC minute and follows the terminator across midnight', () => {
+  const late = createGame(19, 23 * 60 + 45);
+  const restored = decodeCampaign(encodeCampaign(late));
+  const day = startingDay(restored.regionSeed);
+  assert.equal(restored.startUtcMinute, 1425);
+  assert.match(sunAt(0, 0, day, restored.startUtcMinute).label, /23:45 UTC/);
+  assert.deepEqual(sunAt(0, 15, day, restored.startUtcMinute), sunAt(24, 0, day));
+  assert.throws(() => createGame(19, 1440), /UTC minute/);
+});

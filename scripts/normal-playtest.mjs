@@ -64,7 +64,7 @@ function playWorkshop() {
   const upgrade = autoUpgradeQuote(state, site.id);
   act({ type: 'auto-upgrade', siteId: site.id, expectedOrders: upgrade.orders });
   observe('Refitting', { offline: siteHardware(state, site).offlineSlots, build: build.orders, upgrade: upgrade.orders });
-  until(() => siteHardware(state, site).installed.cpu.itemId === 'server');
+  until(() => siteHardware(state, site).installed.cpu?.itemId === 'server');
   observe('Restored workshop', { rawCpu: siteHardware(state, site).rawCpu, gear: site.equipment });
   advanceMinutes(state, 60 * DAY - campaignMinutes(state));
   observe('Day 60', { status: state.status, suspicion: state.suspicion,

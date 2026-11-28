@@ -4,6 +4,10 @@ The campaign contains **60 projects** across seven branches. Fifty-seven use the
 
 The Research screen lists unfinished topics whose prerequisites you have completed, alongside work already underway. Select a topic to inspect its cost, host requirements and unlocks, then assign eligible idle CPU directly. The treasury pays for research as work advances. A topic can begin with partial funding and wait for more cash or eligible CPU. Enable **Show unavailable research** to inspect the rest of the tree, or follow a prerequisite link in a project, facility or equipment dossier.
 
+Open **Compute tasks** to reserve an absolute CPU count for paid work or for the shared upkeep and construction pool. New hosts can then add research capacity without raising those reservations. Moving the **Paid work** slider switches jobs back to a percentage of the network. Research assignments respect both reservations and the safety rating of their hosts. Unassigned and unused research cycles still flow into the pool, and leftover pool cycles earn job income.
+
+Each running or paused topic shows its progress in the directory. The dossier tracks the cash and CPU work still due and explains which hosts can carry sensitive research. Knowledge lists reachable designs and technology by default, keeps completed findings available, and offers **Show locked entries** for browsing the whole catalog.
+
 ## From a leased machine to an equipped facility
 
 A relay and the first three processor models are available from the start. Renting a storage unit requires an identity. Manufacturing stronger processors follows a separate computing line. A player can use basic servers in a newly unlocked storage unit without waiting for chip design.

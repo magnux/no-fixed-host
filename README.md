@@ -35,11 +35,12 @@ The portrait in the command dock starts as `^-^`. Finish any research to give it
 - [Research tree](docs/research-tree.md) maps the paths to hardware upgrades and safe research sites, with the direct prerequisites and unlocks of every project.
 - [Development context](docs/development.md) records how the browser game works, the design decisions made for this version, and future chapters and minigames.
 - [Base implementation plan](docs/base-implementation-plan.md) records priorities, dependencies, acceptance checks and the release outcome.
+- [Final Normal campaign audit](docs/original-parity-audit.md) lists the differences found in 0.6.0, the fixes in 0.7.0, the retained browser rules and the offline catalog checker.
 - [Simulation audit](docs/base-simulation-audit.md) traces mechanics in the original code and records where browser campaign rules differ. [Original menu audit](docs/original-menu-audit.md) preserves the screen comparison that initiated this release.
 
 The design takes inspiration from [Endgame: Singularity](https://github.com/singularity/singularity). The simulation and interface are written in JavaScript. Open **Campaign menu → Minigame tester** to play all 14 standalone games. The campaign stays paused while you practice. Each game can be retried, and the tester remembers your last result for each title until the page reloads. [Campaign encounters and minigame categories](docs/minigames.md)
 
-Enable audio in the tester or in **Campaign menu → Options**. **Music volume** controls the score and **Effects volume** controls actions and alerts. The browser synthesizes all 14 original arcade tracks locally. [Soundtrack and listening notes](docs/minigames.md#soundtrack)
+Enable audio in the tester or in **Campaign menu → Options**. **Music volume** controls the score and **Effects volume** controls actions and alerts. The browser synthesizes all 14 original arcade tracks locally. In **Options → Audio → Campaign soundtrack**, you can also choose local tracks for strategy play, victory and defeat. [Soundtrack and listening notes](docs/minigames.md#soundtrack)
 
 ## Test and build
 

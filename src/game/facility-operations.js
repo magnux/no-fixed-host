@@ -72,11 +72,12 @@ export function removalReason(state, id, building = false) {
 // bank still occupies its region. A build order has no installed hardware.
 export function markLostRegions(remainingSites, removals) {
   const finalReport = new Map();
+  const holdsRegion = site => installedEquipment(site).cpu || site.installations?.some(order => order.replacesBank);
   for (const [site, event] of removals) {
-    if (site.power && installedEquipment(site).cpu) finalReport.set(site.region, event);
+    if (site.power && holdsRegion(site)) finalReport.set(site.region, event);
   }
   for (const site of remainingSites) {
-    if (finalReport.has(site.region) && installedEquipment(site).cpu) finalReport.delete(site.region);
+    if (finalReport.has(site.region) && holdsRegion(site)) finalReport.delete(site.region);
   }
   for (const event of finalReport.values()) event.regionLost = true;
 }
@@ -85,7 +86,8 @@ export function applyFacilityCommand(state, action, log) {
   if (!['rename-site', 'dismantle', 'cancel-build'].includes(action?.type)) return false;
   const building = action.type === 'cancel-build';
   const list = building ? state.builds : state.sites;
-  const site = list.find(entry => entry.id === action.id);
+  const site = list.find(entry => entry.id === action.id) ||
+    (action.type === 'rename-site' && state.builds.find(entry => entry.id === action.id));
   if (!site) throw new Error(building ? 'This order is no longer under construction.' : 'This host no longer exists.');
   if (action.type === 'rename-site') {
     const name = typeof action.name === 'string' ? action.name.trim() : '';

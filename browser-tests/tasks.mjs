@@ -62,6 +62,19 @@ test('assign idle CPU to topics and resize their combined allocation proportiona
   await tab.click();
   assert.equal(await unavailable.isChecked(), false);
   assert.equal(await page.locator('#view select').count(), 0);
+  await page.getByText('Compute tasks', { exact: true }).click();
+  const pool = page.getByRole('spinbutton', { name: 'Reserve for upkeep and construction (CPU)' });
+  const jobs = page.getByRole('spinbutton', { name: 'Paid work (CPU)' });
+  await pool.fill('0.5');
+  await pool.press('Tab');
+  await jobs.fill('0.25');
+  await jobs.press('Tab');
+  assert.equal((await saved()).allocations.jobsCpu, 0.25);
+  assert.equal((await saved()).allocations.poolCpu, 0.5);
+  assert.equal(Number(await slider.getAttribute('max')), 1.25);
+  await pool.fill('0');
+  await pool.press('Tab');
+  await page.getByText('Compute tasks', { exact: true }).click();
   assert.ok(await directory('stealth').isVisible());
   assert.equal(await directory('corporateIdentification').isVisible(), false);
   assert.ok(await master.isDisabled());
@@ -73,10 +86,14 @@ test('assign idle CPU to topics and resize their combined allocation proportiona
   await directory('stealth').click();
   assert.equal((await saved()).cash, initial.cash);
   assert.equal((await saved()).research, null);
+  await directory('stealth').press('ArrowUp');
+  await page.locator('[data-tech-id]:focus').press('ArrowDown');
+  assert.equal(await directory('stealth').getAttribute('aria-pressed'), 'true');
 
   // The two one-CPU terminals share a research budget. Keep 0.5 in paid work and divide 0.75
   // from the idle pool between two topics. Neither assignment should resize the first.
   await setSlider(paid, 25);
+  assert.equal((await saved()).allocations.jobsCpu, undefined);
   await assign('stealth', 0.25);
   assert.equal((await saved()).cash, initial.cash, 'A paused order has consumed no funding.');
   await assign('sociology', 0.5);

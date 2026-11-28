@@ -203,6 +203,7 @@ test('site risk scales its disclosure with research and previews a functioning d
   assert.equal(riskLabel(state, 0.0226), '≈2.25%');
   learn(state, 'advancedSocioanalytics');
   assert.equal(riskLabel(state, 0.0226), '2.23%');
+  learn(state, 'apotheosis');
   state.freePlay = true;
   assert.equal(previewSiteExposure(state, type, region).perDay, 0);
 });

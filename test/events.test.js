@@ -5,10 +5,36 @@ import {
   storyExpiryMinute, updateWorldNews, validLastDiscovery, validNewsState, WORLD_NEWS,
 } from '../src/game/events.js';
 
-import { advanceMinutes, createGame, siteExposure } from '../src/game/engine.js';
+import { advanceMinutes, campaignMinutes, createGame, hasGrace, previewSiteExposure, siteExposure } from '../src/game/engine.js';
 import { decodeCampaign, encodeCampaign } from '../src/persistence.js';
 
 const DAY = 24 * 60;
+
+test('a surviving network can interrupt long advances for a named host lost to upkeep', () => {
+  const state = createGame(634785765); // next positive hazard roll succeeds
+  state.regionSeed = 18;
+  state.sites[0].power = 'sleep';
+  state.sites.push({ id: 'host-2', type: 'relay', name: 'Iberia', region: 'europe', startedAt: 0, power: 'sleep' });
+  state.nextSiteId = 3;
+  state.cash = 0;
+  advanceMinutes(state, DAY, {stopOnLoss:true});
+  assert.equal(campaignMinutes(state), 288);
+  assert.equal(state.status, 'running');
+  assert.equal(state.events.at(-1).siteName, 'Iberia');
+  assert.match(state.events.at(-1).text, /Iberia in Europe failed/);
+  advanceMinutes(state, 10, {stopOnLoss:true});
+  assert.equal(campaignMinutes(state), 298, 'resuming does not reopen the previous loss');
+});
+
+test('finishing Apotheosis grants permanent protection to existing hosts and design previews', () => {
+  const state = createGame();
+  state.hour = 100 * 24;
+  state.completed.push('apotheosis');
+  state.status = 'won';
+  assert.ok(hasGrace(state));
+  assert.equal(siteExposure(state, state.sites[0]).perDay, 0);
+  assert.equal(previewSiteExposure(state, 'relay', 'europe').perDay, 0);
+});
 function campaign(seed = 21) {
   return { news: createNewsState(seed), events: [], rng: seed, nextEventId: 1, nextSiteId: 3, hour: 0, minute: 0 };
 }

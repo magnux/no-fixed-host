@@ -121,3 +121,12 @@ html[data-theme=amber] .mast, html[data-theme=amber] .panel, html[data-theme=con
 html[data-theme=amber] button:not(.primary-button), html[data-theme=amber] .menu-list { background-color: var(--panel); }
 @media (max-width: 37rem) { .shell-settings { grid-template-columns: 1fr; }
   .shell-settings fieldset:last-child { grid-template-columns: 1fr; } .campaign-shell { max-height: 90dvh; } }
+
+.soundtrack-settings { margin-block-start: .6rem; }
+.soundtrack-settings summary { cursor: pointer; }
+.soundtrack-settings[open] { display: grid; gap: .6rem; }
+.soundtrack-settings label, .soundtrack-settings small { display: block; margin-block: .4rem; }
+.soundtrack-settings input { max-width: 100%; }
+.soundtrack-settings small { overflow-wrap: anywhere; }
+.shell-slots li[data-selected="true"] { box-shadow: inset .16rem 0 var(--mint); padding-inline-start: .65rem; }
+.shell-options-actions { margin-top: .75rem; }

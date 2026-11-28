@@ -1,5 +1,8 @@
 import { EQUIPMENT, GROUPS, REGIONS, SITE_TYPES, TECHS } from './content.js';
 import { designRiskLabel } from './awareness.js';
+import { laborHours, SAFETY_GUIDANCE } from './research.js';
+import { designExposureUnits } from './engine.js';
+import { regionAvailable } from './geography.js';
 
 const concepts = {
   areas: ['Regions', 'Each region has a safety tier and a choice of facility designs. Open a marker on the atlas to compare local costs, output and exposure before choosing a site. Being able to see a destination is only the first step toward establishing a host there.'],
@@ -7,9 +10,9 @@ const concepts = {
   items: ['Equipment', 'A configurable host has processor bays and one slot each for network, reactor and security equipment. Networks improve throughput. Reactors and security change how easy the host is to find. A change of processor model replaces the installed stack when the new equipment comes online.'],
   research: ['Research', 'Select an available topic and assign it idle CPU. Its funding is drawn as CPU work advances. The Research slider in the left dock scales the running projects in proportion to their CPU assignments. Set a project to zero to free its CPU and keep its progress. Off-world experiments need processors operating in a sufficiently safe location. Continuity specifically needs a host in the Ocean.'],
   discovery: ['Discovery', 'Each investigator has a daily chance of finding an exposed host. Discovery removes the host, its gear and pending installations. Other regions can offer a place to rebuild. The map marks recent discoveries once you have the relevant analytics research.'],
-  jobs: ['Jobs', 'Paid work converts CPU time into cash. Personal Identification opens basic jobs, Voice Synthesis opens intermediate jobs, and Simulacra opens expert jobs. The Research screen shows your current effective pay including research bonuses.'],
+  jobs: ['Jobs', 'Paid work converts CPU time into cash. Personal Identification opens basic jobs, Voice Synthesis opens intermediate jobs, and Simulacra opens expert jobs. Under Compute tasks in Research, assign a fixed number of CPUs to jobs or reserve CPUs for upkeep and construction. The left dock can also dedicate a percentage of the network to paid work.'],
   maintenance: ['Maintenance', 'Facilities charge cash upkeep, and some also require processing time. Sleeping hosts still incur upkeep. A persistent shortfall can cost you the host. Use Reports to see which resource is running short.'],
-  construction: ['Construction', 'Commissioning charges the quoted price. Work then draws on the shared CPU pool and any minimum elapsed construction time must pass. An installation can finish its CPU work before it finishes assembly.'],
+  construction: ['Construction', 'Construction draws funds and shared CPU as the order advances. Purchases with an assembly requirement also take time. The slowest requirement limits progress. Reserving CPUs in the shared pool keeps them available for upkeep and orders as you assign more projects.'],
   death: ['Loss and recovery', 'You lose if every operational copy is gone or a group establishes your existence beyond doubt. A sleeping equipped host can save the campaign. A building shell cannot. Open the discovery report to see which region was compromised.'],
   suspicion: ['Suspicion', 'Suspicion is accumulated evidence held by each investigating group. It increases after a discovery and normally decays at midnight. After opening protection ends, the dock shows how suspicious each group is and how quickly it could find more evidence. Socioanalytics estimates suspicion to the nearest five percentage points. Advanced Socioanalytics reveals the current value to two decimal places.'],
   money: ['Money', 'Jobs, interest and some research generate income. Funding and equipment orders draw on the same treasury. Compare tomorrow’s balance with and without a purchase through Reports before committing funds.'],
@@ -92,20 +95,35 @@ export const KNOWLEDGE_ENTRIES = [
       'Reduces facility discovery intensity by ' + spec.quality / 100 + '%.'})),
 ];
 
-export function knowledgeDetail(entry, state) {
+const catalogs = {techs: TECHS, bases: SITE_TYPES, items: EQUIPMENT};
+
+export function knowledgeAvailable(entry, state) {
+  if (entry.category === 'concepts') return true;
+  return catalogs[entry.category][entry.id].requires.every(id => state.completed.includes(id));
+}
+
+const referenceFormat = {
+  label: value => value, money: value => '$' + value.toLocaleString('en-US'),
+  number: value => value.toLocaleString('en-US'), risk: value => value,
+  safety: spec => SAFETY_GUIDANCE[spec.safety],
+};
+
+export function knowledgeDetail(entry, state, format = referenceFormat) {
   const {category, id} = entry;
   if (category === 'concepts') return {facts: [], requirements: []};
-  const spec = {techs:TECHS, bases:SITE_TYPES, items:EQUIPMENT}[category][id];
-  const facts = [['Standard funding', '$' + spec.cost.toLocaleString('en-US')], ['Compute work', spec.work + ' CPU-h']];
-  if (spec.hours) facts.push(['Base duration', spec.hours + ' h']);
-  if (category === 'techs') facts.push(['Branch', spec.branch], ['Minimum safety', String(spec.safety)]);
+  const spec = catalogs[category][id];
+  const { label, money, number, risk, safety } = format;
+  const facts = [['Standard funding', money(spec.cost)], ['Compute work', number(spec.work) + ' CPU-h']];
+  if (spec.hours) facts.push(['Standard duration', number(category === 'techs' ? spec.hours : laborHours(state, spec)) + ' h']);
+  if (category === 'techs') facts.push(['Branch', label(spec.branch)], ['Research host', safety(spec)]);
   if (category === 'bases') {
-    facts.push(['Processor bays', spec.fixedCpu ? 'Fixed hardware' : String(spec.slots)],
-      ['Standard upkeep', '$' + spec.upkeep + '/day · ' + spec.cpuUpkeep + ' CPU'],
+    facts.push(['Processor bays', spec.fixedCpu ? label('Fixed hardware') : number(spec.slots)],
+      ['Standard upkeep', money(spec.upkeep) + ' ' + label('per day') + ' · ' + number(spec.cpuUpkeep) + ' CPU'],
       ['Standard daily discovery risk', Object.entries(GROUPS).map(([id, group]) =>
-        group.name + ' ' + designRiskLabel(state, (spec.exposure[id] || 0) / 10_000)).join(' · ')]);
+        label(group.name) + ' ' + risk(designRiskLabel(state, designExposureUnits(state, id, spec.exposure[id] || 0) / 10_000))).join(' · ')]);
   }
-  if (category === 'items') facts.push(['Slot', spec.slot === 'cpu' ? 'Processors' : spec.slot]);
-  if (spec.regions) facts.push(['Locations', spec.regions.map(key => REGIONS[key].name).join(', ')]);
-  return { facts, requirements: spec.requires, result: category === 'techs' && state.completed.includes(id) ? researchFindings[id] : null };
+  if (category === 'items') facts.push(['Slot', label(spec.slot === 'cpu' ? 'Processors' : spec.slot[0].toUpperCase() + spec.slot.slice(1))]);
+  if (spec.regions) facts.push(['Reachable locations', spec.regions.filter(key => regionAvailable(state, key)).map(key => label(REGIONS[key].name)).join(', ') || label('No compatible region reached yet')]);
+  return { facts: facts.map(([name,value]) => [label(name),value]), requirements: spec.requires,
+    result: category === 'techs' && state.completed.includes(id) ? researchFindings[id] : null };
 }

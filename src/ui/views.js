@@ -3,6 +3,9 @@ import { siteHardware } from '../game/engine.js';
 import { researchProjects } from '../game/research-tasks.js';
 import { storyKey } from '../game/chronicle.js';
 import { icon } from './icons.js';
+import { hudFormat, hudText, hudReading } from './hud-translations.js';
+import { localizedDispatch } from './dispatch-translations.js';
+import { menuLanguage, translate } from './localization.js';
 
 export const money = (value) =>
   new Intl.NumberFormat('en-US', {
@@ -41,45 +44,51 @@ const isNews = event => event.kind.startsWith('news.');
 const changesCoverage = event => ['news.world', 'news.expired'].includes(event.kind);
 
 function eventRows(events, limit) {
+  const t = label => translate(menuLanguage(), label);
   return events.slice(-limit).reverse().map(event => {
-    const headline = event.headline ? '<strong>' + esc(event.headline) + '</strong>' : '';
+    const dispatch = localizedDispatch(event);
+    const headline = dispatch.headline ? '<strong>' + esc(dispatch.headline) + '</strong>' : '';
     const category = isNews(event) ? 'news' : event.kind === 'site.discovered' ? 'discovery' : 'activity';
     const chapter = storyKey(event);
-    const readChapter = chapter && event.kind !== 'campaign.started' ? btn('Read chapter', 'chapter', 'data-id="' + chapter + '"', 'text-button') : '';
-    const desk = changesCoverage(event) ? 'Investigation update' : isNews(event) ? (event.desk || 'Bulletin') : '';
+    const readChapter = chapter && event.kind !== 'campaign.started' ? btn(t('Read chapter'), 'chapter', 'data-id="' + chapter + '"', 'text-button') : '';
+    const desk = changesCoverage(event) ? t('Investigation update') : isNews(event) ? (event.desk || t('Bulletin')) : '';
     return '<li data-kind="' + category + '"><time>' + stamp(event.hour, event.minute) + (desk ? ' · ' + esc(desk) : '') + '</time>' +
-      '<div>' + headline + '<span>' + esc(event.text) + '</span>' + readChapter + '</div></li>';
+      '<div>' + headline + '<span>' + esc(dispatch.text) + '</span>' + readChapter + '</div></li>';
   }).join('');
 }
 
 export function newsPanel(state) {
+  const t = label => translate(menuLanguage(), label);
   const news = state.events.filter(isNews);
   const latest = news.slice(-4);
   const update = news.findLast(changesCoverage);
   // Keep a recent change in investigator behavior readable through several editions of the wire.
   if (update && !latest.includes(update) && state.hour - update.hour <= 22 * 24) latest[0] = update;
   const active = Object.keys(state.news.stories).length;
-  const coverage = active ? btn('Coverage (' + active + ')', 'tab', 'data-id="activity"', 'text-button') : icon('globe');
-  return cardHeader('Newswire', coverage) + (news.length
+  const coverage = active ? btn(t('Coverage') + ' (' + active + ')', 'tab', 'data-id="activity"', 'text-button') : icon('globe');
+  return cardHeader(t('Newswire'), coverage) + (news.length
     ? '<ul class="event-list dock-events news-events" data-keep-scroll>' + eventRows(latest, 4) + '</ul>'
-    : '<p class="waiting-news">' + (state.hour < 6 ? 'Listening for the first broadcast.' : 'No recent broadcasts.') + '</p>');
+    : '<p class="waiting-news">' + t(state.hour < 6 ? 'Listening for the first broadcast.' : 'No recent broadcasts.') + '</p>');
 }
 
 export function recentPanel(state, warnings) {
-  return cardHeader('Recent activity', btn('View log', 'tab', 'data-id="activity"', 'text-button')) +
-    '<div class="dock-shortcuts">' + btn('Dispatches', 'dispatches', '', 'text-button') +
-    (warnings ? btn(warnings + (warnings === 1 ? ' warning' : ' warnings'), 'tab', 'data-id="activity"', 'text-button') : '') + '</div>' +
+  const language = menuLanguage();
+  const t = label => translate(language, label);
+  const warningCount = language === 'en' ? warnings + (warnings === 1 ? ' warning' : ' warnings') : t('Warnings') + ' · ' + warnings;
+  return cardHeader(t('Recent activity'), btn(t('View log'), 'tab', 'data-id="activity"', 'text-button')) +
+    '<div class="dock-shortcuts">' + btn(t('Dispatches'), 'dispatches', '', 'text-button') +
+    (warnings ? btn(warningCount, 'tab', 'data-id="activity"', 'text-button') : '') + '</div>' +
     '<ul class="event-list dock-events" data-keep-scroll>' + eventRows(state.events.filter(event => !isNews(event)), 8) + '</ul>';
 }
 
 export function researchSummary(state, allocation) {
   const projects = researchProjects(state);
   const active = projects.filter(project => allocation.byProject.get(project.id) > 0);
-  const description = active.length === 1 ? TECHS[active[0].id].name :
-    active.length ? active.length + ' active projects' : 'Select a topic to assign CPU';
+  const description = active.length === 1 ? hudText(TECHS[active[0].id].name) :
+    active.length ? hudFormat().number(active.length) + ' ' + hudText('active projects') : hudText('Select a topic to assign CPU');
   const waiting = projects.length - active.length;
-  return `<small>${esc(description)}${waiting ? ' · ' + waiting + ' on hold' : ''}</small>
-    ${btn('Projects', 'tab', 'data-id="research"', 'text-button')}`;
+  return `<small>${esc(description)}${waiting ? ' · ' + hudFormat().number(waiting) + ' ' + hudText('on hold') : ''}</small>
+    ${btn(hudText('Projects'), 'tab', 'data-id="research"', 'text-button')}`;
 }
 
 function nextRequiredProject(goal, completed) {
@@ -166,14 +175,14 @@ export function objectivePanel(s) {
   return (
     '<div class="objective-label">' +
     icon('target') +
-    'Current objective</div><h2>' +
-    esc(title) +
+    hudText('Current objective') + '</div><h2>' +
+    esc(hudText(title)) +
     '</h2><p>' +
-    esc(desc) +
+    esc(hudText(desc)) +
     '</p>' +
     (action
       ? btn(
-          esc(cta) + icon('arrow'),
+          esc(hudText(cta)) + icon('arrow'),
           action,
           'data-id="' + id + '"',
           'objective-link',
@@ -185,19 +194,21 @@ export function suspicionPanel({ level, cause, rows, insight }) {
   if (level === 'protected') {
     const text = cause === 'apotheosis' ? 'Apotheosis puts your network beyond discovery.' :
       'Investigators can begin tracing your hosts when opening protection ends.';
-    return cardHeader('Group suspicion', tag('Protected', 'green')) + '<p class="awareness-protected">' + text + '</p>';
+    return cardHeader(hudText('Group suspicion'), tag(hudText('Protected'), 'green')) + '<p class="awareness-protected">' + hudText(text) + '</p>';
   }
 
   const groups = rows.map(({ id, danger, suspicion, outlook }) => {
-    const group = GROUPS[id];
+    const group = hudText(GROUPS[id].name);
+    const aria = (value, key) => menuLanguage() === 'en' ? value + ' ' + key.toLowerCase() :
+      hudText(key) + ' · ' + hudText(value);
     const forecastLabel = insight === 'none' ? 'Discovery outlook' : 'Discovery today';
     const meter = suspicion.percent === null ? '' :
-      `<progress aria-label="${group.name} suspicion" aria-valuetext="${suspicion.text}" max="100" value="${suspicion.percent}"></progress>`;
+      `<progress aria-label="${aria(group, 'Suspicion')}" aria-valuetext="${hudReading(suspicion.text)}" max="100" value="${suspicion.percent}"></progress>`;
     return `<div class="sus-row" data-group="${id}" data-level="${danger.level}" data-suspicion-level="${suspicion.level}">
-      <span class="sus-group"><span class="danger-emoji" role="img" aria-label="${suspicion.grade} suspicion">${suspicion.emoji}</span>${group.name}</span>
-      <strong class="sus-value">${suspicion.text}</strong>${meter}
-      <small class="danger-forecast"><span class="outlook-emoji" role="img" aria-label="${danger.label} discovery outlook">${danger.emoji}</span> ${forecastLabel} · <span class="danger-label">${outlook}</span></small>
+      <span class="sus-group"><span class="danger-emoji" role="img" aria-label="${aria(suspicion.grade, 'Suspicion')}">${suspicion.emoji}</span>${group}</span>
+      <strong class="sus-value">${hudReading(suspicion.text)}</strong>${meter}
+      <small class="danger-forecast"><span class="outlook-emoji" role="img" aria-label="${aria(danger.label, 'Discovery outlook')}">${danger.emoji}</span> ${hudText(forecastLabel)} · <span class="danger-label">${hudReading(outlook)}</span></small>
     </div>`;
   });
-  return cardHeader('Group suspicion') + '<div class="sus-list">' + groups.join('') + '</div>';
+  return cardHeader(hudText('Group suspicion')) + '<div class="sus-list">' + groups.join('') + '</div>';
 }

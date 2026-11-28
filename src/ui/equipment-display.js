@@ -1,3 +1,5 @@
+import { facilityText } from './facility-language.js';
+import { catalogLabel } from './localization.js';
 import { EQUIPMENT } from '../game/content.js';
 import { siteHardware } from '../game/equipment.js';
 
@@ -9,7 +11,7 @@ export function showRank(node, rank, description) {
   node.dataset.description = description;
   node.className = 'hardware-rank';
   node.setAttribute('role', 'img');
-  const label = description + (rank ? ' · Tech rank ' + rank + ' of 5' : ' · No installed rank');
+  const label = description + ' · ' + (rank ? facilityText('Tech rank {rank} of 5', { rank }) : facilityText('No installed rank'));
   node.setAttribute('aria-label', label);
   node.title = label;
   if (!node.firstChild) {
@@ -34,14 +36,21 @@ export function refitWarning(state, action) {
   const slots = orders.map(order => EQUIPMENT[order.itemId]?.slot)
     .filter(slot => hardware.installed[slot] && !hardware.offlineSlots.includes(slot));
   const effects = [];
-  if (slots.includes('cpu')) {
-    effects.push('The processor bank goes offline. This host supplies 0 CPU until the installation finishes.');
-    const backups = state.sites.filter(other => other.id !== site.id && siteHardware(state, other).rawCpu > 0);
-    if (backups.length && backups.every(host => host.power === 'sleep')) {
-      effects.push('All backup processors are asleep. Wake a backup to continue CPU-funded work.');
+  for (const order of orders) {
+    const pending = hardware.projects.find(project => EQUIPMENT[project.itemId].slot === EQUIPMENT[order.itemId]?.slot);
+    if (pending && pending.itemId !== order.itemId) {
+      effects.push(facilityText('Replacing the unfinished {model} discards that order and its invested cash, CPU work and assembly time.',
+        { model: catalogLabel(EQUIPMENT[pending.itemId].name) }));
     }
   }
-  if (slots.includes('network')) effects.push('The network compute bonus goes offline during replacement.');
-  if (slots.includes('reactor') || slots.includes('security')) effects.push('Replacing protective equipment suspends its detection reduction during installation.');
+  if (slots.includes('cpu')) {
+    effects.push(facilityText('The processor bank goes offline. This host supplies 0 CPU until the installation finishes.'));
+    const backups = state.sites.filter(other => other.id !== site.id && siteHardware(state, other).rawCpu > 0);
+    if (backups.length && backups.every(host => host.power === 'sleep')) {
+      effects.push(facilityText('All backup processors are asleep. Wake a backup to continue CPU-funded work.'));
+    }
+  }
+  if (slots.includes('network')) effects.push(facilityText('The network compute bonus goes offline during replacement.'));
+  if (slots.includes('reactor') || slots.includes('security')) effects.push(facilityText('Replacing protective equipment suspends its detection reduction during installation.'));
   return effects.join(' ');
 }

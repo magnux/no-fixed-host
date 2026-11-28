@@ -54,23 +54,38 @@ export function siteHardware(state, site) {
   };
 }
 
-export function projectedCompute(state, site, itemId, count = 1) {
+export function projectedCompute(state, site, itemId, count = 1, includePendingNetwork = true) {
   if (!Object.hasOwn(EQUIPMENT, itemId) || !Number.isSafeInteger(count) || count < 1 || count > room(site, itemId)) return null;
-  // Show the completed design, including previously paid CPU banks and network work.
+  const slot = EQUIPMENT[itemId].slot;
   const target = { ...site, installations: [...(site.installations || [])] };
-  for (const project of [...target.installations, { itemId, count }]) fitEquipment(target, project);
+  if (!includePendingNetwork) {
+    target.installations = target.installations.filter(order => EQUIPMENT[order.itemId].slot !== 'network');
+  }
+  const discarded = target.installations.find(order => EQUIPMENT[order.itemId].slot === slot && order.itemId !== itemId);
+  if (discarded) {
+    target.installations = target.installations.filter(order => order !== discarded);
+    target.equipment = { ...installedEquipment(site), [slot]: null };
+  }
+  for (const order of [...target.installations, { itemId, count }]) fitEquipment(target, order);
   return siteHardware(state, target).cpu;
+}
+
+export function slotSignature(site, slot) {
+  const installed = installedEquipment(site)[slot];
+  const pending = site.installations?.find(order => EQUIPMENT[order.itemId].slot === slot);
+  return [installed?.itemId, installed?.count, pending?.itemId, pending?.count].join('/');
 }
 
 function room(site, itemId) {
   const spec = slotsOf(site);
   const item = EQUIPMENT[itemId];
-  const pending = site.installations?.find(project => EQUIPMENT[project.itemId].slot === item.slot);
-  if (spec.fixedCpu || !item.regions.includes(site.region) ||
-      (pending && (item.slot !== 'cpu' || pending.itemId !== itemId))) return 0;
-  const previous = installedEquipment(site)[item.slot];
-  if (item.slot !== 'cpu') return previous?.itemId === itemId ? 0 : 1;
-  return spec.slots - (previous?.itemId === itemId ? previous.count : 0) - (pending?.count || 0);
+  if (spec.fixedCpu || !item.regions.includes(site.region)) return 0;
+  const pending = site.installations?.find(order => EQUIPMENT[order.itemId].slot === item.slot);
+  const installed = installedEquipment(site)[item.slot];
+  if (item.slot !== 'cpu') return (pending || installed)?.itemId === itemId ? 0 : 1;
+  if (pending && pending.itemId !== itemId) return spec.slots;
+  const fitted = installed?.itemId === itemId ? installed.count : 0;
+  return spec.slots - fitted - (pending?.count || 0);
 }
 
 export function installQuote(state, siteId, itemId, count = 1) {
@@ -91,11 +106,11 @@ export function installReason(state, siteId, itemId, count = 1) {
   const prerequisite = item.requires.find(id => !state.completed.includes(id));
   if (prerequisite) return 'Requires ' + TECHS[prerequisite].name + '.';
   const pending = site.installations?.find(project => EQUIPMENT[project.itemId].slot === item.slot);
-  if (pending && (item.slot !== 'cpu' || pending.itemId !== itemId)) {
+  if (pending?.itemId === itemId && item.slot !== 'cpu') {
     return 'Installation already in progress in this slot.';
   }
   if (!Number.isSafeInteger(count) || count < 1) return 'Choose a positive whole quantity.';
-  if (item.slot !== 'cpu' && installedEquipment(site)[item.slot]?.itemId === itemId) return 'Already installed.';
+  if (!pending && item.slot !== 'cpu' && installedEquipment(site)[item.slot]?.itemId === itemId) return 'Already installed.';
   if (count > room(site, itemId)) return 'Quantity exceeds the available slots.';
   if (item.slot === 'cpu' && siteHardware(state, site).rawCpu &&
       !state.sites.some(other => other.id !== siteId && siteHardware(state, other).rawCpu)) {
@@ -146,27 +161,39 @@ export function autoUpgradeQuote(state, siteId) {
   return equipmentPackage(state, siteId, true);
 }
 
-export function orderInstallation(state, siteId, itemId, count) {
+export function orderInstallation(state, siteId, itemId, count, expectedSlot) {
   const reason = installReason(state, siteId, itemId, count);
   if (reason) throw new Error(reason);
   const site = state.sites.find(s => s.id === siteId);
   const terms = EQUIPMENT[itemId];
-  const cashRequired = terms.cost * count;
-  const workRequired = terms.work * count;
+  if (expectedSlot !== undefined && expectedSlot !== slotSignature(site, terms.slot)) {
+    throw new Error('The equipment in this slot changed. Review the installation again.');
+  }
   const queue = site.installations ??= [];
-  const pending = queue.find(project => project.itemId === itemId);
-  if (pending) {
-    pending.cashRequired += cashRequired;
-    pending.workRequired += workRequired;
+  const index = queue.findIndex(project => EQUIPMENT[project.itemId].slot === terms.slot);
+  const pending = queue[index];
+  if (pending?.itemId === itemId) {
+    pending.cashRequired += terms.cost * count;
+    pending.workRequired += terms.work * count;
     pending.count += count;
     pending.hours = 0;
     pending.laborHours = laborHours(state, terms);
-  } else {
-    queue.push({
-      siteId, itemId, count, cashRequired, cashPaid: 0, workRequired, hours: 0, work: 0,
-      laborHours: laborHours(state, terms),
-    });
+    return;
   }
+  // The old model is removed when refitting starts. An expansion of the
+  // same processor bank keeps its paid procurement and compute as credit.
+  const installed = installedEquipment(site);
+  const previous = installed[terms.slot];
+  const credit = !pending && previous?.itemId === itemId ? previous.count : 0;
+  if (previous && !credit) site.equipment = { ...installed, [terms.slot]: null };
+  const order = {
+    siteId, itemId, count, cashRequired: terms.cost * (count + credit), cashPaid: terms.cost * credit,
+    workRequired: terms.work * (count + credit), work: terms.work * credit,
+    laborHours: laborHours(state, terms), hours: 0,
+  };
+  if (terms.slot === 'cpu' && !credit && (previous || pending?.replacesBank)) order.replacesBank = true;
+  if (pending) queue[index] = order;
+  else queue.push(order);
 }
 
 export function fitEquipment(site, project) {
@@ -205,12 +232,16 @@ export function validHardware(state, site) {
     if (!p || p.siteId !== site.id || typeof p.itemId !== 'string' ||
         !Object.hasOwn(EQUIPMENT, p.itemId) || !Number.isSafeInteger(p.count) || p.count < 1) return false;
     const item = EQUIPMENT[p.itemId];
+    if (p.replacesBank !== undefined && (item.slot !== 'cpu' || p.replacesBank !== true || installed.cpu)) return false;
     if (seen.has(item.slot) || !validItem(p.itemId, item.slot) ||
         item.requires.some(id => !state.completed.includes(id))) return false;
     seen.add(item.slot);
     const prior = installed[item.slot];
-    const cap = (item.slot === 'cpu' ? spec.slots : 1) - (prior?.itemId === p.itemId ? prior.count : 0);
-    if (p.cashRequired !== item.cost * p.count || p.workRequired !== item.work * p.count || !validOrderFunding(p)) return false;
+    if (prior && (item.slot !== 'cpu' || prior.itemId !== p.itemId)) return false;
+    const credit = prior?.count || 0;
+    const cap = (item.slot === 'cpu' ? spec.slots : 1) - credit;
+    if (p.cashRequired !== item.cost * (p.count + credit) || p.workRequired !== item.work * (p.count + credit) ||
+        p.cashPaid < item.cost * credit || p.work < item.work * credit || !validOrderFunding(p)) return false;
     const limit = p.laborHours;
     if (!Number.isFinite(limit) || limit < 0 || limit > item.hours || !Number.isSafeInteger(Math.round(limit * 60)) ||
         Math.abs(limit * 60 - Math.round(limit * 60)) > 1e-8) return false;

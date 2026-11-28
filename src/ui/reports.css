@@ -9,7 +9,7 @@
 .report-tools label, .report-note, .report-console [data-report="feedback"] { font-size: .82rem; line-height: 1.5; color: var(--quiet); }
 .report-tools select { font: inherit; padding: .3rem .4rem; margin-left: .3rem; }
 .report-tools button, .report-order button { font-size: .78rem; padding: .38rem .58rem; }
-.report-tools small { margin-left: auto; font-size: .71rem; }
+.report-note [data-report="range"] { font-weight: 600; }
 .report-order { background: #192a29; }
 .report-order > div { display: grid; grid-template-columns: auto 1fr; gap: 0 .5rem; align-items: baseline; margin-right: auto; }
 .report-order :is([data-report="package"], [data-report="refit"]) { grid-column: 1 / -1; }
@@ -33,7 +33,6 @@
 .report-stats dd { margin: .28rem 0 0; font: .96rem/1.4 var(--mono); }
 @media (max-width: 54rem) {
   .report-ledgers { grid-template-columns: 1fr; }
-  .report-tools small { margin-left: 0; }
 }
 @media (min-width: 65rem) and (max-height: 52rem) {
   .report-console .card-header, .report-order { padding-block: .32rem; }
